@@ -18,8 +18,8 @@ jobs:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
