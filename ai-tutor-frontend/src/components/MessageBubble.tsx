@@ -54,7 +54,7 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
         <div
           className={`rounded-2xl px-5 py-4 shadow-message transition-all duration-200 hover:shadow-message-hover ${
             isUser
-              ? 'bg-gradient-to-br from-primary-600 to-primary-500 text-white'
+              ? 'bg-gradient-to-br from-primary-600 to-primary-500 text-black'
               : isError
               ? 'bg-amber-50 text-amber-900 border-2 border-amber-200 flex-1'
               : 'bg-white text-gray-900 border border-gray-200 flex-1'
@@ -63,7 +63,7 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
           aria-live={isError ? 'assertive' : 'polite'}
         >
           {isUser ? (
-            <p className="text-white leading-relaxed m-0 whitespace-pre-wrap">{message.content}</p>
+            <p className="text-black leading-relaxed m-0 whitespace-pre-wrap">{message.content}</p>
           ) : isError ? (
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0 text-2xl">⚠️</div>

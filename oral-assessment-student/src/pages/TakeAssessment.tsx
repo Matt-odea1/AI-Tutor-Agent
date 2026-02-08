@@ -123,9 +123,9 @@ export default function TakeAssessment() {
   const answeredCount = progress?.answeredQuestions || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-sm border-b flex-shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <h1 className="text-2xl font-bold text-gray-900">
             Oral Assessment
@@ -141,42 +141,43 @@ export default function TakeAssessment() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6">
-            <ErrorMessage error={error} onDismiss={clearError} />
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Error Display */}
+          {error && (
+            <div className="mb-4">
+              <ErrorMessage error={error} onDismiss={clearError} />
+            </div>
+          )}
+
+          {/* Progress Tracker */}
+          <div className="mb-4">
+            <ProgressTracker
+              currentIndex={currentQuestionIndex}
+              totalQuestions={questions.length}
+              answeredCount={answeredCount}
+            />
           </div>
-        )}
 
-        {/* Progress Tracker */}
-        <div className="mb-6">
-          <ProgressTracker
-            currentIndex={currentQuestionIndex}
-            totalQuestions={questions.length}
-            answeredCount={answeredCount}
-          />
-        </div>
+          {/* Question Display */}
+          <div className="mb-4">
+            <QuestionDisplay
+              question={currentQuestion}
+              questionNumber={currentQuestionIndex + 1}
+              totalQuestions={questions.length}
+            />
+          </div>
 
-        {/* Question Display */}
-        <div className="mb-6">
-          <QuestionDisplay
-            question={currentQuestion}
-            questionNumber={currentQuestionIndex + 1}
-            totalQuestions={questions.length}
-          />
-        </div>
+          {/* Audio Recorder */}
+          <div className="mb-4">
+            <AudioRecorder
+              onSubmit={handleSubmitAnswer}
+              timeLimit={300}
+            />
+          </div>
 
-        {/* Audio Recorder */}
-        <div className="mb-6">
-          <AudioRecorder
-            onSubmit={handleSubmitAnswer}
-            timeLimit={300}
-          />
-        </div>
-
-        {/* Navigation */}
-        <div className="flex justify-between items-center">
+          {/* Navigation */}
+          <div className="flex justify-between items-center pb-6">
           <button
             onClick={handlePrevious}
             disabled={isFirstQuestion}
@@ -221,6 +222,7 @@ export default function TakeAssessment() {
               </svg>
             </button>
           )}
+          </div>
         </div>
       </main>
 

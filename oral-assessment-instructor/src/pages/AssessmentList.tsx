@@ -16,7 +16,7 @@ export default function AssessmentList() {
       setLoading(true);
       setError(null);
       const data = await apiService.listAssessments();
-      setAssessments(data);
+      setAssessments(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load assessments');
     } finally {
@@ -25,7 +25,7 @@ export default function AssessmentList() {
   };
 
   // Display assessments (real data when available)
-  const displayAssessments = assessments;
+  const displayAssessments = Array.isArray(assessments) ? assessments : [];
 
   const getStatusColor = (status: string) => {
     switch (status) {

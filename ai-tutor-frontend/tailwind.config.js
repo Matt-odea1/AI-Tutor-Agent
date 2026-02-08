@@ -9,18 +9,23 @@ export default {
       colors: {
         // Primary brand colors
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
+          50: '#fff9cc',
+          100: '#fff299',
+          200: '#ffeb66',
+          300: '#ffe433',
+          400: '#ffdf1a',
+          500: '#ffdc00',
+          600: '#e6c600',
+          700: '#bfa500',
+          800: '#997f00',
+          900: '#665500',
         },
         // Sidebar colors
         sidebar: {
-          bg: '#1f2937',
-          hover: '#374151',
-          text: '#9ca3af',
-          active: '#e5e7eb',
+          bg: '#000000',
+          hover: '#111111',
+          text: '#e5e5e5',
+          active: '#ffffff',
         },
       },
       fontFamily: {

@@ -9,9 +9,12 @@ import json
 import csv
 import os
 import threading
+import boto3
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from decimal import Decimal
+from boto3.dynamodb.conditions import Key
 
 from src.main.llm.AgentCoreProvider import AgentCoreProvider
 from src.main.utils.ReadPrompt import read_prompt
@@ -42,6 +45,12 @@ class ResponseEvaluationService:
         self.base_output_dir.mkdir(parents=True, exist_ok=True)
         self.responses_dir = Path(responses_dir)
         
+        # DynamoDB setup
+        self.table_name = os.getenv('DYNAMODB_ASSESSMENT_TABLE', 'oral_assessments')
+        self.region = os.getenv('AWS_REGION', 'us-east-1')
+        self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
+        self.table = self.dynamodb.Table(self.table_name)
+        
         # In-memory job store
         self.jobs: Dict[str, Dict[str, Any]] = {}
         
@@ -51,6 +60,69 @@ class ResponseEvaluationService:
         
         print(f"[ResponseEvaluationService] Initialized with output dir: {self.base_output_dir}")
         print(f"[ResponseEvaluationService] Reading responses from: {self.responses_dir}")
+
+    def start_evaluation_from_dynamodb(
+        self,
+        student_id: str,
+        assessment_id: str
+    ) -> Dict[str, Any]:
+        """
+        Start async evaluation of student responses from DynamoDB.
+        
+        Args:
+            student_id: Student identifier
+            assessment_id: Assessment identifier
+            
+        Returns:
+            Dictionary with job_id and initial status
+        """
+        # Count answers in DynamoDB
+        try:
+            total_questions = self._count_answers_in_dynamodb(student_id, assessment_id)
+        except Exception as e:
+            raise ResponseEvaluationError(f"Failed to read answers from DynamoDB: {e}")
+        
+        if total_questions == 0:
+            raise ResponseEvaluationError(f"No answers found for student {student_id} in assessment {assessment_id}")
+        
+        # Generate job ID
+        timestamp = int(datetime.now().timestamp())
+        job_id = f"eval_{student_id}_{assessment_id}_{timestamp}"
+        
+        # Initialize job
+        self.jobs[job_id] = {
+            "status": "processing",
+            "student_id": student_id,
+            "assessment_id": assessment_id,
+            "total_questions": total_questions,
+            "progress": {
+                "questions_evaluated": 0,
+                "total_questions": total_questions,
+                "percentage": 0.0
+            },
+            "result": None,
+            "error": None,
+            "started_at": datetime.now().isoformat()
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=self._evaluate_from_dynamodb_async,
+            args=(job_id, student_id, assessment_id)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        print(f"[ResponseEvaluationService] Started DynamoDB evaluation job: {job_id}")
+        
+        return {
+            "job_id": job_id,
+            "status": "processing",
+            "student_id": student_id,
+            "assessment_id": assessment_id,
+            "total_questions": total_questions,
+            "estimated_time_seconds": total_questions * 8
+        }
 
     def start_evaluation(
         self,
@@ -148,6 +220,216 @@ class ResponseEvaluationService:
         with open(csv_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             return sum(1 for _ in reader)
+
+    def _count_answers_in_dynamodb(self, student_id: str, assessment_id: str) -> int:
+        """Count number of answers in DynamoDB."""
+        pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+        response = self.table.query(
+            KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('ANSWER#')
+        )
+        return len(response.get('Items', []))
+
+    def _evaluate_from_dynamodb_async(
+        self,
+        job_id: str,
+        student_id: str,
+        assessment_id: str
+    ):
+        """Background task that evaluates all questions from DynamoDB."""
+        try:
+            print(f"[Job {job_id}] Starting DynamoDB evaluation for student {student_id}")
+            
+            # Read questions and answers from DynamoDB
+            questions_data = self._read_questions_from_dynamodb(student_id, assessment_id)
+            answers_data = self._read_answers_from_dynamodb(student_id, assessment_id)
+            
+            # Match questions with answers
+            qa_pairs = self._match_questions_and_answers(questions_data, answers_data)
+            total_questions = len(qa_pairs)
+            
+            # Evaluate each question
+            evaluations = []
+            total_score = 0.0
+            
+            for i, qa_pair in enumerate(qa_pairs):
+                try:
+                    print(f"[Job {job_id}] Evaluating question {i + 1}/{total_questions}")
+                    
+                    evaluation = self._evaluate_qa_pair(qa_pair)
+                    evaluations.append(evaluation)
+                    
+                    total_score += evaluation["total_score"]
+                    
+                    # Store evaluation in DynamoDB
+                    self._store_evaluation_in_dynamodb(
+                        student_id, assessment_id,
+                        qa_pair['question']['id'],
+                        evaluation
+                    )
+                    
+                    # Update progress
+                    self.jobs[job_id]["progress"] = {
+                        "questions_evaluated": i + 1,
+                        "total_questions": total_questions,
+                        "percentage": round((i + 1) / total_questions * 100, 1)
+                    }
+                    
+                except Exception as e:
+                    print(f"[Job {job_id}] Error evaluating question {i + 1}: {e}")
+                    evaluations.append({
+                        "question_id": qa_pair['question']['id'],
+                        "correctness_score": 0,
+                        "understanding_score": 0,
+                        "total_score": 0,
+                        "feedback": f"Evaluation failed: {str(e)}",
+                        "error": str(e)
+                    })
+            
+            # Calculate final metrics
+            max_score = total_questions * 10
+            percentage = (total_score / max_score * 100) if max_score > 0 else 0
+            grade = self._calculate_grade(percentage)
+            
+            # Mark job as completed
+            self.jobs[job_id]["status"] = "completed"
+            self.jobs[job_id]["result"] = {
+                "ok": True,
+                "student_id": student_id,
+                "assessment_id": assessment_id,
+                "total_questions": total_questions,
+                "total_score": round(total_score, 1),
+                "max_score": max_score,
+                "percentage": round(percentage, 1),
+                "grade": grade,
+                "evaluations_stored_in_dynamodb": len(evaluations)
+            }
+            
+            print(f"[Job {job_id}] DynamoDB evaluation completed. Score: {total_score}/{max_score} ({percentage:.1f}%)")
+            
+        except Exception as e:
+            print(f"[Job {job_id}] DynamoDB evaluation failed: {e}")
+            self.jobs[job_id]["status"] = "failed"
+            self.jobs[job_id]["error"] = str(e)
+
+    def _read_questions_from_dynamodb(self, student_id: str, assessment_id: str) -> List[Dict[str, Any]]:
+        """Read questions from DynamoDB."""
+        pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+        response = self.table.query(
+            KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('QUESTION#')
+        )
+        return response.get('Items', [])
+
+    def _read_answers_from_dynamodb(self, student_id: str, assessment_id: str) -> List[Dict[str, Any]]:
+        """Read answers from DynamoDB."""
+        pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+        response = self.table.query(
+            KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('ANSWER#')
+        )
+        return response.get('Items', [])
+
+    def _match_questions_and_answers(
+        self,
+        questions: List[Dict[str, Any]],
+        answers: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Match questions with their answers."""
+        # Create a map of question_id -> answer
+        answer_map = {a['questionId']: a for a in answers}
+        
+        qa_pairs = []
+        for question in questions:
+            question_id = question['id']
+            answer = answer_map.get(question_id)
+            
+            if answer:
+                qa_pairs.append({
+                    'question': question,
+                    'answer': answer
+                })
+        
+        return qa_pairs
+
+    def _evaluate_qa_pair(self, qa_pair: Dict[str, Any]) -> Dict[str, Any]:
+        """Evaluate a question-answer pair."""
+        question = qa_pair['question']
+        answer = qa_pair['answer']
+        
+        # Build evaluation prompt
+        user_prompt = f"""
+**Question Type:** {question.get('questionType', 'general')}
+
+**Question:**
+{question.get('text', '')}
+
+**Code Reference:**
+```python
+{question.get('codeContext', '')}
+```
+
+**Student's Answer (Transcribed from audio):**
+{answer.get('transcript', 'No transcript available')}
+
+---
+
+Evaluate this response and provide your assessment in JSON format as specified.
+"""
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"text": self.evaluation_prompt},
+                    {"text": user_prompt}
+                ]
+            }
+        ]
+        
+        # Call LLM
+        try:
+            result = self.agent_client.chat(messages)
+            response_text = result if isinstance(result, str) else result.get("text", "")
+            
+            # Parse JSON response
+            evaluation = self._parse_evaluation_response(response_text)
+            
+            # Add metadata
+            evaluation["question_id"] = question['id']
+            evaluation["question_number"] = question.get('questionNumber', 0)
+            evaluation["question_type"] = question.get('questionType', '')
+            
+            return evaluation
+            
+        except Exception as e:
+            raise ResponseEvaluationError(f"Failed to evaluate question: {e}")
+
+    def _store_evaluation_in_dynamodb(
+        self,
+        student_id: str,
+        assessment_id: str,
+        question_id: str,
+        evaluation: Dict[str, Any]
+    ):
+        """Store evaluation result in DynamoDB."""
+        created_at = datetime.utcnow().isoformat() + "Z"
+        
+        item = {
+            'PK': f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+            'SK': f"EVALUATION#{question_id}",
+            'questionId': question_id,
+            'assessmentId': assessment_id,
+            'studentId': student_id,
+            'correctnessScore': Decimal(str(evaluation.get('correctness_score', 0))),
+            'understandingScore': Decimal(str(evaluation.get('understanding_score', 0))),
+            'totalScore': Decimal(str(evaluation.get('total_score', 0))),
+            'feedback': evaluation.get('feedback', ''),
+            'strengths': evaluation.get('strengths', []),
+            'weaknesses': evaluation.get('weaknesses', []),
+            'suggestedImprovements': evaluation.get('suggested_improvements', []),
+            'evaluatedAt': created_at
+        }
+        
+        self.table.put_item(Item=item)
+        print(f"[ResponseEvaluationService] Stored evaluation for question {question_id}")
 
     def _evaluate_responses_async(
         self,
@@ -534,3 +816,14 @@ Evaluate this response and provide your assessment in JSON format as specified.
             return f"Evaluation failed: {job.get('error', 'Unknown error')}"
         else:
             return f"Status: {status}"
+
+    def _convert_decimals(self, obj: Any) -> Any:
+        """Convert Decimal objects to int/float for JSON serialization."""
+        if isinstance(obj, list):
+            return [self._convert_decimals(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {k: self._convert_decimals(v) for k, v in obj.items()}
+        elif isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        else:
+            return obj

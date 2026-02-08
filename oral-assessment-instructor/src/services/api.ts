@@ -59,8 +59,8 @@ class ApiService {
   }
 
   async listAssessments(): Promise<Assessment[]> {
-    const response = await this.client.get<Assessment[]>('/api/assessment/list');
-    return response.data;
+    const response = await this.client.get<{ ok: boolean; assessments: Assessment[] }>('/api/assessment/list');
+    return response.data.assessments || [];
   }
 
   // Student upload endpoints
@@ -162,10 +162,10 @@ class ApiService {
   }
 
   async getAssessmentResults(assessmentId: string): Promise<AssessmentResults[]> {
-    const response = await this.client.get<AssessmentResults[]>(
+    const response = await this.client.get<{ ok: boolean; results: AssessmentResults[] }>(
       `/api/assessment/${assessmentId}/results`
     );
-    return response.data;
+    return response.data.results || [];
   }
 
   async getStudentResults(studentId: string, assessmentId: string): Promise<AssessmentResults> {
@@ -177,10 +177,14 @@ class ApiService {
 
   // Progress monitoring endpoints
   async getAssessmentProgress(assessmentId: string): Promise<StudentProgress[]> {
-    const response = await this.client.get<StudentProgress[]>(
+    const response = await this.client.get<{ 
+      ok: boolean; 
+      students: StudentProgress[];
+      summary?: { total: number; notStarted: number; inProgress: number; completed: number }
+    }>(
       `/api/assessment/${assessmentId}/progress`
     );
-    return response.data;
+    return response.data.students || [];
   }
 
   async getAssessmentStudents(assessmentId: string): Promise<Student[]> {

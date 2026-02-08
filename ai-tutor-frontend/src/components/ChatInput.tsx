@@ -80,7 +80,7 @@ export const ChatInput = ({
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white px-6 py-2 pt-5 relative">
+    <div className="border-t border-gray-200 bg-white px-6 py-2 pt-5 pb-5 relative">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-end space-x-2 h-[40px]">
           {/* Code Editor Toggle */}
@@ -200,7 +200,7 @@ export const ChatInput = ({
           <button
             onClick={handleSend}
             disabled={disabled || !input.trim()}
-            className="rounded-lg bg-primary-600 px-6 py-[7px] font-semibold text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-1.5 flex-shrink-0 h-[40px]"
+            className="rounded-lg bg-primary-600 px-6 py-[7px] font-semibold text-black hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-1.5 flex-shrink-0 h-[40px]"
             aria-label="Send message"
           >
             <span>{disabled ? 'Sending...' : 'Send'}</span>

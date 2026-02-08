@@ -10,6 +10,7 @@ import { DeleteConfirmModal } from './DeleteConfirmModal'
 import { SessionSkeletonList } from './SessionSkeleton'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { trackSessionCreated } from '../utils/analytics'
+import edLogo from '../assets/edLogo.png'
 
 export const Sidebar = () => {
   const { sessionId, clearSession } = useChatStore()
@@ -111,7 +112,7 @@ export const Sidebar = () => {
 
   if (isCollapsed) {
     return (
-      <div className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4">
+      <div className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4 pb-5">
         <button
           onClick={() => setIsCollapsed(false)}
           className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
@@ -126,14 +127,24 @@ export const Sidebar = () => {
   }
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full pb-3">
       {/* Header with Logo, New Chat, and Collapse */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center space-x-2">
           {/* Logo */}
-          <div className="bg-gradient-to-br from-primary-500 to-primary-600 w-8 h-8 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
-            <span className="text-white text-sm font-bold">C9</span>
-          </div>
+          <a
+            href="https://edstem.org/au/courses/28065/discussion"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 rounded-lg overflow-hidden shadow-lg flex-shrink-0 bg-white"
+            title="Open Ed discussion"
+          >
+            <img
+              src={edLogo}
+              alt="Ed discussion"
+              className="w-full h-full object-contain scale-110"
+            />
+          </a>
           
           {/* New Chat Button - fills available space */}
           <button
@@ -256,7 +267,7 @@ export const Sidebar = () => {
       <div className="px-6 py-2 pt-5 border-t border-gray-800">
         <div className="flex items-center space-x-3 h-[40px]">
           <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-sm font-bold">U</span>
+            <span className="text-black text-sm font-bold">U</span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2">

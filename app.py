@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 
 load_dotenv(find_dotenv(filename=".env", usecwd=True), override=False)
 
-from src.main.controllers.InternalEndpoints import router as context_router, chat_router, questions_router, evaluations_router
+from src.main.controllers.InternalEndpoints import router as context_router, chat_router, questions_router, evaluations_router, student_router, assessment_router, s3_router
 
 
 def create_app() -> FastAPI:
@@ -26,9 +26,22 @@ def create_app() -> FastAPI:
         openapi_url=os.getenv("OPENAPI_URL", "/openapi.json"),
     )
 
-    # Optional CORS
-    origins_env = os.getenv("ALLOW_ORIGINS", "")
-    if origins_env:
+    # CORS Configuration
+    # Default: Allow all localhost addresses for development
+    origins_env = os.getenv("ALLOW_ORIGINS", "http://localhost:*")
+    
+    if origins_env == "http://localhost:*":
+        # Allow all localhost ports for development
+        origins: List[str] = ["*"]  # Allow all origins in dev (will be filtered by credentials)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    elif origins_env:
+        # Production: Use specific origins from env variable
         origins: List[str] = [o.strip() for o in origins_env.split(",") if o.strip()]
         app.add_middleware(
             CORSMiddleware,
@@ -54,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(questions_router)
     app.include_router(evaluations_router)
+    app.include_router(student_router)
+    app.include_router(assessment_router)
+    app.include_router(s3_router)
 
     return app
 

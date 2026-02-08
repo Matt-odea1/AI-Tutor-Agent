@@ -46,7 +46,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       setLoading(true);
       setError(null);
       const progressData = await apiService.getAssessmentProgress(assessmentId);
-      setProgress(progressData);
+      setProgress(Array.isArray(progressData) ? progressData : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {
@@ -57,7 +57,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const loadStudents = async () => {
     try {
       const studentsData = await apiService.getAssessmentStudents(assessmentId);
-      setStudents(studentsData);
+      setStudents(Array.isArray(studentsData) ? studentsData : []);
     } catch (err) {
       console.error('Error loading students:', err);
     }
@@ -69,7 +69,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     const interval = setInterval(async () => {
       try {
         const progressData = await apiService.getAssessmentProgress(assessmentId);
-        setProgress(progressData);
+        setProgress(Array.isArray(progressData) ? progressData : []);
       } catch (err) {
         console.error('Error polling progress:', err);
       }
@@ -79,8 +79,12 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   };
 
   const applyFilters = () => {
-    let filtered = progress.map(p => {
-      const student = students.find(s => s.id === p.studentId);
+    // Ensure progress is an array
+    const progressArray = Array.isArray(progress) ? progress : [];
+    const studentsArray = Array.isArray(students) ? students : [];
+    
+    let filtered = progressArray.map(p => {
+      const student = studentsArray.find(s => s.id === p.studentId);
       return { ...p, student: student || { id: p.studentId, name: 'Unknown', email: '', studentId: '' } };
     });
 
@@ -103,7 +107,10 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   };
 
   const handleEvaluateAll = async () => {
-    const completedStudents = progress
+    // Ensure progress is an array
+    const progressArray = Array.isArray(progress) ? progress : [];
+    
+    const completedStudents = progressArray
       .filter(p => p.status === 'completed')
       .map(p => p.studentId);
 
@@ -152,11 +159,14 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     return p.totalQuestions > 0 ? Math.round((p.questionsAnswered / p.totalQuestions) * 100) : 0;
   };
 
+  // Ensure progress is an array for stats calculation
+  const progressArray = Array.isArray(progress) ? progress : [];
+  
   const stats = {
-    total: progress.length,
-    notStarted: progress.filter(p => p.status === 'not-started').length,
-    inProgress: progress.filter(p => p.status === 'in-progress').length,
-    completed: progress.filter(p => p.status === 'completed' || p.status === 'submitted').length,
+    total: progressArray.length,
+    notStarted: progressArray.filter(p => p.status === 'not-started').length,
+    inProgress: progressArray.filter(p => p.status === 'in-progress').length,
+    completed: progressArray.filter(p => p.status === 'completed' || p.status === 'submitted').length,
   };
 
   return (

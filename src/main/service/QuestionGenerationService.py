@@ -7,8 +7,12 @@ QuestionGenerationService: Generates oral exam questions from assignment briefs 
 import json
 import csv
 import os
+import uuid
+import boto3
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from datetime import datetime
+from decimal import Decimal
 
 from src.main.llm.AgentCoreProvider import AgentCoreProvider
 from src.main.utils.ReadPrompt import read_prompt
@@ -36,6 +40,12 @@ class QuestionGenerationService:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
+        # DynamoDB setup
+        self.table_name = os.getenv('DYNAMODB_ASSESSMENT_TABLE', 'oral_assessments')
+        self.region = os.getenv('AWS_REGION', 'us-east-1')
+        self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
+        self.table = self.dynamodb.Table(self.table_name)
+        
         # Load the question generation prompt template
         prompt_file = Path(__file__).resolve().parents[3] / "prompts" / "question_generation_prompt.md"
         self.prompt_template = read_prompt(prompt_file)
@@ -44,7 +54,9 @@ class QuestionGenerationService:
         self,
         assignment_brief: str,
         student_code: str,
-        student_name: str
+        student_name: str,
+        student_id: Optional[str] = None,
+        assessment_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate questions from assignment brief and student code.
@@ -53,6 +65,8 @@ class QuestionGenerationService:
             assignment_brief: The assignment description/requirements
             student_code: The student's Python code submission
             student_name: Student identifier for filename generation
+            student_id: Optional student ID for DynamoDB storage
+            assessment_id: Optional assessment ID for DynamoDB storage
             
         Returns:
             Dictionary with:
@@ -61,6 +75,7 @@ class QuestionGenerationService:
                 - csv_file_path: Path to saved CSV file
                 - questions_count: Total number of questions
                 - tokens_used: Token usage (if available)
+                - dynamodb_stored: Boolean indicating if stored in DynamoDB
         """
         print(f"[QuestionGenerationService] Generating questions for student: {student_name}")
         
@@ -100,6 +115,16 @@ class QuestionGenerationService:
         json_path = self._save_json(questions, student_name)
         csv_path = self._save_csv(questions, student_name)
         
+        # Save to DynamoDB if student_id and assessment_id provided
+        dynamodb_stored = False
+        if student_id and assessment_id:
+            try:
+                self._store_questions_in_dynamodb(questions, student_id, assessment_id, student_code)
+                dynamodb_stored = True
+                print(f"[QuestionGenerationService] Stored questions in DynamoDB for student {student_id}")
+            except Exception as e:
+                print(f"[QuestionGenerationService] Failed to store in DynamoDB: {e}")
+        
         print(f"[QuestionGenerationService] Generated {len(questions)} questions")
         print(f"[QuestionGenerationService] Saved to: {json_path} and {csv_path}")
         
@@ -108,7 +133,8 @@ class QuestionGenerationService:
             "json_file_path": str(json_path),
             "csv_file_path": str(csv_path),
             "questions_count": len(questions),
-            "tokens_used": tokens_used
+            "tokens_used": tokens_used,
+            "dynamodb_stored": dynamodb_stored
         }
 
     def _build_system_prompt(self) -> str:
@@ -229,3 +255,63 @@ Generate the questions in JSON format as specified.
                 writer.writerow(row)
         
         return filepath
+
+    def _store_questions_in_dynamodb(
+        self,
+        questions: List[Dict[str, Any]],
+        student_id: str,
+        assessment_id: str,
+        student_code: str
+    ):
+        """
+        Store generated questions in DynamoDB.
+        
+        Args:
+            questions: List of question dictionaries
+            student_id: Student identifier
+            assessment_id: Assessment identifier
+            student_code: Student's code (stored with questions)
+        """
+        created_at = datetime.utcnow().isoformat() + "Z"
+        
+        with self.table.batch_writer() as batch:
+            for q in questions:
+                question_id = str(uuid.uuid4())
+                
+                item = {
+                    'PK': f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+                    'SK': f"QUESTION#{question_id}",
+                    'id': question_id,
+                    'assessmentId': assessment_id,
+                    'studentId': student_id,
+                    'text': q.get('question', ''),
+                    'questionNumber': q.get('question_number', 0),
+                    'questionType': q.get('question_type', 'general'),
+                    'rationale': q.get('rationale', ''),
+                    'codeContext': q.get('code_reference', ''),
+                    'difficulty': 'medium',  # Could be derived from rationale
+                    'topic': self._extract_topic(q.get('rationale', '')),
+                    'createdAt': created_at
+                }
+                
+                batch.put_item(Item=item)
+        
+        print(f"[QuestionGenerationService] Stored {len(questions)} questions in DynamoDB")
+
+    def _extract_topic(self, rationale: str) -> str:
+        """Extract topic from rationale (simple keyword matching)."""
+        rationale_lower = rationale.lower()
+        
+        # Simple keyword matching
+        if 'loop' in rationale_lower or 'iteration' in rationale_lower:
+            return 'loops'
+        elif 'function' in rationale_lower or 'method' in rationale_lower:
+            return 'functions'
+        elif 'list' in rationale_lower or 'array' in rationale_lower:
+            return 'data_structures'
+        elif 'variable' in rationale_lower or 'assignment' in rationale_lower:
+            return 'variables'
+        elif 'conditional' in rationale_lower or 'if' in rationale_lower:
+            return 'conditionals'
+        else:
+            return 'general'

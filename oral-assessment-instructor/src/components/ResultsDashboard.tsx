@@ -31,7 +31,7 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
       setLoading(true);
       setError(null);
       const data = await apiService.getAssessmentResults(assessmentId);
-      setResults(data);
+      setResults(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load results');
     } finally {
@@ -40,7 +40,8 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
   };
 
   const applyFiltersAndSort = () => {
-    let filtered = [...results];
+    const resultsArray = Array.isArray(results) ? results : [];
+    let filtered = [...resultsArray];
 
     // Apply grade filter
     if (gradeFilter !== 'all') {
@@ -119,16 +120,17 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
   };
 
   // Calculate statistics
+  const resultsArray = Array.isArray(results) ? results : [];
   const stats = {
-    totalStudents: results.length,
-    averageScore: results.length > 0 
-      ? Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / results.length)
+    totalStudents: resultsArray.length,
+    averageScore: resultsArray.length > 0 
+      ? Math.round(resultsArray.reduce((sum, r) => sum + r.percentage, 0) / resultsArray.length)
       : 0,
     completionRate: 100, // All results are complete
-    excellentCount: results.filter(r => r.grade === 'Excellent').length,
-    competentCount: results.filter(r => r.grade === 'Competent').length,
-    developingCount: results.filter(r => r.grade === 'Developing').length,
-    unsatisfactoryCount: results.filter(r => r.grade === 'Unsatisfactory').length,
+    excellentCount: resultsArray.filter(r => r.grade === 'Excellent').length,
+    competentCount: resultsArray.filter(r => r.grade === 'Competent').length,
+    developingCount: resultsArray.filter(r => r.grade === 'Developing').length,
+    unsatisfactoryCount: resultsArray.filter(r => r.grade === 'Unsatisfactory').length,
   };
 
   // Grade distribution data for pie chart

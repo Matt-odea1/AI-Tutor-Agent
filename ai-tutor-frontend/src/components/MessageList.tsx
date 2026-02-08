@@ -72,7 +72,7 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
             <div className="mb-6 flex justify-center">
               <div className="relative">
                 <div className="bg-gradient-to-br from-primary-500 to-primary-600 w-20 h-20 rounded-3xl flex items-center justify-center shadow-2xl">
-                  <span className="text-white text-4xl font-bold">C9</span>
+                  <span className="text-black text-4xl font-bold">C9</span>
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white"></div>
               </div>
@@ -140,7 +140,7 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
           <div className="flex justify-start mb-6 animate-fade-in">
             <div className="flex space-x-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-md animate-pulse">
-                <span className="text-white text-sm font-semibold">AI</span>
+                <span className="text-black text-sm font-semibold">AI</span>
               </div>
               <div className="bg-white rounded-2xl px-5 py-4 shadow-message border border-gray-200">
                 <div className="flex items-center space-x-3">
