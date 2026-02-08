@@ -6,7 +6,7 @@ import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { API_CONFIG } from '../config/api.config'
 import { API_CONFIG as RETRY_CONFIG } from '../config/theme'
 import { trackAPIError } from '../utils/analytics'
-import { trackAPITiming, createTimer } from '../utils/performance'
+import { trackAPITiming } from '../utils/performance'
 import { trackError } from '../utils/errorTracking'
 
 // Retry configuration
@@ -31,7 +31,7 @@ const shouldRetry = (error: AxiosError, retryCount: number): boolean => {
   if (!error.response) return true
   
   // Retry on specific status codes
-  if (error.response.status && RETRY_STATUS_CODES.includes(error.response.status)) {
+  if (error.response.status && (RETRY_STATUS_CODES as readonly number[]).includes(error.response.status)) {
     return true
   }
   
