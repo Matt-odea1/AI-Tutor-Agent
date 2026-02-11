@@ -4,7 +4,6 @@
 import { useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { useChatStore } from '../store/chatStore'
 
 interface CodeBlockProps {
   children: string
@@ -15,8 +14,6 @@ interface CodeBlockProps {
 export const CodeBlock = ({ children, language, className }: CodeBlockProps) => {
   const [isCopied, setIsCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isInserted, setIsInserted] = useState(false)
-  const insertCodeIntoEditor = useChatStore((state) => state.insertCodeIntoEditor)
 
   // Extract language from className (format: language-python)
   const match = /language-(\w+)/.exec(className || '')
@@ -48,11 +45,6 @@ export const CodeBlock = ({ children, language, className }: CodeBlockProps) => 
     setTimeout(() => setIsCopied(false), 2000)
   }
 
-  const handleInsert = () => {
-    insertCodeIntoEditor(code)
-    setIsInserted(true)
-    setTimeout(() => setIsInserted(false), 2000)
-  }
 
   return (
     <div className="relative group my-3 rounded-lg overflow-hidden bg-[#1E1E1E] shadow-lg">
@@ -62,27 +54,6 @@ export const CodeBlock = ({ children, language, className }: CodeBlockProps) => 
           {lang}
         </span>
         <div className="flex items-center space-x-1">
-          <button
-            onClick={handleInsert}
-            className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-            title="Insert into editor"
-          >
-            {isInserted ? (
-              <>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <span>Inserted!</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>Insert</span>
-              </>
-            )}
-          </button>
           <button
             onClick={handleCopy}
             className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"

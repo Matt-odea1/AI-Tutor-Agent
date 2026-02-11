@@ -8,3 +8,8 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     include_history: bool = True  # Whether to include conversation history in context
     pedagogy_mode: Optional[str] = "explanatory"  # Teaching mode: explanatory, debugging, practice
+    editor_code: Optional[str] = None
+    editor_selection: Optional[str] = None
+    last_stdout: Optional[str] = None
+    last_error: Optional[str] = None
+    language: Optional[str] = None

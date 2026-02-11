@@ -2,7 +2,7 @@
  * Type definitions for pedagogy modes
  */
 
-export type PedagogyMode = 'explanatory' | 'debugging' | 'practice'
+export type PedagogyMode = 'explanatory' | 'debugging' | 'practice' | 'concise'
 
 export interface PedagogyModeInfo {
   id: PedagogyMode
@@ -33,5 +33,12 @@ export const PEDAGOGY_MODES: PedagogyModeInfo[] = [
     description: 'Test my understanding with guided questions',
     icon: '🎯',
     color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  },
+  {
+    id: 'concise',
+    name: 'Concise',
+    description: 'Short, UI-friendly answers with minimal fluff',
+    icon: '🧩',
+    color: 'bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-200',
   },
 ]

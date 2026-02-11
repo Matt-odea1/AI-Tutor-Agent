@@ -43,7 +43,7 @@ export const ChatContainer = () => {
       )}
 
       {/* Content Area - Always Split on Desktop, Hide Editor on Mobile */}
-      <div className="flex-1 overflow-hidden bg-[#f7f7f8] flex flex-col">
+      <div className="flex-1 overflow-hidden bg-white flex flex-col">
         <div className="flex-1 overflow-hidden flex">
           {codeEditor.isOpen && window.innerWidth >= 1024 ? (
             /* Split View: Chat + Editor Side-by-Side (Desktop Only) */

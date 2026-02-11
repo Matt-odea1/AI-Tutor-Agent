@@ -6,12 +6,14 @@ import type { Message } from '../types/chat'
 import type { PedagogyMode } from '../types/pedagogy'
 import type { CodeEditorState } from '../types/code'
 import type { SessionInfo } from '../types/session'
+import type { AppMode } from '../types/appMode'
 import { DEFAULT_PEDAGOGY_MODE, STORAGE_KEYS } from '../config/constants'
 
 interface ChatStore {
   // State
   messages: Message[]
   sessionId: string | null
+  appMode: AppMode | null
   pedagogyMode: PedagogyMode
   isLoading: boolean
   error: string | null
@@ -28,6 +30,7 @@ interface ChatStore {
   addMessage: (message: Message) => void
   setMessages: (messages: Message[]) => void
   setSessionId: (id: string | null) => void
+  setAppMode: (mode: AppMode | null) => void
   setPedagogyMode: (mode: PedagogyMode) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
@@ -47,6 +50,7 @@ interface ChatStore {
   setEditorMinimized: (isMinimized: boolean) => void
   setEditorOutput: (output: string | null, error: string | null) => void
   setEditorExecuting: (isExecuting: boolean) => void
+  setEditorSelection: (selection: string | null) => void
   clearEditor: () => void
   insertCodeIntoEditor: (code: string) => void
   addToHistory: (code: string, output: string | null, error: string | null) => void
@@ -57,6 +61,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   // Initial state - always start with a new session
   messages: [],
   sessionId: null,
+  appMode: (localStorage.getItem(STORAGE_KEYS.APP_MODE) as AppMode) || null,
   pedagogyMode: (localStorage.getItem(STORAGE_KEYS.PEDAGOGY_MODE) as PedagogyMode) || DEFAULT_PEDAGOGY_MODE,
   isLoading: false,
   error: null,
@@ -74,6 +79,7 @@ export const useChatStore = create<ChatStore>((set) => ({
     lastOutput: null,
     lastError: null,
     isExecuting: false,
+    selection: null,
     history: [],
   },
 
@@ -92,6 +98,15 @@ export const useChatStore = create<ChatStore>((set) => ({
       localStorage.removeItem(STORAGE_KEYS.SESSION_ID)
     }
     set({ sessionId: id })
+  },
+
+  setAppMode: (mode) => {
+    if (mode) {
+      localStorage.setItem(STORAGE_KEYS.APP_MODE, mode)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.APP_MODE)
+    }
+    set({ appMode: mode })
   },
 
   setPedagogyMode: (mode) => {
@@ -153,6 +168,11 @@ export const useChatStore = create<ChatStore>((set) => ({
       codeEditor: { ...state.codeEditor, isExecuting },
     })),
 
+  setEditorSelection: (selection) =>
+    set((state) => ({
+      codeEditor: { ...state.codeEditor, selection },
+    })),
+
   clearEditor: () =>
     set((state) => ({
       codeEditor: {
@@ -160,6 +180,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         code: '# Write your Python code here\nprint("Hello, COMP9021!")\n',
         lastOutput: null,
         lastError: null,
+        selection: null,
       },
     })),
 
@@ -170,6 +191,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         code,
         isOpen: true,
         isMinimized: false,
+        selection: null,
       },
     })),
 
@@ -195,6 +217,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           code: entry.code,
           lastOutput: entry.output,
           lastError: entry.error,
+          selection: null,
         },
       }
     }),

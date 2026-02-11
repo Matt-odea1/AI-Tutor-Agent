@@ -9,16 +9,16 @@ export default {
       colors: {
         // Primary brand colors
         primary: {
-          50: '#fff9cc',
-          100: '#fff299',
-          200: '#ffeb66',
-          300: '#ffe433',
-          400: '#ffdf1a',
-          500: '#ffdc00',
-          600: '#e6c600',
-          700: '#bfa500',
-          800: '#997f00',
-          900: '#665500',
+          50: '#f6f0fa',
+          100: '#ede3f5',
+          200: '#d9c6eb',
+          300: '#c3a3df',
+          400: '#aa7fd1',
+          500: '#8947ae',
+          600: '#7a3f9b',
+          700: '#673585',
+          800: '#562c70',
+          900: '#47255c',
         },
         // Sidebar colors
         sidebar: {

@@ -7,6 +7,8 @@ import { ChatContainer } from './components/ChatContainer'
 import { Sidebar } from './components/Sidebar'
 import { ToastContainer } from './components/ToastContainer'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
+import { ModeSelector } from './components/ModeSelector'
+import { IdeWorkspace } from './components/IdeWorkspace'
 import SEO from './components/SEO'
 import { STORAGE_KEYS } from './config/constants'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
@@ -18,7 +20,7 @@ import { webApplicationSchema, organizationSchema, injectStructuredData } from '
 function App() {
   const isOnline = useOnlineStatus()
   const { addToast } = useToastStore()
-  const { setEditorOpen, codeEditor } = useChatStore()
+  const { setEditorOpen, setLayoutMode, codeEditor, appMode } = useChatStore()
   const [showShortcuts, setShowShortcuts] = useState(false)
 
   // Clear session on mount to always start fresh
@@ -67,6 +69,17 @@ function App() {
     },
   ]);
 
+  useEffect(() => {
+    if (appMode === 'chat') {
+      setEditorOpen(false)
+      setLayoutMode('stacked')
+    }
+
+    if (appMode === 'ide') {
+      setLayoutMode('split')
+    }
+  }, [appMode, setEditorOpen, setLayoutMode])
+
   return (
     <>
       {/* SEO Meta Tags */}
@@ -84,7 +97,7 @@ function App() {
         Skip to main content
       </a>
 
-      <div className="app-container h-screen flex bg-[#f7f7f8]" role="application" aria-label="AI Tutor Chat Application">
+      <div className="app-container h-screen flex bg-white" role="application" aria-label="AI Tutor Chat Application">
         {/* Toast Notifications */}
         <ToastContainer />
         
@@ -96,10 +109,20 @@ function App() {
 
       {/* Main Content Area - Full Width */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Chat Area - Full Height */}
-        <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Chat conversation">
+        <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
           <div className="h-full">
-            <ChatContainer />
+            {!appMode && <ModeSelector />}
+            {appMode === 'chat' && <ChatContainer />}
+            {appMode === 'ide' && <IdeWorkspace />}
+            {appMode === 'questions' && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center space-y-2">
+                  <div className="text-3xl">📝</div>
+                  <h2 className="text-xl font-semibold text-gray-900">Question Generation</h2>
+                  <p className="text-sm text-gray-600">Coming soon.</p>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>

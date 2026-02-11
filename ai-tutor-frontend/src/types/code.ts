@@ -27,5 +27,6 @@ export interface CodeEditorState {
   lastOutput: string | null;
   lastError: string | null;
   isExecuting: boolean;
+  selection: string | null;
   history: CodeExecutionHistoryEntry[];
 }

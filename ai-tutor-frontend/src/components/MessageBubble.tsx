@@ -4,11 +4,11 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Message } from '../types/chat'
-import { formatTimestamp } from '../utils/formatDate'
 import { CodeBlock } from './CodeBlock'
 
 interface MessageBubbleProps {
   message: Message
+  showAvatars?: boolean
 }
 
 // Clean up markdown formatting issues
@@ -26,7 +26,7 @@ const cleanMarkdown = (text: string): string => {
     .replace(/\n{3,}/g, '\n\n')
 }
 
-export const MessageBubble = ({ message }: MessageBubbleProps) => {
+export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProps) => {
   const isUser = message.role === 'user'
   const isError = message.isError
   
@@ -35,13 +35,13 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
 
   return (
     <div 
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 message-enter`}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 message-enter`}
       role="article"
       aria-label={`${isUser ? 'Your' : 'AI'} message`}
     >
-      <div className={`flex space-x-3 ${isUser ? 'max-w-2xl ml-auto' : 'max-w-4xl w-full'}`}>
+      <div className={`flex ${showAvatars ? 'space-x-3' : 'space-x-0'} ${isUser ? 'max-w-2xl ml-auto' : 'max-w-4xl w-full'}`}>
         {/* Avatar for assistant */}
-        {!isUser && (
+        {!isUser && showAvatars && (
           <div 
             className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-md"
             aria-hidden="true"
@@ -52,9 +52,9 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
 
         {/* Message Content */}
         <div
-          className={`rounded-2xl px-5 py-4 shadow-message transition-all duration-200 hover:shadow-message-hover ${
+          className={`rounded-2xl px-3 py-2.5 shadow-message transition-all duration-200 hover:shadow-message-hover ${
             isUser
-              ? 'bg-gradient-to-br from-primary-600 to-primary-500 text-black'
+              ? 'bg-gray-100 text-gray-800 border border-gray-200'
               : isError
               ? 'bg-amber-50 text-amber-900 border-2 border-amber-200 flex-1'
               : 'bg-white text-gray-900 border border-gray-200 flex-1'
@@ -63,7 +63,7 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
           aria-live={isError ? 'assertive' : 'polite'}
         >
           {isUser ? (
-            <p className="text-black leading-relaxed m-0 whitespace-pre-wrap">{message.content}</p>
+            <p className="text-gray-800 text-sm leading-relaxed m-0 whitespace-pre-wrap">{message.content}</p>
           ) : isError ? (
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0 text-2xl">⚠️</div>
@@ -119,28 +119,23 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
             </div>
           )}
 
-          {/* Metadata */}
-          <div
-            className={`flex items-center space-x-2 text-xs mt-3 pt-2 border-t ${
-              isUser 
-                ? 'text-primary-100 border-primary-400/30' 
-                : isError 
-                ? 'text-amber-600 border-amber-200' 
-                : 'text-gray-500 border-gray-200'
-            }`}
-          >
-            <span>{formatTimestamp(message.timestamp)}</span>
-            {message.tokens && (
-              <>
-                <span>•</span>
-                <span className="font-medium">{message.tokens} tokens</span>
-              </>
-            )}
-          </div>
+          {message.tokens && (
+            <div
+              className={`flex items-center space-x-2 text-xs mt-3 pt-2 border-t ${
+                isUser 
+                  ? 'text-gray-500 border-gray-200' 
+                  : isError 
+                  ? 'text-amber-600 border-amber-200' 
+                  : 'text-gray-500 border-gray-200'
+              }`}
+            >
+              <span className="font-medium">{message.tokens} tokens</span>
+            </div>
+          )}
         </div>
 
         {/* Avatar for user */}
-        {isUser && (
+        {isUser && showAvatars && (
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center shadow-md">
             <span className="text-white text-sm font-semibold">You</span>
           </div>

@@ -25,7 +25,7 @@
 import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { sendChatMessage } from '../api/chat'
-import type { Message } from '../types/chat'
+import type { Message, ChatEditorContext } from '../types/chat'
 
 export const useChat = () => {
   const {
@@ -41,7 +41,7 @@ export const useChat = () => {
   } = useChatStore()
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, editorContext?: ChatEditorContext) => {
       if (!content.trim() || isLoading) return
 
       // Add user message immediately
@@ -62,6 +62,7 @@ export const useChat = () => {
           include_history: true,
           pedagogy_mode: pedagogyMode,
           top_k: 5,
+          ...editorContext,
         })
 
         // Update session ID if new session

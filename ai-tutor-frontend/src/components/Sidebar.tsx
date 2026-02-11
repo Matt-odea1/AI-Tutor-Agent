@@ -9,11 +9,13 @@ import { formatRelativeTime } from '../utils/formatTime'
 import { DeleteConfirmModal } from './DeleteConfirmModal'
 import { SessionSkeletonList } from './SessionSkeleton'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
-import { trackSessionCreated } from '../utils/analytics'
 import edLogo from '../assets/edLogo.png'
+import chatIcon from '../assets/person.png'
+import ideIcon from '../assets/code.png'
+import questionIcon from '../assets/exam.png'
 
 export const Sidebar = () => {
-  const { sessionId, clearSession } = useChatStore()
+  const { sessionId, appMode, setAppMode, clearSession } = useChatStore()
   const {
     sessions,
     isLoadingSessions,
@@ -29,24 +31,15 @@ export const Sidebar = () => {
   } | null>(null)
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null)
 
-  const handleNewChat = () => {
+  const handleModeChange = (mode: 'chat' | 'ide' | 'questions') => {
     clearSession()
-    // Refresh sessions list to show the new empty state
     fetchSessions()
-    // Scroll to top if needed
     window.scrollTo(0, 0)
-    // Track session creation
-    trackSessionCreated()
+    setAppMode(mode)
   }
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
-    {
-      key: 'k',
-      ctrl: true,
-      action: handleNewChat,
-      description: 'New chat',
-    },
     {
       key: 'b',
       ctrl: true,
@@ -128,34 +121,42 @@ export const Sidebar = () => {
 
   return (
     <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full pb-3">
-      {/* Header with Logo, New Chat, and Collapse */}
+      {/* Header with Logo and Collapse */}
       <div className="p-4 border-b border-gray-800">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between gap-2">
           {/* Logo */}
-          <a
-            href="https://edstem.org/au/courses/28065/discussion"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-8 h-8 rounded-lg overflow-hidden shadow-lg flex-shrink-0 bg-white"
-            title="Open Ed discussion"
-          >
-            <img
-              src={edLogo}
-              alt="Ed discussion"
-              className="w-full h-full object-contain scale-110"
-            />
-          </a>
-          
-          {/* New Chat Button - fills available space */}
-          <button
-            onClick={handleNewChat}
-            className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-md transition-colors duration-150 border border-gray-700 hover:border-gray-600"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="text-sm font-medium">New Chat</span>
-          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <a
+              href="https://edstem.org/au/courses/28065/discussion"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-8 h-8 rounded-lg overflow-hidden shadow-lg flex-shrink-0"
+              title="Open Ed discussion"
+            >
+              <div className="w-full h-full rounded-lg bg-gradient-to-br from-primary-600 to-primary-500 p-[2px]">
+                <div className="w-full h-full rounded-md bg-white flex items-center justify-center">
+                  <img
+                    src={edLogo}
+                    alt="Ed discussion"
+                    className="w-full h-full object-contain scale-110"
+                  />
+                </div>
+              </div>
+            </a>
+
+            <div className="flex-1 min-w-0">
+              <button
+                onClick={() => setAppMode(null)}
+                className="w-full h-8 rounded-lg bg-gradient-to-r from-primary-700 via-primary-600 to-primary-500 px-3 text-white shadow-sm ring-1 ring-white/10 hover:from-primary-800 hover:via-primary-700 hover:to-primary-600 transition-colors flex items-center justify-center"
+                title="Home"
+                aria-label="Go to home"
+              >
+                <div className="flex flex-col items-center leading-none">
+                  <span className="text-base font-black tracking-[0.1em] mt-1 mb-0 pb-0 uppercase truncate font-league-spartan">Chat9021</span>
+                </div>
+              </button>
+            </div>
+          </div>
           
           {/* Collapse Button */}
           <button
@@ -168,6 +169,49 @@ export const Sidebar = () => {
             </svg>
           </button>
         </div>
+      </div>
+
+      {/* Mode Switcher */}
+      <div className="px-3 py-3 border-b border-gray-800 space-y-2">
+        <button
+          onClick={() => handleModeChange('chat')}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors border ${
+            appMode === 'chat'
+              ? 'bg-gray-800 text-white border-gray-700'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-white border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <img src={chatIcon} alt="General Chat" className="w-4 h-4" />
+            <span>General Chat</span>
+          </div>
+        </button>
+        <button
+          onClick={() => handleModeChange('ide')}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors border ${
+            appMode === 'ide'
+              ? 'bg-gray-800 text-white border-gray-700'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-white border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <img src={ideIcon} alt="AI-First IDE" className="w-4 h-4" />
+            <span>Code with AI</span>
+          </div>
+        </button>
+        <button
+          onClick={() => handleModeChange('questions')}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors border ${
+            appMode === 'questions'
+              ? 'bg-gray-800 text-white border-gray-700'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-white border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <img src={questionIcon} alt="Question Generation" className="w-4 h-4 opacity-70" />
+            <span>Question Gen</span>
+          </div>
+        </button>
       </div>
 
       {/* Sessions List */}
@@ -267,7 +311,7 @@ export const Sidebar = () => {
       <div className="px-6 py-2 pt-5 border-t border-gray-800">
         <div className="flex items-center space-x-3 h-[40px]">
           <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-black text-sm font-bold">U</span>
+            <span className="text-white text-sm font-bold">U</span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2">

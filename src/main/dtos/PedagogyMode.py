@@ -44,6 +44,16 @@ class PedagogyMode(str, Enum):
     
     Best for: Active practice, self-assessment, exam prep, discovering insights
     """
+
+    CONCISE = "concise"
+    """
+    Concise Mode - UI-Friendly Responses
+
+    Short, direct answers optimized for compact UI surfaces.
+    Avoids extended explanations, padding, and unsolicited questions.
+
+    Best for: Quick answers, summaries, minimal UI clutter
+    """
     
     @classmethod
     def get_default(cls) -> "PedagogyMode":
@@ -100,6 +110,7 @@ class PedagogyMode(str, Enum):
         descriptions = {
             self.EXPLANATORY: "Direct instruction with clear explanations and examples",
             self.DEBUGGING: "Hint-based problem solving without giving away solutions",
-            self.PRACTICE: "Guided questions and active testing for deeper understanding"
+            self.PRACTICE: "Guided questions and active testing for deeper understanding",
+            self.CONCISE: "Short, direct answers optimized for compact UI surfaces",
         }
         return descriptions.get(self, "Unknown mode")

@@ -55,7 +55,12 @@ class ChatService:
         top_k: int = 5, 
         session_id: Optional[str] = None,
         include_history: bool = True,
-        pedagogy_mode: Optional[str] = None
+        pedagogy_mode: Optional[str] = None,
+        editor_code: Optional[str] = None,
+        editor_selection: Optional[str] = None,
+        last_stdout: Optional[str] = None,
+        last_error: Optional[str] = None,
+        language: Optional[str] = None,
     ) -> dict:
         """
         Process a chat query with conversation history and context retrieval.
@@ -124,7 +129,17 @@ class ChatService:
             logger.debug(f"Truncated context to {self.max_context_chars} chars")
         
         # Step 4: Build messages with system prompt (including pedagogy mode), history, context, and query
-        messages = self._build_messages(query, context_str, history, pedagogy_mode)
+        messages = self._build_messages(
+            query,
+            context_str,
+            history,
+            pedagogy_mode,
+            editor_code=editor_code,
+            editor_selection=editor_selection,
+            last_stdout=last_stdout,
+            last_error=last_error,
+            language=language,
+        )
         
         # Step 5: Call LLM
         logger.info(f"[ChatService] query='{query[:50]}...', top_k={top_k}, mode={pedagogy_mode}, context_len={len(context_str)}, history_len={len(history)}")
@@ -198,7 +213,13 @@ class ChatService:
         query: str, 
         context_str: str, 
         history: List[dict],
-        pedagogy_mode: str
+        pedagogy_mode: str,
+        *,
+        editor_code: Optional[str] = None,
+        editor_selection: Optional[str] = None,
+        last_stdout: Optional[str] = None,
+        last_error: Optional[str] = None,
+        language: Optional[str] = None,
     ) -> List[dict]:
         """
         Build the messages array for the LLM with proper formatting.
@@ -234,6 +255,17 @@ class ChatService:
         # 3. Add retrieved document context
         if context_str:
             content_parts.append(f"Relevant course materials:\n{context_str}")
+
+        # 3.5 Add editor context (code, selection, output, error)
+        editor_context = self._format_editor_context(
+            editor_code=editor_code,
+            editor_selection=editor_selection,
+            last_stdout=last_stdout,
+            last_error=last_error,
+            language=language,
+        )
+        if editor_context:
+            content_parts.append(editor_context)
         
         # 4. Add current question
         content_parts.append(f"Current question:\n{query}")
@@ -246,6 +278,51 @@ class ChatService:
         return [
             {"role": "user", "content": content_string}
         ]
+
+    def _format_editor_context(
+        self,
+        *,
+        editor_code: Optional[str] = None,
+        editor_selection: Optional[str] = None,
+        last_stdout: Optional[str] = None,
+        last_error: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> str:
+        """Format editor-related context for inclusion in the prompt."""
+        if not any([editor_code, editor_selection, last_stdout, last_error, language]):
+            return ""
+
+        lang = (language or "").strip() or "text"
+        parts = ["Editor context:"]
+
+        if language:
+            parts.append(f"Language: {language}")
+
+        if editor_selection:
+            parts.append("Selection:\n```{lang}\n{selection}\n```".format(
+                lang=lang,
+                selection=editor_selection,
+            ))
+
+        if editor_code:
+            parts.append("Full editor code:\n```{lang}\n{code}\n```".format(
+                lang=lang,
+                code=editor_code,
+            ))
+
+        if last_stdout:
+            parts.append("Last stdout:\n```\n{stdout}\n```".format(stdout=last_stdout))
+
+        if last_error:
+            parts.append("Last error:\n```\n{error}\n```".format(error=last_error))
+
+        context = "\n".join(parts)
+        if len(context) <= 12000:
+            return context
+
+        head = context[:7200]
+        tail = context[-4800:]
+        return f"{head}\n\n... [truncated] ...\n\n{tail}"
     
     def _format_history(self, history: List[dict]) -> str:
         """

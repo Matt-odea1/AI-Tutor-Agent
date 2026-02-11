@@ -56,23 +56,23 @@ sys.stderr = StringIO()
       } catch (pythonError: any) {
         // If there's a Python exception, format it nicely
         const formattedError = await pyodide.runPythonAsync(`
-try:
-    # Try to get the last exception with full traceback
-    import sys
-    exc_type, exc_value, exc_tb = sys.exc_info()
-    if exc_type:
-        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-        ''.join(tb_lines)
-    else:
-        str(${JSON.stringify(pythonError.message)})
-except:
+import sys
+import traceback
+exc_type, exc_value, exc_tb = sys.exc_info()
+if exc_type:
+    tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+    ''.join(tb_lines)
+else:
     str(${JSON.stringify(pythonError.message)})
 `);
-        
+
+        const stderr = await pyodide.runPythonAsync('sys.stderr.getvalue()');
+        const fullError = [formattedError, stderr].filter(Boolean).join('\n');
+
         const executionTime = performance.now() - startTime;
         const executionResult: CodeExecutionResult = {
           output: '',
-          error: formattedError || pythonError.message || 'Unknown Python error',
+          error: fullError || pythonError.message || 'Unknown Python error',
           executionTime,
         };
         
