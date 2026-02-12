@@ -1,31 +1,48 @@
 /**
  * Session management API methods
  */
-import { apiClient } from './client'
-import { API_ENDPOINTS } from '../config/api.config'
+import { listViewSessions, getViewHistory, deleteViewSession } from './historyV2'
 import type { SessionListResponse, ChatHistoryResponse } from '../types/session'
+import { getUserSession } from '../utils/userSession'
 
 /**
  * Get list of all chat sessions
  */
-export const listSessions = async (): Promise<SessionListResponse> => {
-  const response = await apiClient.get<SessionListResponse>(API_ENDPOINTS.SESSIONS)
-  return response.data
+export const listSessions = async (workspaceId: string | null): Promise<SessionListResponse> => {
+  const session = getUserSession()
+  if (!session?.user_id || !workspaceId) {
+    return { sessions: [], total: 0 }
+  }
+  const response = await listViewSessions(workspaceId, 'chat')
+  const sessions = response.views.map((view) => ({
+    session_id: view.view_session_id,
+    message_count: view.message_count,
+    created_at: view.created_at,
+    last_accessed: view.last_accessed,
+    total_tokens: view.total_tokens,
+    pedagogy_mode: view.pedagogy_mode || undefined,
+  }))
+  return { sessions, total: sessions.length }
 }
 
 /**
  * Get chat history for a specific session
  */
 export const getSessionHistory = async (sessionId: string): Promise<ChatHistoryResponse> => {
-  const response = await apiClient.get<ChatHistoryResponse>(
-    API_ENDPOINTS.CHAT_HISTORY(sessionId)
-  )
-  return response.data
+  const response = await getViewHistory(sessionId)
+  return {
+    session_id: response.view_session_id,
+    messages: response.messages,
+    total_messages: response.message_count,
+    created_at: response.created_at,
+    last_accessed: response.last_accessed,
+    total_tokens: response.total_tokens,
+  }
 }
 
 /**
  * Delete a session
  */
 export const deleteSession = async (sessionId: string): Promise<void> => {
-  await apiClient.delete(API_ENDPOINTS.DELETE_SESSION(sessionId))
+  await deleteViewSession(sessionId)
 }

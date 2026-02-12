@@ -1,9 +1,11 @@
 # src/main/controller/ContextController.py
 from __future__ import annotations
 
+from typing import Optional
+
 from functools import lru_cache
 
-from fastapi import APIRouter, Body, Depends, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Body, Depends, UploadFile, File, Form, HTTPException, Header
 
 from ..dtos.UploadRequest import UploadRequest
 from ..dtos.DeleteRequest import DeleteRequest
@@ -20,6 +22,7 @@ from src.main.dtos.HistoryV2Models import (
     ViewCreateRequest,
     ViewSessionResponse,
     ViewHistoryResponse,
+    ViewSessionListResponse,
     CodeMemoryCreateRequest,
     CodeMemoryUpdateRequest,
     CodeMemoryResponse,
@@ -206,6 +209,53 @@ evaluations_router = APIRouter(prefix="/internal/evaluations", tags=["evaluation
 student_router = APIRouter(prefix="/api/student", tags=["student"])
 assessment_router = APIRouter(prefix="/api/assessment", tags=["assessment"])
 s3_router = APIRouter(prefix="/api/s3", tags=["s3"])
+
+
+def _require_user_id(x_user_id: str = Header(None, alias="X-User-Id")) -> str:
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="Missing X-User-Id header")
+    return x_user_id
+
+
+def _assert_workspace_owner(store, workspace_id: str, user_id: str) -> dict:
+    workspace = store.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if workspace.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    return workspace
+
+
+def _assert_code_memory_owner(store, code_memory_id: str, user_id: str) -> dict:
+    memory = store.get_code_memory(code_memory_id)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Code memory not found")
+    _assert_workspace_owner(store, memory["workspace_id"], user_id)
+    return memory
+
+
+def _assert_program_owner(store, program_id: str, user_id: str) -> dict:
+    program = store.get_program(program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    _assert_workspace_owner(store, program["workspace_id"], user_id)
+    return program
+
+
+def _assert_view_owner(store, view_session_id: str, user_id: str) -> dict:
+    view = store.get_view_session(view_session_id)
+    if not view:
+        raise HTTPException(status_code=404, detail="View session not found")
+    _assert_workspace_owner(store, view["workspace_id"], user_id)
+    return view
+
+
+def _assert_thread_owner(store, thread_id: str, user_id: str) -> dict:
+    thread = store.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    _assert_code_memory_owner(store, thread["code_memory_id"], user_id)
+    return thread
 
 
 # --- Endpoints -----------------------------------------------------------------
@@ -435,9 +485,10 @@ def clear_history_endpoint(
 @history_v2_router.post("/workspaces", response_model=WorkspaceResponse)
 def create_workspace_endpoint(
     request: WorkspaceCreateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    workspace = store.create_workspace(request.title or "New Workspace", request.user_id)
+    workspace = store.create_workspace(request.title or "New Workspace", user_id)
     return WorkspaceResponse(
         workspace_id=workspace["workspace_id"],
         title=workspace.get("title", "New Workspace"),
@@ -450,8 +501,10 @@ def create_workspace_endpoint(
 @history_v2_router.post("/views", response_model=ViewSessionResponse)
 def create_view_session_endpoint(
     request: ViewCreateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_workspace_owner(store, request.workspace_id, user_id)
     view = store.create_view_session(request.workspace_id, request.view_type, request.pedagogy_mode)
     return ViewSessionResponse(
         view_session_id=view["view_session_id"],
@@ -465,14 +518,29 @@ def create_view_session_endpoint(
     )
 
 
+@history_v2_router.get("/workspaces/{workspace_id}/views", response_model=ViewSessionListResponse)
+def list_view_sessions_endpoint(
+    workspace_id: str,
+    view_type: Optional[str] = None,
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
+):
+    _assert_workspace_owner(store, workspace_id, user_id)
+    views = store.list_view_sessions(workspace_id, view_type)
+    return ViewSessionListResponse(
+        workspace_id=workspace_id,
+        view_type=view_type,
+        views=views,
+    )
+
+
 @history_v2_router.get("/views/{view_session_id}/history", response_model=ViewHistoryResponse)
 def get_view_history_endpoint(
     view_session_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    view = store.get_view_session(view_session_id)
-    if not view:
-        raise HTTPException(status_code=404, detail="View session not found")
+    view = _assert_view_owner(store, view_session_id, user_id)
     messages = store.get_view_history(view_session_id)
     return ViewHistoryResponse(
         view_session_id=view_session_id,
@@ -485,16 +553,26 @@ def get_view_history_endpoint(
     )
 
 
+@history_v2_router.delete("/views/{view_session_id}")
+def delete_view_session_endpoint(
+    view_session_id: str,
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
+):
+    _assert_view_owner(store, view_session_id, user_id)
+    store.delete_view_session(view_session_id)
+    return {"ok": True, "view_session_id": view_session_id}
+
+
 @history_v2_router.post("/views/{view_session_id}/message", response_model=ChatResponse)
 def post_view_message_endpoint(
     view_session_id: str,
     request: ChatRequest = Body(...),
     store=Depends(get_history_v2_store),
-    svc: ChatService = Depends(get_chat_service)
+    svc: ChatService = Depends(get_chat_service),
+    user_id: str = Depends(_require_user_id),
 ):
-    view = store.get_view_session(view_session_id)
-    if not view:
-        raise HTTPException(status_code=404, detail="View session not found")
+    _assert_view_owner(store, view_session_id, user_id)
 
     result = svc.chat(
         query=request.query,
@@ -524,8 +602,10 @@ def post_view_message_endpoint(
 @history_v2_router.post("/codememory", response_model=CodeMemoryResponse)
 def create_code_memory_endpoint(
     request: CodeMemoryCreateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_workspace_owner(store, request.workspace_id, user_id)
     memory = store.create_code_memory(request.workspace_id, request.language, request.current_code)
     return CodeMemoryResponse(**memory)
 
@@ -534,8 +614,10 @@ def create_code_memory_endpoint(
 def update_code_memory_endpoint(
     code_memory_id: str,
     request: CodeMemoryUpdateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_code_memory_owner(store, code_memory_id, user_id)
     memory = store.update_code_memory(code_memory_id, request.current_code, request.last_output, request.last_error)
     return CodeMemoryResponse(**memory)
 
@@ -543,19 +625,20 @@ def update_code_memory_endpoint(
 @history_v2_router.get("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
 def get_code_memory_endpoint(
     code_memory_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    memory = store.get_code_memory(code_memory_id)
-    if not memory:
-        raise HTTPException(status_code=404, detail="Code memory not found")
+    memory = _assert_code_memory_owner(store, code_memory_id, user_id)
     return CodeMemoryResponse(**memory)
 
 
 @history_v2_router.post("/programs", response_model=ProgramResponse)
 def create_program_endpoint(
     request: ProgramCreateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_workspace_owner(store, request.workspace_id, user_id)
     title = request.title or "Untitled Program"
     memory = store.create_code_memory(request.workspace_id, request.language, request.current_code)
     program = store.create_program(
@@ -571,8 +654,10 @@ def create_program_endpoint(
 @history_v2_router.get("/workspaces/{workspace_id}/programs", response_model=ProgramListResponse)
 def list_programs_endpoint(
     workspace_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_workspace_owner(store, workspace_id, user_id)
     programs = store.list_programs(workspace_id)
     return ProgramListResponse(
         workspace_id=workspace_id,
@@ -583,11 +668,10 @@ def list_programs_endpoint(
 @history_v2_router.get("/programs/{program_id}", response_model=ProgramResponse)
 def get_program_endpoint(
     program_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    program = store.get_program(program_id)
-    if not program:
-        raise HTTPException(status_code=404, detail="Program not found")
+    program = _assert_program_owner(store, program_id, user_id)
     return ProgramResponse(**program)
 
 
@@ -595,11 +679,10 @@ def get_program_endpoint(
 def update_program_endpoint(
     program_id: str,
     request: ProgramUpdateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    program = store.get_program(program_id)
-    if not program:
-        raise HTTPException(status_code=404, detail="Program not found")
+    program = _assert_program_owner(store, program_id, user_id)
     updated = store.update_program(program_id, request.title, request.current_code, request.last_output, request.last_error)
     if request.current_code is not None or request.last_output is not None or request.last_error is not None:
         store.update_code_memory(program["code_memory_id"], request.current_code, request.last_output, request.last_error)
@@ -609,11 +692,10 @@ def update_program_endpoint(
 @history_v2_router.delete("/programs/{program_id}")
 def delete_program_endpoint(
     program_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    program = store.get_program(program_id)
-    if not program:
-        raise HTTPException(status_code=404, detail="Program not found")
+    _assert_program_owner(store, program_id, user_id)
     store.delete_program(program_id)
     return {"ok": True, "program_id": program_id}
 
@@ -622,8 +704,10 @@ def delete_program_endpoint(
 def create_thread_endpoint(
     code_memory_id: str,
     request: AssistantThreadCreateRequest = Body(...),
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_code_memory_owner(store, code_memory_id, user_id)
     thread = store.create_thread(code_memory_id, request.title or "New Assistant Thread")
     return AssistantThreadResponse(
         thread_id=thread["thread_id"],
@@ -637,8 +721,10 @@ def create_thread_endpoint(
 @history_v2_router.get("/codememory/{code_memory_id}/threads", response_model=AssistantThreadListResponse)
 def list_threads_endpoint(
     code_memory_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
+    _assert_code_memory_owner(store, code_memory_id, user_id)
     threads = store.list_threads(code_memory_id)
     return AssistantThreadListResponse(
         code_memory_id=code_memory_id,
@@ -658,11 +744,10 @@ def list_threads_endpoint(
 @history_v2_router.get("/threads/{thread_id}/history", response_model=AssistantHistoryResponse)
 def get_thread_history_endpoint(
     thread_id: str,
-    store=Depends(get_history_v2_store)
+    store=Depends(get_history_v2_store),
+    user_id: str = Depends(_require_user_id),
 ):
-    thread = store.get_thread(thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+    thread = _assert_thread_owner(store, thread_id, user_id)
     messages = store.get_thread_history(thread_id)
     return AssistantHistoryResponse(
         thread_id=thread_id,
@@ -679,11 +764,10 @@ def post_thread_message_endpoint(
     thread_id: str,
     request: ChatRequest = Body(...),
     store=Depends(get_history_v2_store),
-    svc: ChatService = Depends(get_chat_service)
+    svc: ChatService = Depends(get_chat_service),
+    user_id: str = Depends(_require_user_id),
 ):
-    thread = store.get_thread(thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+    thread = _assert_thread_owner(store, thread_id, user_id)
 
     result = svc.chat(
         query=request.query,
@@ -722,12 +806,11 @@ def create_edit_proposal(
     request: EditProposalRequest = Body(...),
     store=Depends(get_history_v2_store),
     svc: ChatService = Depends(get_chat_service),
+    user_id: str = Depends(_require_user_id),
 ):
     thread = None
     if request.thread_id:
-        thread = store.get_thread(request.thread_id)
-        if not thread:
-            raise HTTPException(status_code=404, detail="Thread not found")
+        thread = _assert_thread_owner(store, request.thread_id, user_id)
 
     result = svc.chat(
         query=request.query,

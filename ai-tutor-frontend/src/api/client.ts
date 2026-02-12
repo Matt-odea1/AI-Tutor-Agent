@@ -8,6 +8,7 @@ import { API_CONFIG as RETRY_CONFIG } from '../config/theme'
 import { trackAPIError } from '../utils/analytics'
 import { trackAPITiming } from '../utils/performance'
 import { trackError } from '../utils/errorTracking'
+import { getUserSession } from '../utils/userSession'
 
 // Retry configuration
 const { MAX_RETRIES, RETRY_DELAY, RETRY_STATUS_CODES } = RETRY_CONFIG
@@ -43,6 +44,14 @@ apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Start timing the request
     ;(config as any).startTime = performance.now()
+
+    const session = getUserSession()
+    if (session?.user_id) {
+      config.headers = {
+        ...config.headers,
+        'X-User-Id': session.user_id,
+      } as unknown as import('axios').AxiosRequestHeaders
+    }
     
     // Log requests in development
     if (import.meta.env.DEV) {

@@ -4,6 +4,7 @@
 import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { listSessions, getSessionHistory, deleteSession } from '../api/sessions'
+import { createWorkspace } from '../api/historyV2'
 import type { Message } from '../types/chat'
 
 export const useSessions = () => {
@@ -11,6 +12,8 @@ export const useSessions = () => {
     sessions,
     sessionId: currentSessionId,
     isLoadingSessions,
+    workspaceId,
+    setWorkspaceId,
     setSessions,
     loadSession,
     deleteSessionFromStore,
@@ -24,7 +27,13 @@ export const useSessions = () => {
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true)
     try {
-      const data = await listSessions()
+      let resolvedWorkspaceId = workspaceId
+      if (!resolvedWorkspaceId) {
+        const workspace = await createWorkspace('AI Assistant')
+        resolvedWorkspaceId = workspace.workspace_id
+        setWorkspaceId(resolvedWorkspaceId)
+      }
+      const data = await listSessions(resolvedWorkspaceId)
       setSessions(data.sessions)
     } catch (error) {
       console.error('Failed to load sessions:', error)
@@ -32,7 +41,7 @@ export const useSessions = () => {
     } finally {
       setLoadingSessions(false)
     }
-  }, [setSessions, setLoadingSessions])
+  }, [setSessions, setLoadingSessions, workspaceId])
 
   /**
    * Load a specific session's history
@@ -82,11 +91,29 @@ export const useSessions = () => {
     [currentSessionId, deleteSessionFromStore, clearSession]
   )
 
+  /**
+   * Create a new general chat session and load it
+   */
+  const createNewChatSession = useCallback(async () => {
+    let resolvedWorkspaceId = workspaceId
+    if (!resolvedWorkspaceId) {
+      const workspace = await createWorkspace('AI Assistant')
+      resolvedWorkspaceId = workspace.workspace_id
+      setWorkspaceId(resolvedWorkspaceId)
+    }
+    // Create a new general chat session (view)
+    const newSession = await import('../api/historyV2').then(m => m.createViewSession(resolvedWorkspaceId, 'chat'))
+    // Fetch sessions and load the new session
+    await fetchSessions()
+    await loadSessionHistory(newSession.view_session_id)
+  }, [workspaceId, setWorkspaceId, fetchSessions, loadSessionHistory])
+
   return {
     sessions,
     isLoadingSessions,
     fetchSessions,
     loadSessionHistory,
     handleDeleteSession,
+    createNewChatSession,
   }
 }

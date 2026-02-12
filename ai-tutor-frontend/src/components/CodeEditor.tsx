@@ -17,11 +17,14 @@ interface CodeEditorProps {
 }
 
 export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps) => {
-  const { codeEditor, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, clearEditor, layoutMode } = useChatStore();
+  const { codeEditor, editorDecorations, editorDeletionZones, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, clearEditor, layoutMode } = useChatStore();
   const { runCode, isLoading } = useCodeExecution();
   const { programs, activeProgramId, createNewProgram, saveProgram, loadProgram } = usePrograms();
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoEditorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const decorationIdsRef = useRef<string[]>([]);
+  const viewZoneIdsRef = useRef<string[]>([]);
   const hasUserEditsRef = useRef(false);
   const didInitProgramRef = useRef(false);
 
@@ -45,6 +48,7 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
 
   const handleEditorMount = (editor: any, monaco: any) => {
     monacoEditorRef.current = editor;
+    monacoRef.current = monaco;
     monaco.editor.setTheme('chat9021-light');
 
     const updateSelection = () => {
@@ -61,6 +65,47 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
     updateSelection();
     editor.onDidChangeCursorSelection(updateSelection);
   };
+
+  useEffect(() => {
+    const editor = monacoEditorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const decorations = (editorDecorations || []).map((dec) => ({
+      range: new monaco.Range(dec.startLine, 1, dec.endLine, 1),
+      options: {
+        isWholeLine: true,
+        className: dec.className,
+      },
+    }));
+
+    decorationIdsRef.current = editor.deltaDecorations(
+      decorationIdsRef.current,
+      decorations
+    );
+  }, [editorDecorations]);
+
+  useEffect(() => {
+    const editor = monacoEditorRef.current;
+    if (!editor) return;
+    editor.changeViewZones((accessor: any) => {
+      viewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
+      viewZoneIdsRef.current = [];
+
+      (editorDeletionZones || []).forEach((zone) => {
+        const domNode = document.createElement('div');
+        domNode.className = 'editor-deletion-zone';
+        domNode.textContent = zone.content;
+
+        const lines = zone.content.split('\n').length;
+        const id = accessor.addZone({
+          afterLineNumber: zone.line,
+          heightInLines: Math.max(1, lines),
+          domNode,
+        });
+        viewZoneIdsRef.current.push(id);
+      });
+    });
+  }, [editorDeletionZones]);
 
   const handleRunCode = async () => {
     setEditorExecuting(true);

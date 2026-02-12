@@ -22,6 +22,7 @@ class ViewCreateRequest(BaseModel):
     workspace_id: str
     view_type: str  # chat | code | questions
     pedagogy_mode: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class ViewSessionResponse(BaseModel):
@@ -53,10 +54,17 @@ class ViewHistoryResponse(BaseModel):
     view_type: str
 
 
+class ViewSessionListResponse(BaseModel):
+    workspace_id: str
+    view_type: Optional[str] = None
+    views: List[ViewSessionResponse]
+
+
 class CodeMemoryCreateRequest(BaseModel):
     workspace_id: str
     language: str = "python"
     current_code: str = ""
+    user_id: Optional[str] = None
 
 
 class CodeMemoryUpdateRequest(BaseModel):
@@ -81,6 +89,7 @@ class ProgramCreateRequest(BaseModel):
     language: str = "python"
     title: Optional[str] = None
     current_code: str = ""
+    user_id: Optional[str] = None
 
 
 class ProgramUpdateRequest(BaseModel):

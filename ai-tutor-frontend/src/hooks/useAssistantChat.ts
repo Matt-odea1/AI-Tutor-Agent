@@ -12,30 +12,80 @@ import {
 } from '../api/historyV2'
 import type { Message } from '../types/chat'
 import { hashString } from '../utils/hash'
+import { STORAGE_KEYS } from '../config/constants'
 
-const detectEditIntent = (query: string) => {
-  if (!query) return false
+type EditIntent = 'strong' | 'weak' | 'none'
+
+const classifyEditIntent = (query: string): EditIntent => {
+  if (!query) return 'none'
   const lowered = query.toLowerCase()
-  const keywords = [
-    'edit ',
-    'change ',
-    'update ',
-    'modify ',
-    'refactor ',
-    'fix ',
-    'implement ',
-    'write ',
-    'create ',
-    'generate ',
-    'build ',
-    'add ',
-    'remove ',
-    'rewrite ',
-    'replace ',
-    'optimize ',
-    'rename ',
+
+  const strongVerbs = [
+    'edit',
+    'change',
+    'update',
+    'modify',
+    'refactor',
+    'fix',
+    'add',
+    'remove',
+    'rewrite',
+    'replace',
+    'optimize',
+    'rename',
   ]
-  return keywords.some((token) => lowered.includes(token))
+  const constructVerbs = ['implement', 'write', 'create', 'generate', 'build']
+  const codeTargets = [
+    'code',
+    'program',
+    'script',
+    'function',
+    'class',
+    'module',
+    'file',
+    'tests',
+    'test',
+    'component',
+    'api',
+    'endpoint',
+    'ui',
+    'frontend',
+    'backend',
+    'service',
+    'controller',
+    'model',
+    'schema',
+    'prompt',
+  ]
+  const infoPhrases = [
+    'explain',
+    'describe',
+    'summarize',
+    'what is',
+    'why',
+    'how do i',
+    'help me understand',
+    'teach me',
+    'example of',
+  ]
+
+  const hasStrongVerb = strongVerbs.some((verb) => lowered.includes(`${verb} `))
+  const hasConstructVerb = constructVerbs.some((verb) => lowered.includes(`${verb} `))
+  const hasCodeTarget = codeTargets.some((target) => lowered.includes(target))
+  const hasFileHint =
+    lowered.includes('this file') ||
+    lowered.includes('the file') ||
+    lowered.includes('this code') ||
+    lowered.includes('the code') ||
+    /```/.test(lowered) ||
+    /\b[\w./-]+\.(py|ts|tsx|js|jsx|json|md|txt|css|html|yml|yaml)\b/i.test(query)
+  const hasInfoPhrase = infoPhrases.some((phrase) => lowered.includes(phrase))
+
+  if (hasStrongVerb || hasFileHint) return 'strong'
+  if (hasConstructVerb && hasCodeTarget) return 'strong'
+  if (hasConstructVerb) return hasInfoPhrase ? 'none' : 'weak'
+  if (hasInfoPhrase) return 'none'
+  return 'none'
 }
 
 export const useAssistantChat = () => {
@@ -54,6 +104,23 @@ export const useAssistantChat = () => {
     setError,
     isLoading,
   } = useChatStore()
+
+  const loadThreadMap = () => {
+    const raw = localStorage.getItem(STORAGE_KEYS.ASSISTANT_THREAD_MAP)
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
+  const persistThreadId = (codeMemoryIdValue: string, threadIdValue: string) => {
+    const map = loadThreadMap()
+    map[codeMemoryIdValue] = threadIdValue
+    localStorage.setItem(STORAGE_KEYS.ASSISTANT_THREAD_MAP, JSON.stringify(map))
+  }
 
   const ensureWorkspaceAndMemory = useCallback(async () => {
     let currentWorkspaceId = workspaceId
@@ -103,6 +170,7 @@ export const useAssistantChat = () => {
     )
     const thread = await createAssistantThread(resolvedCodeMemoryId, 'New Thread')
     setAssistantThreadId(thread.thread_id)
+    persistThreadId(resolvedCodeMemoryId, thread.thread_id)
     setAssistantMessages([])
     return thread.thread_id
   }, [codeEditor.code, codeEditor.lastError, codeEditor.lastOutput, ensureWorkspaceAndMemory, setAssistantMessages, setAssistantThreadId])
@@ -124,12 +192,30 @@ export const useAssistantChat = () => {
         const { codeMemoryId: resolvedCodeMemoryId } = await ensureWorkspaceAndMemory()
         let threadId = assistantThreadId
         if (!threadId) {
-          const trimmed = content.trim()
-          const firstLine = trimmed.split('\n')[0]?.trim() || 'Assistant Thread'
-          const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
-          const thread = await createAssistantThread(resolvedCodeMemoryId, title)
-          threadId = thread.thread_id
-          setAssistantThreadId(threadId)
+          const storedMap = loadThreadMap()
+          const storedThreadId = storedMap[resolvedCodeMemoryId]
+          if (storedThreadId) {
+            threadId = storedThreadId
+            setAssistantThreadId(threadId)
+          }
+        }
+
+        if (!threadId) {
+          const existingThreads = await listAssistantThreads(resolvedCodeMemoryId)
+          const latestThread = existingThreads.threads?.[0]
+          if (latestThread?.thread_id) {
+            threadId = latestThread.thread_id
+            setAssistantThreadId(threadId)
+            persistThreadId(resolvedCodeMemoryId, threadId)
+          } else {
+            const trimmed = content.trim()
+            const firstLine = trimmed.split('\n')[0]?.trim() || 'Assistant Thread'
+            const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
+            const thread = await createAssistantThread(resolvedCodeMemoryId, title)
+            threadId = thread.thread_id
+            setAssistantThreadId(threadId)
+            persistThreadId(resolvedCodeMemoryId, threadId)
+          }
         }
 
         await updateCodeMemory(
@@ -139,7 +225,8 @@ export const useAssistantChat = () => {
           codeEditor.lastError
         )
 
-        if (detectEditIntent(content)) {
+        const editIntent = classifyEditIntent(content)
+        if (editIntent === 'strong') {
           const bufferHash = await hashString(codeEditor.code || '')
           const response = await createEditProposal({
             query: content.trim(),
@@ -171,6 +258,9 @@ export const useAssistantChat = () => {
             timestamp: new Date().toISOString(),
           }
           addAssistantMessage(assistantMessage)
+          if (threadId) {
+            persistThreadId(resolvedCodeMemoryId, threadId)
+          }
         } else {
           const response = await postAssistantMessage(threadId, {
             query: content.trim(),
@@ -192,6 +282,9 @@ export const useAssistantChat = () => {
             context_ids: response.context_ids,
           }
           addAssistantMessage(assistantMessage)
+          if (threadId) {
+            persistThreadId(resolvedCodeMemoryId, threadId)
+          }
         }
       } catch (err) {
         setError("I'm having trouble saving this assistant message right now.")

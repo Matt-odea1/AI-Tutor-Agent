@@ -18,6 +18,10 @@ export const API_ENDPOINTS = {
   HISTORY_V2_WORKSPACES: '/internal/history-v2/workspaces',
   HISTORY_V2_VIEWS: '/internal/history-v2/views',
   HISTORY_V2_VIEW_HISTORY: (viewSessionId: string) => `/internal/history-v2/views/${viewSessionId}/history`,
+  HISTORY_V2_VIEW_MESSAGE: (viewSessionId: string) => `/internal/history-v2/views/${viewSessionId}/message`,
+  HISTORY_V2_VIEWS_BY_WORKSPACE: (workspaceId: string, viewType?: string) =>
+    `/internal/history-v2/workspaces/${workspaceId}/views${viewType ? `?view_type=${viewType}` : ''}`,
+  HISTORY_V2_VIEW_ID: (viewSessionId: string) => `/internal/history-v2/views/${viewSessionId}`,
   HISTORY_V2_CODEMEMORY: '/internal/history-v2/codememory',
   HISTORY_V2_CODEMEMORY_ID: (codeMemoryId: string) => `/internal/history-v2/codememory/${codeMemoryId}`,
   HISTORY_V2_PROGRAMS: '/internal/history-v2/programs',

@@ -13,6 +13,8 @@ export const STORAGE_KEYS = {
   PEDAGOGY_MODE: 'ai-tutor-pedagogy-mode',
   APP_MODE: 'ai-tutor-app-mode',
   THEME: 'ai-tutor-theme',
+  ASSISTANT_THREAD_MAP: 'ai-tutor-assistant-thread-map',
+  USER_SESSION: 'ai-tutor-user-session',
 } as const
 
 export const API_TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT) || 30000 // 30 seconds

@@ -11,6 +11,9 @@ ChatService: Handles chat workflow for /chat endpoint.
 from typing import Optional, List
 import uuid
 import logging
+import re
+import os
+import json
 from src.main.dtos.PedagogyMode import PedagogyMode
 from src.main.service.PromptService import get_prompt_service
 
@@ -129,11 +132,13 @@ class ChatService:
             logger.debug(f"Truncated context to {self.max_context_chars} chars")
         
         # Step 4: Build messages with system prompt (including pedagogy mode), history, context, and query
+        intent = self._classify_edit_intent(query)
         messages = self._build_messages(
             query,
             context_str,
             history,
             pedagogy_mode,
+            intent=intent,
             editor_code=editor_code,
             editor_selection=editor_selection,
             last_stdout=last_stdout,
@@ -215,6 +220,7 @@ class ChatService:
         history: List[dict],
         pedagogy_mode: str,
         *,
+        intent: str = "none",
         editor_code: Optional[str] = None,
         editor_selection: Optional[str] = None,
         last_stdout: Optional[str] = None,
@@ -256,10 +262,15 @@ class ChatService:
         if context_str:
             content_parts.append(f"Relevant course materials:\n{context_str}")
 
-        if self._is_edit_intent(query):
+        if intent == "strong":
             content_parts.append(
                 "If the user wants code changes, respond with exactly one edit block. "
                 "Keep the response to one short sentence plus the edit block."
+            )
+        elif intent == "weak":
+            content_parts.append(
+                "If it is unclear whether the user wants code changes, ask one short clarifying question "
+                "and do not include an edit block."
             )
 
         # 3.5 Add editor context (code, selection, output, error)
@@ -330,30 +341,143 @@ class ChatService:
         tail = context[-4800:]
         return f"{head}\n\n... [truncated] ...\n\n{tail}"
 
-    def _is_edit_intent(self, query: str) -> bool:
+    def _classify_edit_intent(self, query: str) -> str:
         if not query:
-            return False
+            return "none"
         lowered = query.lower()
-        keywords = [
-            "edit ",
-            "change ",
-            "update ",
-            "modify ",
-            "refactor ",
-            "fix ",
-            "implement ",
-            "write ",
-            "create ",
-            "generate ",
-            "build ",
-            "add ",
-            "remove ",
-            "rewrite ",
-            "replace ",
-            "optimize ",
-            "rename ",
+
+        strong_verbs = [
+            "edit",
+            "change",
+            "update",
+            "modify",
+            "refactor",
+            "fix",
+            "add",
+            "remove",
+            "rewrite",
+            "replace",
+            "optimize",
+            "rename",
         ]
-        return any(token in lowered for token in keywords)
+        construct_verbs = ["implement", "write", "create", "generate", "build"]
+        code_targets = [
+            "code",
+            "program",
+            "script",
+            "function",
+            "class",
+            "module",
+            "file",
+            "tests",
+            "test",
+            "component",
+            "api",
+            "endpoint",
+            "ui",
+            "frontend",
+            "backend",
+            "service",
+            "controller",
+            "model",
+            "schema",
+            "prompt",
+        ]
+        info_phrases = [
+            "explain",
+            "describe",
+            "summarize",
+            "what is",
+            "why",
+            "how do i",
+            "help me understand",
+            "teach me",
+            "example of",
+        ]
+
+        has_strong_verb = any(f"{verb} " in lowered for verb in strong_verbs)
+        has_construct_verb = any(f"{verb} " in lowered for verb in construct_verbs)
+        has_code_target = any(target in lowered for target in code_targets)
+        has_file_hint = (
+            "this file" in lowered
+            or "the file" in lowered
+            or "this code" in lowered
+            or "the code" in lowered
+            or "```" in lowered
+            or re.search(r"\b[\w./-]+\.(py|ts|tsx|js|jsx|json|md|txt|css|html|yml|yaml)\b", query, flags=re.IGNORECASE)
+            is not None
+        )
+        has_info_phrase = any(phrase in lowered for phrase in info_phrases)
+
+        if has_strong_verb or has_file_hint:
+            return "strong"
+        if has_construct_verb and has_code_target:
+            return "strong"
+        if has_construct_verb:
+            heuristic = "none" if has_info_phrase else "weak"
+        elif has_info_phrase:
+            heuristic = "none"
+        else:
+            heuristic = "none"
+
+        if heuristic == "weak" and self._use_llm_intent():
+            llm_intent = self._llm_classify_intent(query)
+            if llm_intent in {"strong", "weak", "none"}:
+                return llm_intent
+        return heuristic
+
+    def _use_llm_intent(self) -> bool:
+        return os.getenv("USE_LLM_INTENT", "false").lower() == "true"
+
+    def _llm_classify_intent(self, query: str) -> str:
+        prompt = (
+            "Classify the user intent for a coding assistant. "
+            "Return ONLY JSON with keys: label and confidence. "
+            "label must be one of: edit, explain, clarify. "
+            "Use clarify when the intent is ambiguous.\n\n"
+            f"User message: {json.dumps(query)}"
+        )
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+        try:
+            result = self.agent_client.chat(messages)
+            if isinstance(result, dict):
+                content = result.get("content") or result.get("answer") or ""
+            else:
+                content = str(result)
+
+            content = self._strip_reasoning_tags(content)
+            parsed = self._extract_json_object(content)
+            if not parsed:
+                return "none"
+            label = str(parsed.get("label", "")).strip().lower()
+            if label == "edit":
+                return "strong"
+            if label == "clarify":
+                return "weak"
+            return "none"
+        except Exception as e:
+            logger.warning(f"LLM intent classification failed: {e}")
+            return "none"
+
+    def _extract_json_object(self, text: str) -> Optional[dict]:
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        match = re.search(r"\{[\s\S]*\}", text)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+    def _is_edit_intent(self, query: str) -> bool:
+        return self._classify_edit_intent(query) == "strong"
     
     def _format_history(self, history: List[dict]) -> str:
         """

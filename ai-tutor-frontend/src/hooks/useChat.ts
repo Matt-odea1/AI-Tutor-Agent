@@ -24,21 +24,30 @@
  */
 import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
-import { sendChatMessage } from '../api/chat'
+import { createWorkspace, createViewSession, postViewMessage } from '../api/historyV2'
 import type { Message, ChatEditorContext } from '../types/chat'
 
 export const useChat = () => {
   const {
     messages,
     sessionId,
+    workspaceId,
     pedagogyMode,
     isLoading,
     error,
     addMessage,
     setSessionId,
+    setWorkspaceId,
     setLoading,
     setError,
   } = useChatStore()
+
+  const ensureWorkspace = useCallback(async () => {
+    if (workspaceId) return workspaceId
+    const workspace = await createWorkspace('AI Assistant')
+    setWorkspaceId(workspace.workspace_id)
+    return workspace.workspace_id
+  }, [workspaceId, setWorkspaceId])
 
   const sendMessage = useCallback(
     async (content: string, editorContext?: ChatEditorContext) => {
@@ -55,20 +64,22 @@ export const useChat = () => {
       setLoading(true)
 
       try {
-        // Send to backend
-        const response = await sendChatMessage({
+        const activeWorkspaceId = await ensureWorkspace()
+        let viewSessionId = sessionId
+        if (!viewSessionId) {
+          const view = await createViewSession(activeWorkspaceId, 'chat', pedagogyMode)
+          viewSessionId = view.view_session_id
+          setSessionId(viewSessionId)
+        }
+
+        const response = await postViewMessage(viewSessionId, {
           query: content.trim(),
-          session_id: sessionId,
+          session_id: viewSessionId,
           include_history: true,
           pedagogy_mode: pedagogyMode,
           top_k: 5,
           ...editorContext,
         })
-
-        // Update session ID if new session
-        if (response.is_new_session && response.session_id) {
-          setSessionId(response.session_id)
-        }
 
         // Add assistant response
         const assistantMessage: Message = {
@@ -112,7 +123,7 @@ export const useChat = () => {
         setLoading(false)
       }
     },
-    [sessionId, pedagogyMode, isLoading, addMessage, setSessionId, setLoading, setError]
+    [sessionId, pedagogyMode, isLoading, addMessage, setSessionId, setLoading, setError, ensureWorkspace]
   )
 
   return {

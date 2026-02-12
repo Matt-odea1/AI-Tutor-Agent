@@ -62,7 +62,20 @@ class DynamoDBHistoryV2Store:
             "total_tokens": 0,
             "pedagogy_mode": pedagogy_mode,
         }
+        index_item = {
+            "PK": f"WORKSPACE#{workspace_id}",
+            "SK": f"VIEW#{view_type}#{view_session_id}",
+            "view_session_id": view_session_id,
+            "workspace_id": workspace_id,
+            "view_type": view_type,
+            "created_at": now,
+            "last_accessed": now,
+            "message_count": 0,
+            "total_tokens": 0,
+            "pedagogy_mode": pedagogy_mode,
+        }
         self.table.put_item(Item=metadata)
+        self.table.put_item(Item=index_item)
         return metadata
 
     def get_view_session(self, view_session_id: str) -> Optional[Dict[str, Any]]:
@@ -106,6 +119,16 @@ class DynamoDBHistoryV2Store:
             UpdateExpression=update_expr,
             ExpressionAttributeValues=expr_vals,
         )
+        try:
+            metadata = self.get_view_session(view_session_id)
+            if metadata:
+                self.table.update_item(
+                    Key={"PK": f"WORKSPACE#{metadata['workspace_id']}", "SK": f"VIEW#{metadata['view_type']}#{view_session_id}"},
+                    UpdateExpression=update_expr,
+                    ExpressionAttributeValues=expr_vals,
+                )
+        except ClientError:
+            pass
 
     def get_view_history(self, view_session_id: str) -> List[Dict[str, Any]]:
         response = self.table.query(
@@ -114,6 +137,36 @@ class DynamoDBHistoryV2Store:
             ScanIndexForward=True,
         )
         return response.get("Items", [])
+
+    def list_view_sessions(self, workspace_id: str, view_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        prefix = "VIEW#" if not view_type else f"VIEW#{view_type}#"
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues={":pk": f"WORKSPACE#{workspace_id}", ":sk": prefix},
+            ScanIndexForward=False,
+        )
+        return response.get("Items", [])
+
+    def delete_view_session(self, view_session_id: str) -> None:
+        metadata = self.get_view_session(view_session_id)
+        if not metadata:
+            return
+
+        self.table.delete_item(Key={"PK": f"VIEW#{view_session_id}", "SK": "METADATA"})
+
+        try:
+            self.table.delete_item(
+                Key={"PK": f"WORKSPACE#{metadata['workspace_id']}", "SK": f"VIEW#{metadata['view_type']}#{view_session_id}"}
+            )
+        except ClientError:
+            pass
+
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues={":pk": f"VIEW#{view_session_id}", ":sk": "MESSAGE#"},
+        )
+        for item in response.get("Items", []):
+            self.table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
 
     # Code memories
     def create_code_memory(self, workspace_id: str, language: str, current_code: str) -> Dict[str, Any]:

@@ -31,6 +31,17 @@ export interface CodeEditorState {
   history: CodeExecutionHistoryEntry[];
 }
 
+export interface EditorDecoration {
+  startLine: number;
+  endLine: number;
+  className: string;
+}
+
+export interface EditorDeletionZone {
+  line: number;
+  content: string;
+}
+
 export interface CodeProgram {
   program_id: string;
   workspace_id: string;

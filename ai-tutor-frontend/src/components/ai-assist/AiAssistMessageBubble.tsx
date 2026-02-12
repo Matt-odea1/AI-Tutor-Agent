@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { diffLines } from 'diff'
 import { useChatStore } from '../../store/chatStore'
 import type { Message } from '../../types/chat'
 import { hashString } from '../../utils/hash'
@@ -10,8 +11,9 @@ interface AiAssistMessageBubbleProps {
 export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) => {
   const isUser = message.role === 'user'
   const isError = message.isError
-  const { codeEditor, setEditorCode, setEditorSelection } = useChatStore()
-  const [lastAppliedCode, setLastAppliedCode] = useState<string | null>(null)
+  const { codeEditor, setEditorCode, setEditorSelection, setEditorDecorations, clearEditorDecorations, setEditorDeletionZones, clearEditorDeletionZones } = useChatStore()
+  const [pendingEdit, setPendingEdit] = useState<{ before: string; after: string } | null>(null)
+  const [autoApplied, setAutoApplied] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
 
   const sanitizeText = (text: string) => {
@@ -45,9 +47,15 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
           const parsed = JSON.parse(jsonBlock.trim())
           if (parsed && typeof parsed === 'object') {
             payload = {
+              version: parsed.version,
               scope: parsed.scope,
+              file: parsed.file,
               target: parsed.target,
               replacement: parsed.replacement,
+              strategy: parsed.strategy,
+              context_before: parsed.context_before,
+              context_after: parsed.context_after,
+              buffer_hash: parsed.buffer_hash,
             }
           }
         } catch (err) {
@@ -66,6 +74,11 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
 
   const cleaned = extracted.cleaned
   const payload = extracted.payload as EditPayload | null
+
+  const diffParts = useMemo(() => {
+    if (!pendingEdit) return []
+    return diffLines(pendingEdit.before, pendingEdit.after)
+  }, [pendingEdit])
 
   const formattedContent = isUser
     ? cleaned
@@ -122,8 +135,87 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     })
   }
 
+  const buildDecorations = (before: string, after: string) => {
+    const parts = diffLines(before, after)
+    const decorations: { startLine: number; endLine: number; className: string }[] = []
+
+    const countLines = (value: string) => {
+      if (!value) return 0
+      const lines = value.split('\n')
+      return value.endsWith('\n') ? lines.length - 1 : lines.length
+    }
+
+    let line = 1
+    const totalLines = Math.max(1, after.split('\n').length)
+
+    parts.forEach((part: any) => {
+      const lineCount = countLines(part.value)
+      if (part.added) {
+        if (lineCount > 0) {
+          decorations.push({
+            startLine: line,
+            endLine: Math.min(totalLines, line + lineCount - 1),
+            className: 'editor-addition',
+          })
+        }
+        line += lineCount
+        return
+      }
+
+      if (part.removed) {
+        if (lineCount > 0) {
+          const markerLine = Math.min(totalLines, Math.max(1, line))
+          decorations.push({
+            startLine: markerLine,
+            endLine: markerLine,
+            className: 'editor-deletion',
+          })
+        }
+        return
+      }
+
+      line += lineCount
+    })
+
+    return decorations
+  }
+
+  const buildDeletionZones = (before: string, after: string) => {
+    const parts = diffLines(before, after)
+    const zones: { line: number; content: string }[] = []
+
+    const countLines = (value: string) => {
+      if (!value) return 0
+      const lines = value.split('\n')
+      return value.endsWith('\n') ? lines.length - 1 : lines.length
+    }
+
+    let line = 1
+    const totalLines = Math.max(1, after.split('\n').length)
+
+    parts.forEach((part: any) => {
+      const lineCount = countLines(part.value)
+      if (part.added) {
+        line += lineCount
+        return
+      }
+
+      if (part.removed) {
+        if (lineCount > 0) {
+          const markerLine = Math.min(totalLines, Math.max(1, line))
+          zones.push({ line: markerLine, content: part.value })
+        }
+        return
+      }
+
+      line += lineCount
+    })
+
+    return zones
+  }
+
   const applyEdit = async () => {
-    if (!payload || !payload.replacement) {
+    if (!payload || payload.replacement === undefined || payload.replacement === null) {
       setApplyError('Missing replacement text.')
       return
     }
@@ -171,7 +263,7 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     }
 
     if (!applied && payload.scope === 'file') {
-      if (payload.strategy === 'fuzzy' && payload.context_before && payload.context_after) {
+      if (payload.context_before && payload.context_after) {
         const beforeIndex = currentCode.indexOf(payload.context_before)
         if (beforeIndex !== -1) {
           const afterStart = beforeIndex + payload.context_before.length
@@ -186,7 +278,12 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
         }
       }
 
-      if (!applied) {
+      if (!applied && payload.strategy === 'replace') {
+        nextCode = payload.replacement
+        applied = true
+      }
+
+      if (!applied && !payload.target && !payload.context_before && !payload.context_after) {
         nextCode = payload.replacement
         applied = true
       }
@@ -198,18 +295,35 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
       return
     }
 
-    setLastAppliedCode(currentCode)
+    setPendingEdit({ before: currentCode, after: nextCode })
     setEditorCode(nextCode)
     setEditorSelection(null)
+    setEditorDecorations(buildDecorations(currentCode, nextCode))
+    setEditorDeletionZones(buildDeletionZones(currentCode, nextCode))
     setApplyError(null)
   }
 
-  const undoEdit = () => {
-    if (!lastAppliedCode) return
-    setEditorCode(lastAppliedCode)
-    setLastAppliedCode(null)
+  const acceptEdit = () => {
+    setPendingEdit(null)
+    clearEditorDecorations()
+    clearEditorDeletionZones()
     setApplyError(null)
   }
+
+  const revertEdit = () => {
+    if (!pendingEdit) return
+    setEditorCode(pendingEdit.before)
+    setPendingEdit(null)
+    clearEditorDecorations()
+    clearEditorDeletionZones()
+    setApplyError(null)
+  }
+
+  useEffect(() => {
+    if (isUser || !payload || pendingEdit || autoApplied) return
+    applyEdit()
+    setAutoApplied(true)
+  }, [autoApplied, isUser, payload, pendingEdit])
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -224,24 +338,42 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
       >
         {renderContent(formattedContent)}
         {payload && !isUser && (
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-500">
-            <button
-              type="button"
-              onClick={applyEdit}
-              className="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50"
-            >
-              Apply
-            </button>
-            {lastAppliedCode && (
-              <button
-                type="button"
-                onClick={undoEdit}
-                className="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50"
-              >
-                Undo
-              </button>
-            )}
+          <div className="mt-2 text-[11px] text-gray-500">
             {applyError && <span className="text-amber-600">{applyError}</span>}
+            {pendingEdit && diffParts.length > 0 && (
+              <div className="mt-2 rounded-md border border-gray-200 bg-white">
+                <pre className="max-h-44 overflow-auto px-2 py-2 text-[11px] leading-relaxed">
+                  {diffParts.map((part: any, index: number) => {
+                    const className = part.added
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : part.removed
+                        ? 'bg-rose-50 text-rose-800'
+                        : 'text-gray-500'
+                    return (
+                      <div key={`diff-${index}`} className={className}>
+                        {part.value}
+                      </div>
+                    )
+                  })}
+                </pre>
+                <div className="flex items-center gap-2 border-t border-gray-200 px-2 py-2">
+                  <button
+                    type="button"
+                    onClick={acceptEdit}
+                    className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={revertEdit}
+                    className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700 hover:bg-rose-100"
+                  >
+                    Revert
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

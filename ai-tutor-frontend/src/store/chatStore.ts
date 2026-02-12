@@ -4,7 +4,7 @@
 import { create } from 'zustand'
 import type { Message } from '../types/chat'
 import type { PedagogyMode } from '../types/pedagogy'
-import type { CodeEditorState, CodeProgram } from '../types/code'
+import type { CodeEditorState, CodeProgram, EditorDecoration, EditorDeletionZone } from '../types/code'
 import type { SessionInfo } from '../types/session'
 import type { AppMode } from '../types/appMode'
 import { DEFAULT_PEDAGOGY_MODE, STORAGE_KEYS } from '../config/constants'
@@ -30,6 +30,8 @@ interface ChatStore {
   
   // Code Editor State
   codeEditor: CodeEditorState
+  editorDecorations: EditorDecoration[]
+  editorDeletionZones: EditorDeletionZone[]
 
   // Program State
   programs: CodeProgram[]
@@ -67,6 +69,10 @@ interface ChatStore {
   setEditorOutput: (output: string | null, error: string | null) => void
   setEditorExecuting: (isExecuting: boolean) => void
   setEditorSelection: (selection: string | null) => void
+  setEditorDecorations: (decorations: EditorDecoration[]) => void
+  clearEditorDecorations: () => void
+  setEditorDeletionZones: (zones: EditorDeletionZone[]) => void
+  clearEditorDeletionZones: () => void
   clearEditor: () => void
   insertCodeIntoEditor: (code: string) => void
   addToHistory: (code: string, output: string | null, error: string | null) => void
@@ -109,6 +115,8 @@ export const useChatStore = create<ChatStore>((set) => ({
     selection: null,
     history: [],
   },
+  editorDecorations: [],
+  editorDeletionZones: [],
 
   // Program Initial State
   programs: [],
@@ -217,6 +225,14 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((state) => ({
       codeEditor: { ...state.codeEditor, selection },
     })),
+
+  setEditorDecorations: (decorations) => set({ editorDecorations: decorations }),
+
+  clearEditorDecorations: () => set({ editorDecorations: [] }),
+
+  setEditorDeletionZones: (zones) => set({ editorDeletionZones: zones }),
+
+  clearEditorDeletionZones: () => set({ editorDeletionZones: [] }),
 
   clearEditor: () =>
     set((state) => ({

@@ -22,7 +22,7 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
   const lastMessageRef = useRef<HTMLDivElement>(null)
   const prevIsLoadingRef = useRef(isLoading)
   const prevMessageCountRef = useRef(messages.length)
-  const { codeEditor, setEditorMinimized } = useChatStore()
+  const { codeEditor, setEditorMinimized, appMode } = useChatStore()
 
   // Smart scroll: When new message arrives, scroll to show the TOP of the last message
   useEffect(() => {
@@ -128,8 +128,8 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
           )
         })}
 
-        {/* Code Editor - appears inline with messages (hidden in split view) */}
-        {!hideSplitEditor && (
+        {/* Code Editor - appears inline with messages (hidden in split view, never in general chat) */}
+        {!hideSplitEditor && appMode !== 'chat' && (
           <Suspense fallback={<MessageSkeleton />}>
             <CodeEditor onSendMessage={onSendMessage} />
           </Suspense>

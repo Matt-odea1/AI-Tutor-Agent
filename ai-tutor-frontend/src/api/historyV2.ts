@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import { API_ENDPOINTS } from '../config/api.config'
 import type { ChatRequest, ChatResponse } from '../types/chat'
+import { getUserSession } from '../utils/userSession'
 
 export interface WorkspaceResponse {
   workspace_id: string
@@ -19,6 +20,12 @@ export interface ViewSessionResponse {
   message_count: number
   total_tokens: number
   pedagogy_mode?: string | null
+}
+
+export interface ViewSessionListResponse {
+  workspace_id: string
+  view_type?: string | null
+  views: ViewSessionResponse[]
 }
 
 export interface CodeMemoryResponse {
@@ -79,6 +86,22 @@ export interface AssistantHistoryResponse {
   code_memory_id: string
 }
 
+export interface ViewHistoryResponse {
+  view_session_id: string
+  messages: Array<{
+    role: string
+    content: string
+    timestamp: string
+    tokens?: number
+    context_ids?: string[]
+  }>
+  message_count: number
+  created_at: string
+  last_accessed: string
+  total_tokens: number
+  view_type: string
+}
+
 export interface EditProposalRequest {
   query: string
   thread_id?: string | null
@@ -99,36 +122,56 @@ export interface EditProposalResponse {
 }
 
 export const createWorkspace = async (title?: string): Promise<WorkspaceResponse> => {
+  const session = getUserSession()
   const response = await apiClient.post<WorkspaceResponse>(API_ENDPOINTS.HISTORY_V2_WORKSPACES, {
     title: title || 'New Workspace',
+    user_id: session?.user_id || null,
   })
   return response.data
 }
 
 export const createViewSession = async (workspaceId: string, viewType: string, pedagogyMode?: string | null): Promise<ViewSessionResponse> => {
+  const session = getUserSession()
   const response = await apiClient.post<ViewSessionResponse>(API_ENDPOINTS.HISTORY_V2_VIEWS, {
     workspace_id: workspaceId,
     view_type: viewType,
     pedagogy_mode: pedagogyMode || null,
+    user_id: session?.user_id || null,
   })
   return response.data
 }
 
+export const listViewSessions = async (workspaceId: string, viewType?: string): Promise<ViewSessionListResponse> => {
+  const response = await apiClient.get<ViewSessionListResponse>(
+    API_ENDPOINTS.HISTORY_V2_VIEWS_BY_WORKSPACE(workspaceId, viewType)
+  )
+  return response.data
+}
+
+export const deleteViewSession = async (viewSessionId: string): Promise<{ ok: boolean; view_session_id: string }> => {
+  const response = await apiClient.delete<{ ok: boolean; view_session_id: string }>(API_ENDPOINTS.HISTORY_V2_VIEW_ID(viewSessionId))
+  return response.data
+}
+
 export const createCodeMemory = async (workspaceId: string, currentCode: string, language = 'python'): Promise<CodeMemoryResponse> => {
+  const session = getUserSession()
   const response = await apiClient.post<CodeMemoryResponse>(API_ENDPOINTS.HISTORY_V2_CODEMEMORY, {
     workspace_id: workspaceId,
     current_code: currentCode,
     language,
+    user_id: session?.user_id || null,
   })
   return response.data
 }
 
 export const createProgram = async (workspaceId: string, currentCode: string, title?: string, language = 'python'): Promise<ProgramResponse> => {
+  const session = getUserSession()
   const response = await apiClient.post<ProgramResponse>(API_ENDPOINTS.HISTORY_V2_PROGRAMS, {
     workspace_id: workspaceId,
     current_code: currentCode,
     language,
     title: title || undefined,
+    user_id: session?.user_id || null,
   })
   return response.data
 }
@@ -184,8 +227,18 @@ export const getAssistantHistory = async (threadId: string): Promise<AssistantHi
   return response.data
 }
 
+export const getViewHistory = async (viewSessionId: string): Promise<ViewHistoryResponse> => {
+  const response = await apiClient.get<ViewHistoryResponse>(API_ENDPOINTS.HISTORY_V2_VIEW_HISTORY(viewSessionId))
+  return response.data
+}
+
 export const postAssistantMessage = async (threadId: string, request: ChatRequest): Promise<ChatResponse> => {
   const response = await apiClient.post<ChatResponse>(API_ENDPOINTS.HISTORY_V2_THREAD_MESSAGE(threadId), request)
+  return response.data
+}
+
+export const postViewMessage = async (viewSessionId: string, request: ChatRequest): Promise<ChatResponse> => {
+  const response = await apiClient.post<ChatResponse>(API_ENDPOINTS.HISTORY_V2_VIEW_MESSAGE(viewSessionId), request)
   return response.data
 }
 

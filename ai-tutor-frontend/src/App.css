@@ -11,3 +11,22 @@
 * {
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
+
+.editor-addition {
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.editor-deletion {
+  background-color: rgba(244, 63, 94, 0.16);
+}
+
+.editor-deletion-zone {
+  background-color: rgba(244, 63, 94, 0.12);
+  color: #9f1239;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 8px;
+  white-space: pre-wrap;
+  border-left: 2px solid rgba(244, 63, 94, 0.45);
+}

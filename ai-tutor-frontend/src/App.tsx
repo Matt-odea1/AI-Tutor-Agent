@@ -10,22 +10,26 @@ import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { ModeSelector } from './components/ModeSelector'
 import { IdeWorkspace } from './components/IdeWorkspace'
 import SEO from './components/SEO'
-import { STORAGE_KEYS } from './config/constants'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useToastStore } from './store/toastStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
+import { LoginGate } from './components/LoginGate'
+import { getUserSession, setUserSession, type UserSession } from './utils/userSession'
 
 function App() {
   const isOnline = useOnlineStatus()
   const { addToast } = useToastStore()
   const { setEditorOpen, setLayoutMode, codeEditor, appMode } = useChatStore()
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [userSession, setUserSessionState] = useState<UserSession | null>(null)
+  const [isReady, setIsReady] = useState(false)
 
-  // Clear session on mount to always start fresh
   useEffect(() => {
-    localStorage.removeItem(STORAGE_KEYS.SESSION_ID)
+    const session = getUserSession()
+    setUserSessionState(session)
+    setIsReady(true)
   }, [])
 
   // Show toast when network status changes
@@ -79,6 +83,21 @@ function App() {
       setLayoutMode('split')
     }
   }, [appMode, setEditorOpen, setLayoutMode])
+
+  if (!isReady) {
+    return null
+  }
+
+  if (!userSession) {
+    return (
+      <LoginGate
+        onLogin={async (email) => {
+          const session = await setUserSession(email)
+          setUserSessionState(session)
+        }}
+      />
+    )
+  }
 
   return (
     <>

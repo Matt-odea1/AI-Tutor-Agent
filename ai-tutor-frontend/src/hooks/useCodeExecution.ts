@@ -43,12 +43,19 @@ export function useCodeExecution() {
 
       // Reset stdout/stderr capture and setup traceback formatting
       await pyodide.runPythonAsync(`
-import sys
-import traceback
-from io import StringIO
-sys.stdout = StringIO()
-sys.stderr = StringIO()
-`);
+    import sys
+    import traceback
+    import builtins
+    from io import StringIO
+    sys.stdout = StringIO()
+    sys.stderr = StringIO()
+    sys.stdin = StringIO()
+
+    def _blocked_input(*args, **kwargs):
+        raise RuntimeError("input() is not supported in the browser runner. Remove input() or provide hardcoded values.")
+
+    builtins.input = _blocked_input
+    `);
 
       // Execute user code with better error handling
       try {

@@ -62,6 +62,12 @@ class HistoryV2Store:
     def get_view_session(self, view_session_id: str) -> Optional[Dict[str, Any]]:
         return self.view_sessions.get(view_session_id)
 
+    def list_view_sessions(self, workspace_id: str, view_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        sessions = [v for v in self.view_sessions.values() if v.get("workspace_id") == workspace_id]
+        if view_type:
+            sessions = [v for v in sessions if v.get("view_type") == view_type]
+        return sorted(sessions, key=lambda v: v.get("last_accessed", ""), reverse=True)
+
     def add_view_message(
         self,
         view_session_id: str,
@@ -94,6 +100,12 @@ class HistoryV2Store:
 
     def get_view_history(self, view_session_id: str) -> List[Dict[str, Any]]:
         return list(self.view_messages.get(view_session_id, []))
+
+    def delete_view_session(self, view_session_id: str) -> None:
+        view = self.view_sessions.pop(view_session_id, None)
+        self.view_messages.pop(view_session_id, None)
+        if view:
+            logger.info(f"Deleted view session {view_session_id[:8]}... from workspace {view.get('workspace_id')}")
 
     # Code memories
     def create_code_memory(self, workspace_id: str, language: str, current_code: str) -> Dict[str, Any]:
