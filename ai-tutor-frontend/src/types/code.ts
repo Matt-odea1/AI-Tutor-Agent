@@ -30,3 +30,16 @@ export interface CodeEditorState {
   selection: string | null;
   history: CodeExecutionHistoryEntry[];
 }
+
+export interface CodeProgram {
+  program_id: string;
+  workspace_id: string;
+  code_memory_id: string;
+  title: string;
+  language: string;
+  current_code: string;
+  last_output?: string | null;
+  last_error?: string | null;
+  created_at: string;
+  last_accessed: string;
+}

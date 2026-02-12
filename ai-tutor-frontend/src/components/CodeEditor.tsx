@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { useChatStore } from '../store/chatStore';
 import { useCodeExecution } from '../hooks/useCodeExecution';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { trackCodeExecuted } from '../utils/analytics';
+import { usePrograms } from '../hooks/usePrograms';
+import { EDITOR_TEMPLATE } from '../config/editorDefaults';
 import { 
   CodeEditorHeader, 
   CodeEditorControls, 
-  CodeHistoryModal 
 } from './CodeEditor/index';
 
 interface CodeEditorProps {
@@ -16,11 +17,13 @@ interface CodeEditorProps {
 }
 
 export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps) => {
-  const { codeEditor, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, loadFromHistory, layoutMode } = useChatStore();
+  const { codeEditor, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, clearEditor, layoutMode } = useChatStore();
   const { runCode, isLoading } = useCodeExecution();
+  const { programs, activeProgramId, createNewProgram, saveProgram, loadProgram } = usePrograms();
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoEditorRef = useRef<any>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const hasUserEditsRef = useRef(false);
+  const didInitProgramRef = useRef(false);
 
   const handleBeforeMount = (monaco: any) => {
     monaco.editor.defineTheme('chat9021-light', {
@@ -68,9 +71,38 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
       addToHistory(codeEditor.code, result.output, result.error);
       // Track code execution
       trackCodeExecuted(!!result.error);
+      if (activeProgramId) {
+        const activeProgram = programs.find((program) => program.program_id === activeProgramId);
+        if (activeProgram) {
+          await saveProgram(activeProgram, {
+            current_code: codeEditor.code,
+            last_output: result.output,
+            last_error: result.error,
+          });
+        }
+      }
     } finally {
       setEditorExecuting(false);
     }
+  };
+
+  const handleNewCode = async () => {
+    if (activeProgramId) {
+      const activeProgram = programs.find((program) => program.program_id === activeProgramId);
+      if (activeProgram) {
+        await saveProgram(activeProgram, {
+          current_code: codeEditor.code,
+          last_output: codeEditor.lastOutput,
+          last_error: codeEditor.lastError,
+        });
+      }
+    }
+
+    clearEditor();
+    setEditorCode(EDITOR_TEMPLATE);
+    hasUserEditsRef.current = false;
+    didInitProgramRef.current = true;
+    await createNewProgram(EDITOR_TEMPLATE);
   };
 
   const handleAskAI = () => {
@@ -124,6 +156,22 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
       }, 100);
     }
   }, [codeEditor.isOpen]);
+
+  useEffect(() => {
+    if (!codeEditor.isOpen) return;
+    if (!activeProgramId && !didInitProgramRef.current) {
+      didInitProgramRef.current = true;
+      hasUserEditsRef.current = false;
+      createNewProgram(codeEditor.code || EDITOR_TEMPLATE);
+      return;
+    }
+    if (activeProgramId && !hasUserEditsRef.current) {
+      const existing = programs.find((program) => program.program_id === activeProgramId);
+      if (!existing) {
+        loadProgram(activeProgramId);
+      }
+    }
+  }, [activeProgramId, codeEditor.isOpen, createNewProgram, loadProgram, programs]);
 
   if (!codeEditor.isOpen) {
     return null;
@@ -192,19 +240,23 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
             {/* Header */}
             <CodeEditorHeader
               onRunCode={handleRunCode}
+              onNewCode={handleNewCode}
               isExecuting={codeEditor.isExecuting}
               isLoading={isLoading}
             />
 
             {/* Editor */}
-            <div className={isInSplitMode ? "flex-1 overflow-hidden" : "border-b border-gray-200"}>
-              <div className="relative h-full">
+            <div className={isInSplitMode ? "flex-1 overflow-hidden relative z-0" : "border-b border-gray-200 relative z-0"}>
+              <div className="relative h-full z-0">
                 <Editor
                   height={isInSplitMode ? "100%" : "350px"}
                   language="python"
                   theme="chat9021-light"
                   value={codeEditor.code}
-                  onChange={(value) => setEditorCode(value || '')}
+                  onChange={(value) => {
+                    hasUserEditsRef.current = true;
+                    setEditorCode(value || '')
+                  }}
                   beforeMount={handleBeforeMount}
                   onMount={handleEditorMount}
                   options={{
@@ -231,11 +283,6 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
                     </div>
                   }
                 />
-                {codeEditor.code.trim().length === 0 && (
-                  <div className="pointer-events-none absolute top-3 left-4 text-sm text-gray-400">
-                    Write and run Python code
-                  </div>
-                )}
               </div>
             </div>
 
@@ -243,13 +290,19 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
             <CodeEditorControls 
               onRunCode={handleRunCode}
               onAskAI={handleAskAI}
-              onShowHistory={() => setShowHistory(true)}
+              onShowHistory={() => undefined}
               isExecuting={codeEditor.isExecuting}
               isLoading={isLoading}
               hasHistory={codeEditor.history.length > 0}
               showAskAI={showAskAI}
               showRunHistory={false}
             />
+
+            {!codeEditor.lastOutput && !codeEditor.lastError && (
+              <div className="px-6 py-3 text-xs text-gray-400 border-t border-gray-200 bg-slate-50">
+                Run code to see output here.
+              </div>
+            )}
 
             {/* Output Display */}
             {(codeEditor.lastOutput || codeEditor.lastError) && (
@@ -291,16 +344,6 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
         )}
       </div>
 
-      {/* History Modal */}
-      {showHistory && (
-        <CodeHistoryModal
-          history={codeEditor.history}
-          onClose={() => setShowHistory(false)}
-          onLoadEntry={(entry) => {
-            loadFromHistory(codeEditor.history.indexOf(entry));
-          }}
-        />
-      )}
     </div>
   );
 };

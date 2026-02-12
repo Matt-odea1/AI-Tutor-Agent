@@ -256,6 +256,12 @@ class ChatService:
         if context_str:
             content_parts.append(f"Relevant course materials:\n{context_str}")
 
+        if self._is_edit_intent(query):
+            content_parts.append(
+                "If the user wants code changes, respond with exactly one edit block. "
+                "Keep the response to one short sentence plus the edit block."
+            )
+
         # 3.5 Add editor context (code, selection, output, error)
         editor_context = self._format_editor_context(
             editor_code=editor_code,
@@ -323,6 +329,31 @@ class ChatService:
         head = context[:7200]
         tail = context[-4800:]
         return f"{head}\n\n... [truncated] ...\n\n{tail}"
+
+    def _is_edit_intent(self, query: str) -> bool:
+        if not query:
+            return False
+        lowered = query.lower()
+        keywords = [
+            "edit ",
+            "change ",
+            "update ",
+            "modify ",
+            "refactor ",
+            "fix ",
+            "implement ",
+            "write ",
+            "create ",
+            "generate ",
+            "build ",
+            "add ",
+            "remove ",
+            "rewrite ",
+            "replace ",
+            "optimize ",
+            "rename ",
+        ]
+        return any(token in lowered for token in keywords)
     
     def _format_history(self, history: List[dict]) -> str:
         """

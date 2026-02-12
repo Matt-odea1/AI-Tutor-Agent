@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useChatStore } from '../../store/chatStore'
 import type { Message } from '../../types/chat'
+import { hashString } from '../../utils/hash'
 
 interface AiAssistMessageBubbleProps {
   message: Message
@@ -21,12 +22,24 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
       .join('\n')
   }
 
+  type EditPayload = {
+    version?: string
+    scope?: 'selection' | 'file'
+    file?: string
+    target?: string
+    replacement?: string
+    strategy?: string
+    context_before?: string
+    context_after?: string
+    buffer_hash?: string
+  }
+
   const extractEditPayload = (content: string) => {
     const editBlockRegex = /```edit\s*([\s\S]*?)```/gi
-    let payload: { scope?: 'selection' | 'file'; target?: string; replacement?: string } | null = null
+    let payload: EditPayload | null = null
     let cleaned = content
 
-    cleaned = cleaned.replace(editBlockRegex, (match, jsonBlock) => {
+    cleaned = cleaned.replace(editBlockRegex, (_match, jsonBlock) => {
       if (!payload) {
         try {
           const parsed = JSON.parse(jsonBlock.trim())
@@ -47,9 +60,12 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     return { cleaned: cleaned.trim(), payload }
   }
 
-  const { cleaned, payload } = isUser
+  const extracted = isUser
     ? { cleaned: message.content, payload: null }
     : extractEditPayload(message.content)
+
+  const cleaned = extracted.cleaned
+  const payload = extracted.payload as EditPayload | null
 
   const formattedContent = isUser
     ? cleaned
@@ -106,10 +122,25 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     })
   }
 
-  const applyEdit = () => {
+  const applyEdit = async () => {
     if (!payload || !payload.replacement) {
       setApplyError('Missing replacement text.')
       return
+    }
+
+    if (payload.version && payload.version !== '1') {
+      setApplyError('Unsupported edit block version.')
+      console.warn('Edit block version mismatch', payload.version)
+      return
+    }
+
+    if (payload.buffer_hash) {
+      const currentHash = await hashString(codeEditor.code || '')
+      if (currentHash !== payload.buffer_hash) {
+        setApplyError('Editor content changed since the edit was generated.')
+        console.warn('Edit buffer hash mismatch', { expected: payload.buffer_hash, actual: currentHash })
+        return
+      }
     }
 
     const currentCode = codeEditor.code
@@ -140,12 +171,30 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     }
 
     if (!applied && payload.scope === 'file') {
-      nextCode = payload.replacement
-      applied = true
+      if (payload.strategy === 'fuzzy' && payload.context_before && payload.context_after) {
+        const beforeIndex = currentCode.indexOf(payload.context_before)
+        if (beforeIndex !== -1) {
+          const afterStart = beforeIndex + payload.context_before.length
+          const afterIndex = currentCode.indexOf(payload.context_after, afterStart)
+          if (afterIndex !== -1) {
+            nextCode =
+              currentCode.slice(0, afterStart) +
+              payload.replacement +
+              currentCode.slice(afterIndex)
+            applied = true
+          }
+        }
+      }
+
+      if (!applied) {
+        nextCode = payload.replacement
+        applied = true
+      }
     }
 
     if (!applied) {
       setApplyError('Could not apply edit. Target not found.')
+      console.warn('Edit apply failed', payload)
       return
     }
 

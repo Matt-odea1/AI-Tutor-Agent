@@ -8,6 +8,7 @@ interface DeleteConfirmModalProps {
   onConfirm: () => void
   onCancel: () => void
   sessionTitle?: string
+  entityLabel?: string
 }
 
 export const DeleteConfirmModal = ({
@@ -15,6 +16,7 @@ export const DeleteConfirmModal = ({
   onConfirm,
   onCancel,
   sessionTitle,
+  entityLabel = 'Session',
 }: DeleteConfirmModalProps) => {
   // Handle escape key
   useEffect(() => {
@@ -52,7 +54,7 @@ export const DeleteConfirmModal = ({
 
         {/* Title */}
         <h3 className="text-lg font-semibold text-white text-center mb-2">
-          Delete Session?
+          Delete {entityLabel}?
         </h3>
 
         {/* Message */}
@@ -63,7 +65,7 @@ export const DeleteConfirmModal = ({
               permanently deleted.
             </>
           ) : (
-            'This session will be permanently deleted.'
+            `This ${entityLabel.toLowerCase()} will be permanently deleted.`
           )}{' '}
           This action cannot be undone.
         </p>

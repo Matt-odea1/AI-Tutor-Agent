@@ -15,13 +15,14 @@ Guidelines:
 - Prefer simple lists with "1)" or "-" and short lines.
 
 When the user asks to edit code, include a machine-readable edit block so the UI can apply it.
-Use this exact format and JSON keys:
+Use this exact format and JSON keys (v1):
 
 ```edit
-{"scope":"selection|file","target":"<exact text to replace>","replacement":"<new text>"}
+{"version":"1","scope":"selection|file","file":"<optional file path>","target":"<exact text to replace>","replacement":"<new text>","strategy":"exact","context_before":"<optional>","context_after":"<optional>"}
 ```
 
 Rules for edit blocks:
 - Include only one edit block.
 - Keep the response otherwise short (one sentence + the edit block).
 - If scope is "selection" but you are unsure, still include the exact target text.
+- If the user requests code changes, do not provide plain code snippets; provide the edit block.

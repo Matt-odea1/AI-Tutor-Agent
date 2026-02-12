@@ -4,15 +4,20 @@
 import { create } from 'zustand'
 import type { Message } from '../types/chat'
 import type { PedagogyMode } from '../types/pedagogy'
-import type { CodeEditorState } from '../types/code'
+import type { CodeEditorState, CodeProgram } from '../types/code'
 import type { SessionInfo } from '../types/session'
 import type { AppMode } from '../types/appMode'
 import { DEFAULT_PEDAGOGY_MODE, STORAGE_KEYS } from '../config/constants'
+import { EDITOR_TEMPLATE } from '../config/editorDefaults'
 
 interface ChatStore {
   // State
   messages: Message[]
+  assistantMessages: Message[]
   sessionId: string | null
+  assistantThreadId: string | null
+  workspaceId: string | null
+  codeMemoryId: string | null
   appMode: AppMode | null
   pedagogyMode: PedagogyMode
   isLoading: boolean
@@ -26,16 +31,27 @@ interface ChatStore {
   // Code Editor State
   codeEditor: CodeEditorState
 
+  // Program State
+  programs: CodeProgram[]
+  activeProgramId: string | null
+  isLoadingPrograms: boolean
+
   // Actions
   addMessage: (message: Message) => void
+  addAssistantMessage: (message: Message) => void
   setMessages: (messages: Message[]) => void
+  setAssistantMessages: (messages: Message[]) => void
   setSessionId: (id: string | null) => void
+  setAssistantThreadId: (id: string | null) => void
+  setWorkspaceId: (id: string | null) => void
+  setCodeMemoryId: (id: string | null) => void
   setAppMode: (mode: AppMode | null) => void
   setPedagogyMode: (mode: PedagogyMode) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   setLayoutMode: (mode: 'stacked' | 'split') => void
   clearMessages: () => void
+  clearAssistantMessages: () => void
   clearSession: () => void
   
   // Session Management Actions
@@ -55,12 +71,23 @@ interface ChatStore {
   insertCodeIntoEditor: (code: string) => void
   addToHistory: (code: string, output: string | null, error: string | null) => void
   loadFromHistory: (index: number) => void
+
+  // Program Actions
+  setPrograms: (programs: CodeProgram[]) => void
+  setActiveProgramId: (programId: string | null) => void
+  setLoadingPrograms: (loading: boolean) => void
+  updateProgramInStore: (program: CodeProgram) => void
+  removeProgramFromStore: (programId: string) => void
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
   // Initial state - always start with a new session
   messages: [],
+  assistantMessages: [],
   sessionId: null,
+  assistantThreadId: null,
+  workspaceId: null,
+  codeMemoryId: null,
   appMode: (localStorage.getItem(STORAGE_KEYS.APP_MODE) as AppMode) || null,
   pedagogyMode: (localStorage.getItem(STORAGE_KEYS.PEDAGOGY_MODE) as PedagogyMode) || DEFAULT_PEDAGOGY_MODE,
   isLoading: false,
@@ -73,7 +100,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   
   // Code Editor Initial State
   codeEditor: {
-    code: '# Write your Python code here\nprint("Hello, COMP9021!")\n',
+    code: EDITOR_TEMPLATE,
     isOpen: false,
     isMinimized: false,
     lastOutput: null,
@@ -83,13 +110,25 @@ export const useChatStore = create<ChatStore>((set) => ({
     history: [],
   },
 
+  // Program Initial State
+  programs: [],
+  activeProgramId: null,
+  isLoadingPrograms: false,
+
   // Actions
   addMessage: (message) =>
     set((state) => ({
       messages: [...state.messages, message],
     })),
 
+  addAssistantMessage: (message) =>
+    set((state) => ({
+      assistantMessages: [...state.assistantMessages, message],
+    })),
+
   setMessages: (messages) => set({ messages }),
+
+  setAssistantMessages: (messages) => set({ assistantMessages: messages }),
 
   setSessionId: (id) => {
     if (id) {
@@ -99,6 +138,10 @@ export const useChatStore = create<ChatStore>((set) => ({
     }
     set({ sessionId: id })
   },
+
+  setAssistantThreadId: (id) => set({ assistantThreadId: id }),
+  setWorkspaceId: (id) => set({ workspaceId: id }),
+  setCodeMemoryId: (id) => set({ codeMemoryId: id }),
 
   setAppMode: (mode) => {
     if (mode) {
@@ -121,6 +164,8 @@ export const useChatStore = create<ChatStore>((set) => ({
   setLayoutMode: (mode) => set({ layoutMode: mode }),
 
   clearMessages: () => set({ messages: [] }),
+
+  clearAssistantMessages: () => set({ assistantMessages: [] }),
 
   clearSession: () => {
     localStorage.removeItem(STORAGE_KEYS.SESSION_ID)
@@ -177,10 +222,11 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((state) => ({
       codeEditor: {
         ...state.codeEditor,
-        code: '# Write your Python code here\nprint("Hello, COMP9021!")\n',
+        code: EDITOR_TEMPLATE,
         lastOutput: null,
         lastError: null,
         selection: null,
+        history: [],
       },
     })),
 
@@ -221,4 +267,23 @@ export const useChatStore = create<ChatStore>((set) => ({
         },
       }
     }),
+
+  // Program Actions
+  setPrograms: (programs) => set({ programs }),
+
+  setActiveProgramId: (programId) => set({ activeProgramId: programId }),
+
+  setLoadingPrograms: (loading) => set({ isLoadingPrograms: loading }),
+
+  updateProgramInStore: (program) =>
+    set((state) => ({
+      programs: state.programs.map((item) =>
+        item.program_id === program.program_id ? program : item
+      ),
+    })),
+
+  removeProgramFromStore: (programId) =>
+    set((state) => ({
+      programs: state.programs.filter((item) => item.program_id !== programId),
+    })),
 }))

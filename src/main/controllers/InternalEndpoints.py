@@ -14,6 +14,25 @@ from src.main.dtos.ChatRequest import ChatRequest
 from src.main.dtos.ChatResponse import ChatResponse
 from src.main.dtos.ChatHistoryResponse import ChatHistoryResponse, ChatMessage
 from src.main.dtos.SessionListResponse import SessionListResponse, SessionInfo
+from src.main.dtos.HistoryV2Models import (
+    WorkspaceCreateRequest,
+    WorkspaceResponse,
+    ViewCreateRequest,
+    ViewSessionResponse,
+    ViewHistoryResponse,
+    CodeMemoryCreateRequest,
+    CodeMemoryUpdateRequest,
+    CodeMemoryResponse,
+    ProgramCreateRequest,
+    ProgramUpdateRequest,
+    ProgramResponse,
+    ProgramListResponse,
+    AssistantThreadCreateRequest,
+    AssistantThreadResponse,
+    AssistantThreadListResponse,
+    AssistantHistoryResponse,
+)
+from src.main.dtos.EditProposalDTOs import EditProposalRequest, EditProposalResponse
 from src.main.service.FileToTextService import FileToTextService
 
 # Add Deepgram Speech-to-Text import and tempfile/os
@@ -73,6 +92,8 @@ from src.main.service.BatchJobManager import get_batch_job_manager, JobType, Job
 # Conversation Memory
 from src.main.agentcore_setup.memory import ConversationMemory
 from src.main.agentcore_setup.dynamodb_memory import DynamoDBConversationMemory
+from src.main.agentcore_setup.history_v2 import HistoryV2Store
+from src.main.agentcore_setup.dynamodb_history_v2 import DynamoDBHistoryV2Store
 
 
 # --- Dependency injection ------------------------------------------------------
@@ -108,6 +129,23 @@ def _memory_singleton():
 
 def get_memory_service():
     return _memory_singleton()
+
+
+# --- HistoryV2 Store DI -------------------------------------------------------
+@lru_cache(maxsize=1)
+def _history_v2_singleton():
+    use_dynamodb = os.getenv('USE_DYNAMODB', 'false').lower() == 'true'
+    if use_dynamodb:
+        logger.info("Using DynamoDB for history v2 persistence")
+        return DynamoDBHistoryV2Store(
+            table_name=os.getenv('DYNAMODB_TABLE_NAME', 'chat_sessions'),
+            region=os.getenv('DYNAMODB_REGION', 'us-east-1')
+        )
+    logger.info("Using in-memory history v2 storage")
+    return HistoryV2Store()
+
+def get_history_v2_store():
+    return _history_v2_singleton()
 
 
 # --- ChatService DI -----------------------------------------------------------
@@ -162,6 +200,7 @@ def get_instructor_assessment_service() -> InstructorAssessmentService:
 
 router = APIRouter(prefix="/internal/context", tags=["context"])
 chat_router = APIRouter(prefix="/internal/chat", tags=["chat"])
+history_v2_router = APIRouter(prefix="/internal/history-v2", tags=["history-v2"])
 questions_router = APIRouter(prefix="/internal/questions", tags=["questions"])
 evaluations_router = APIRouter(prefix="/internal/evaluations", tags=["evaluations"])
 student_router = APIRouter(prefix="/api/student", tags=["student"])
@@ -389,6 +428,377 @@ def clear_history_endpoint(
         "session_id": session_id,
         "message": f"Session '{session_id}' cleared successfully"
     }
+
+
+# --- History v2 Endpoints -----------------------------------------------------
+
+@history_v2_router.post("/workspaces", response_model=WorkspaceResponse)
+def create_workspace_endpoint(
+    request: WorkspaceCreateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    workspace = store.create_workspace(request.title or "New Workspace", request.user_id)
+    return WorkspaceResponse(
+        workspace_id=workspace["workspace_id"],
+        title=workspace.get("title", "New Workspace"),
+        created_at=workspace["created_at"],
+        last_accessed=workspace["last_accessed"],
+        user_id=workspace.get("user_id")
+    )
+
+
+@history_v2_router.post("/views", response_model=ViewSessionResponse)
+def create_view_session_endpoint(
+    request: ViewCreateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    view = store.create_view_session(request.workspace_id, request.view_type, request.pedagogy_mode)
+    return ViewSessionResponse(
+        view_session_id=view["view_session_id"],
+        workspace_id=view["workspace_id"],
+        view_type=view["view_type"],
+        created_at=view["created_at"],
+        last_accessed=view["last_accessed"],
+        message_count=view.get("message_count", 0),
+        total_tokens=view.get("total_tokens", 0),
+        pedagogy_mode=view.get("pedagogy_mode")
+    )
+
+
+@history_v2_router.get("/views/{view_session_id}/history", response_model=ViewHistoryResponse)
+def get_view_history_endpoint(
+    view_session_id: str,
+    store=Depends(get_history_v2_store)
+):
+    view = store.get_view_session(view_session_id)
+    if not view:
+        raise HTTPException(status_code=404, detail="View session not found")
+    messages = store.get_view_history(view_session_id)
+    return ViewHistoryResponse(
+        view_session_id=view_session_id,
+        messages=messages,
+        message_count=view.get("message_count", len(messages)),
+        created_at=view.get("created_at", ""),
+        last_accessed=view.get("last_accessed", ""),
+        total_tokens=view.get("total_tokens", 0),
+        view_type=view.get("view_type", "chat")
+    )
+
+
+@history_v2_router.post("/views/{view_session_id}/message", response_model=ChatResponse)
+def post_view_message_endpoint(
+    view_session_id: str,
+    request: ChatRequest = Body(...),
+    store=Depends(get_history_v2_store),
+    svc: ChatService = Depends(get_chat_service)
+):
+    view = store.get_view_session(view_session_id)
+    if not view:
+        raise HTTPException(status_code=404, detail="View session not found")
+
+    result = svc.chat(
+        query=request.query,
+        top_k=request.top_k or 5,
+        session_id=view_session_id,
+        include_history=request.include_history,
+        pedagogy_mode=request.pedagogy_mode,
+        editor_code=request.editor_code,
+        editor_selection=request.editor_selection,
+        last_stdout=request.last_stdout,
+        last_error=request.last_error,
+        language=request.language,
+    )
+
+    store.add_view_message(view_session_id, "user", request.query, tokens=result.get("tokens_input"))
+    store.add_view_message(
+        view_session_id,
+        "assistant",
+        result.get("answer", ""),
+        tokens=result.get("tokens_output"),
+        context_ids=result.get("context_ids")
+    )
+
+    return ChatResponse(**result)
+
+
+@history_v2_router.post("/codememory", response_model=CodeMemoryResponse)
+def create_code_memory_endpoint(
+    request: CodeMemoryCreateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    memory = store.create_code_memory(request.workspace_id, request.language, request.current_code)
+    return CodeMemoryResponse(**memory)
+
+
+@history_v2_router.patch("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
+def update_code_memory_endpoint(
+    code_memory_id: str,
+    request: CodeMemoryUpdateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    memory = store.update_code_memory(code_memory_id, request.current_code, request.last_output, request.last_error)
+    return CodeMemoryResponse(**memory)
+
+
+@history_v2_router.get("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
+def get_code_memory_endpoint(
+    code_memory_id: str,
+    store=Depends(get_history_v2_store)
+):
+    memory = store.get_code_memory(code_memory_id)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Code memory not found")
+    return CodeMemoryResponse(**memory)
+
+
+@history_v2_router.post("/programs", response_model=ProgramResponse)
+def create_program_endpoint(
+    request: ProgramCreateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    title = request.title or "Untitled Program"
+    memory = store.create_code_memory(request.workspace_id, request.language, request.current_code)
+    program = store.create_program(
+        request.workspace_id,
+        memory["code_memory_id"],
+        request.language,
+        title,
+        request.current_code,
+    )
+    return ProgramResponse(**program)
+
+
+@history_v2_router.get("/workspaces/{workspace_id}/programs", response_model=ProgramListResponse)
+def list_programs_endpoint(
+    workspace_id: str,
+    store=Depends(get_history_v2_store)
+):
+    programs = store.list_programs(workspace_id)
+    return ProgramListResponse(
+        workspace_id=workspace_id,
+        programs=[ProgramResponse(**program) for program in programs],
+    )
+
+
+@history_v2_router.get("/programs/{program_id}", response_model=ProgramResponse)
+def get_program_endpoint(
+    program_id: str,
+    store=Depends(get_history_v2_store)
+):
+    program = store.get_program(program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    return ProgramResponse(**program)
+
+
+@history_v2_router.patch("/programs/{program_id}", response_model=ProgramResponse)
+def update_program_endpoint(
+    program_id: str,
+    request: ProgramUpdateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    program = store.get_program(program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    updated = store.update_program(program_id, request.title, request.current_code, request.last_output, request.last_error)
+    if request.current_code is not None or request.last_output is not None or request.last_error is not None:
+        store.update_code_memory(program["code_memory_id"], request.current_code, request.last_output, request.last_error)
+    return ProgramResponse(**updated)
+
+
+@history_v2_router.delete("/programs/{program_id}")
+def delete_program_endpoint(
+    program_id: str,
+    store=Depends(get_history_v2_store)
+):
+    program = store.get_program(program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    store.delete_program(program_id)
+    return {"ok": True, "program_id": program_id}
+
+
+@history_v2_router.post("/codememory/{code_memory_id}/threads", response_model=AssistantThreadResponse)
+def create_thread_endpoint(
+    code_memory_id: str,
+    request: AssistantThreadCreateRequest = Body(...),
+    store=Depends(get_history_v2_store)
+):
+    thread = store.create_thread(code_memory_id, request.title or "New Assistant Thread")
+    return AssistantThreadResponse(
+        thread_id=thread["thread_id"],
+        code_memory_id=thread["code_memory_id"],
+        title=thread.get("title", "New Assistant Thread"),
+        created_at=thread["created_at"],
+        last_accessed=thread["last_accessed"],
+    )
+
+
+@history_v2_router.get("/codememory/{code_memory_id}/threads", response_model=AssistantThreadListResponse)
+def list_threads_endpoint(
+    code_memory_id: str,
+    store=Depends(get_history_v2_store)
+):
+    threads = store.list_threads(code_memory_id)
+    return AssistantThreadListResponse(
+        code_memory_id=code_memory_id,
+        threads=[
+            AssistantThreadResponse(
+                thread_id=t["thread_id"],
+                code_memory_id=t["code_memory_id"],
+                title=t.get("title", "New Assistant Thread"),
+                created_at=t.get("created_at", ""),
+                last_accessed=t.get("last_accessed", ""),
+            )
+            for t in threads
+        ]
+    )
+
+
+@history_v2_router.get("/threads/{thread_id}/history", response_model=AssistantHistoryResponse)
+def get_thread_history_endpoint(
+    thread_id: str,
+    store=Depends(get_history_v2_store)
+):
+    thread = store.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    messages = store.get_thread_history(thread_id)
+    return AssistantHistoryResponse(
+        thread_id=thread_id,
+        messages=messages,
+        message_count=thread.get("message_count", len(messages)),
+        created_at=thread.get("created_at", ""),
+        last_accessed=thread.get("last_accessed", ""),
+        code_memory_id=thread.get("code_memory_id", "")
+    )
+
+
+@history_v2_router.post("/threads/{thread_id}/message", response_model=ChatResponse)
+def post_thread_message_endpoint(
+    thread_id: str,
+    request: ChatRequest = Body(...),
+    store=Depends(get_history_v2_store),
+    svc: ChatService = Depends(get_chat_service)
+):
+    thread = store.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    result = svc.chat(
+        query=request.query,
+        top_k=request.top_k or 5,
+        session_id=thread_id,
+        include_history=request.include_history,
+        pedagogy_mode=request.pedagogy_mode,
+        editor_code=request.editor_code,
+        editor_selection=request.editor_selection,
+        last_stdout=request.last_stdout,
+        last_error=request.last_error,
+        language=request.language,
+    )
+
+    store.add_thread_message(thread_id, "user", request.query, tokens=result.get("tokens_input"))
+    store.add_thread_message(
+        thread_id,
+        "assistant",
+        result.get("answer", ""),
+        tokens=result.get("tokens_output"),
+        context_ids=result.get("context_ids")
+    )
+
+    if thread.get("message_count", 0) <= 1 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
+        try:
+            title = svc._generate_session_title(request.query)
+            store.update_thread_title(thread_id, title)
+        except Exception as e:
+            logger.warning(f"Failed to generate thread title: {e}")
+
+    return ChatResponse(**result)
+
+
+@history_v2_router.post("/edit-proposal", response_model=EditProposalResponse)
+def create_edit_proposal(
+    request: EditProposalRequest = Body(...),
+    store=Depends(get_history_v2_store),
+    svc: ChatService = Depends(get_chat_service),
+):
+    thread = None
+    if request.thread_id:
+        thread = store.get_thread(request.thread_id)
+        if not thread:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+    result = svc.chat(
+        query=request.query,
+        top_k=5,
+        session_id=request.thread_id,
+        include_history=request.include_history,
+        pedagogy_mode=request.pedagogy_mode,
+        editor_code=request.editor_code,
+        editor_selection=request.editor_selection,
+        last_stdout=request.last_stdout,
+        last_error=request.last_error,
+        language=request.language,
+    )
+
+    answer = result.get("answer", "")
+    edit_block = _extract_edit_block(answer)
+
+    if thread:
+        store.add_thread_message(request.thread_id, "user", request.query, tokens=result.get("tokens_input"))
+        store.add_thread_message(
+            request.thread_id,
+            "assistant",
+            answer,
+            tokens=result.get("tokens_output"),
+            context_ids=result.get("context_ids")
+        )
+        if thread.get("message_count", 0) <= 1 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
+            try:
+                title = svc._generate_session_title(request.query)
+                store.update_thread_title(request.thread_id, title)
+            except Exception as e:
+                logger.warning(f"Failed to generate thread title: {e}")
+
+    return EditProposalResponse(answer=answer, edit_block=edit_block, buffer_hash=request.buffer_hash)
+
+
+def _extract_edit_block(answer: str):
+    if not answer:
+        return None
+    import json
+    import re
+
+    match = re.search(r"```edit\s*([\s\S]*?)```", answer, re.IGNORECASE)
+    if not match:
+        return None
+    payload = match.group(1).strip()
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if not _is_valid_edit_block(parsed):
+        logger.warning("Invalid edit block payload received")
+        return None
+    return parsed
+
+
+def _is_valid_edit_block(payload: dict) -> bool:
+    version = payload.get("version")
+    if version != "1":
+        return False
+    scope = payload.get("scope")
+    replacement = payload.get("replacement")
+    if scope not in {"selection", "file"}:
+        return False
+    if replacement is None:
+        return False
+    if scope == "selection":
+        return bool(payload.get("target"))
+    return True
 
 
 # --- Question Generation Endpoints --------------------------------------------

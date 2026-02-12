@@ -1,60 +1,60 @@
 import { useEffect, useState } from 'react'
-import { useChat } from '../hooks/useChat'
-import { useSessions } from '../hooks/useSessions'
+import { useAssistantChat } from '../hooks/useAssistantChat'
 import { useChatStore } from '../store/chatStore'
-import type { PedagogyMode } from '../types/pedagogy'
+import type { AssistantThreadResponse } from '../api/historyV2'
 import { AiAssistHeader, AiAssistInput, AiAssistMessageList } from './ai-assist'
 
 export const AiAssistPanel = () => {
-  const { messages, isLoading, error, sendMessage } = useChat()
-  const { sessionId, clearSession, codeEditor } = useChatStore()
-  const { sessions, isLoadingSessions, fetchSessions, loadSessionHistory } = useSessions()
+  const { messages, isLoading, sendMessage, loadHistory, loadThreads, createNewThread } = useAssistantChat()
+  const { assistantThreadId, setAssistantThreadId, codeMemoryId } = useChatStore()
   const [input, setInput] = useState('')
-  const assistantMode: PedagogyMode = 'concise'
+  const [threads, setThreads] = useState<AssistantThreadResponse[]>([])
+  const [isLoadingThreads, setIsLoadingThreads] = useState(false)
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return
-    sendMessage(input, {
-      pedagogy_mode: assistantMode,
-      editor_code: codeEditor.code,
-      editor_selection: codeEditor.selection,
-      last_stdout: codeEditor.lastOutput,
-      last_error: codeEditor.lastError,
-      language: 'python',
-    })
+    sendMessage(input)
     setInput('')
   }
 
-  const handleNewChat = () => {
-    clearSession()
-    fetchSessions()
+  const refreshThreads = async () => {
+    if (!codeMemoryId) return
+    setIsLoadingThreads(true)
+    try {
+      const result = await loadThreads()
+      setThreads(result)
+    } finally {
+      setIsLoadingThreads(false)
+    }
   }
 
-  const handleSelectSession = async (selectedSessionId: string) => {
-    if (!selectedSessionId || selectedSessionId === sessionId) return
-    await loadSessionHistory(selectedSessionId)
+  const handleNewChat = async () => {
+    const threadId = await createNewThread()
+    setAssistantThreadId(threadId)
+    await loadHistory(threadId)
+    await refreshThreads()
+  }
+
+  const handleSelectThread = async (selectedThreadId: string) => {
+    if (!selectedThreadId || selectedThreadId === assistantThreadId) return
+    setAssistantThreadId(selectedThreadId)
+    await loadHistory(selectedThreadId)
   }
 
   useEffect(() => {
-    fetchSessions()
-  }, [fetchSessions])
+    refreshThreads()
+  }, [codeMemoryId, assistantThreadId])
 
 
   return (
     <aside className="w-full bg-slate-100 flex flex-col h-full">
       <AiAssistHeader
-        sessions={sessions}
-        sessionId={sessionId}
-        isLoadingSessions={isLoadingSessions}
+        threads={threads}
+        threadId={assistantThreadId}
+        isLoadingThreads={isLoadingThreads}
         onNewChat={handleNewChat}
-        onSelectSession={handleSelectSession}
+        onSelectThread={handleSelectThread}
       />
-
-      {error && (
-        <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {error}
-        </div>
-      )}
 
       <AiAssistMessageList messages={messages} isLoading={isLoading} />
 

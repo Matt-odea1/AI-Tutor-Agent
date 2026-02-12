@@ -1,20 +1,19 @@
-import type { SessionInfo } from '../../types/session'
-import { getSessionTitleFromInfo } from '../../utils/sessionUtils'
+import type { AssistantThreadResponse } from '../../api/historyV2'
 
 interface AiAssistHeaderProps {
-  sessions: SessionInfo[]
-  sessionId: string | null
-  isLoadingSessions: boolean
+  threads: AssistantThreadResponse[]
+  threadId: string | null
+  isLoadingThreads: boolean
   onNewChat: () => void
-  onSelectSession: (sessionId: string) => void
+  onSelectThread: (threadId: string) => void
 }
 
 export const AiAssistHeader = ({
-  sessions,
-  sessionId,
-  isLoadingSessions,
+  threads,
+  threadId,
+  isLoadingThreads,
   onNewChat,
-  onSelectSession,
+  onSelectThread,
 }: AiAssistHeaderProps) => {
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
@@ -26,21 +25,21 @@ export const AiAssistHeader = ({
           onClick={onNewChat}
           className="px-2 py-1 text-[11px] font-semibold text-primary-700 bg-primary-50 border border-primary-100 rounded-md hover:bg-primary-100 transition-colors"
         >
-          New chat
+          New
         </button>
         <select
-          value={sessionId || ''}
-          onChange={(event) => onSelectSession(event.target.value)}
-          className="h-6 text-[11px] text-gray-700 bg-white border border-gray-200 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          disabled={isLoadingSessions || sessions.length === 0}
-          aria-label="Chat history"
+          value={threadId || ''}
+          onChange={(event) => onSelectThread(event.target.value)}
+          className="h-6 min-w-[140px] text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          disabled={isLoadingThreads || threads.length === 0}
+          aria-label="Assistant threads"
         >
           <option value="" disabled>
-            {isLoadingSessions ? 'Loading…' : 'History'}
+            {isLoadingThreads ? 'Loading…' : threads.length === 0 ? 'No threads' : 'Threads'}
           </option>
-          {sessions.map((session) => (
-            <option key={session.session_id} value={session.session_id}>
-              {getSessionTitleFromInfo(session)}
+          {threads.map((thread) => (
+            <option key={thread.thread_id} value={thread.thread_id}>
+              {thread.title || 'Assistant Thread'}
             </option>
           ))}
         </select>
