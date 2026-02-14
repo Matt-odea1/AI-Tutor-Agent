@@ -60,8 +60,9 @@ export function useCodeExecution() {
       // Execute user code with better error handling
       try {
         await pyodide.runPythonAsync(code);
-      } catch (pythonError: any) {
+      } catch (pythonError: unknown) {
         // If there's a Python exception, format it nicely
+        const pythonErrorMessage = pythonError instanceof Error ? pythonError.message : String(pythonError)
         const formattedError = await pyodide.runPythonAsync(`
 import sys
 import traceback
@@ -70,7 +71,7 @@ if exc_type:
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
     ''.join(tb_lines)
 else:
-    str(${JSON.stringify(pythonError.message)})
+    str(${JSON.stringify(pythonErrorMessage)})
 `);
 
         const stderr = await pyodide.runPythonAsync('sys.stderr.getvalue()');
@@ -79,7 +80,7 @@ else:
         const executionTime = performance.now() - startTime;
         const executionResult: CodeExecutionResult = {
           output: '',
-          error: fullError || pythonError.message || 'Unknown Python error',
+          error: fullError || pythonErrorMessage || 'Unknown Python error',
           executionTime,
         };
         
@@ -101,25 +102,25 @@ else:
 
       setResult(executionResult);
       return executionResult;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // JavaScript/Pyodide loading errors
       const executionTime = performance.now() - startTime;
       
       // Build detailed error message
       let errorMessage = '';
       
-      if (error.name) {
+      if (error instanceof Error && error.name) {
         errorMessage += `${error.name}: `;
       }
       
-      if (error.message) {
+      if (error instanceof Error && error.message) {
         errorMessage += error.message;
       } else {
         errorMessage = 'Unknown error occurred';
       }
       
       // Add stack trace if available
-      if (error.stack) {
+      if (error instanceof Error && error.stack) {
         errorMessage += '\n\nStack Trace:\n' + error.stack;
       }
 

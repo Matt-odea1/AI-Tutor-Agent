@@ -3,8 +3,9 @@
  */
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Message } from '../types/chat'
-import { CodeBlock } from './CodeBlock'
+import type { HTMLAttributes, ReactNode } from 'react'
+import type { Message } from '../../types/chat'
+import { CodeBlock } from '../code-editor/CodeBlock'
 
 interface MessageBubbleProps {
   message: Message
@@ -24,6 +25,16 @@ const cleanMarkdown = (text: string): string => {
     .replace(/```\n([^\n`])/g, '```\n\n$1')
     // Remove excessive blank lines (more than 2)
     .replace(/\n{3,}/g, '\n\n')
+}
+
+type CodeRendererProps = HTMLAttributes<HTMLElement> & {
+  inline?: boolean
+  className?: string
+  children?: ReactNode
+}
+
+type PreRendererProps = HTMLAttributes<HTMLPreElement> & {
+  children?: ReactNode
 }
 
 export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProps) => {
@@ -84,7 +95,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
                     }
                     return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
                   },
-                  code: ({ inline, children, className, ...props }: any) => {
+                  code: ({ inline, children, className, ...props }: CodeRendererProps) => {
                     if (inline) {
                       return (
                         <code className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-sm font-medium" {...props}>
@@ -99,7 +110,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
                       </CodeBlock>
                     )
                   },
-                  pre: ({ children }: any) => {
+                  pre: ({ children }: PreRendererProps) => {
                     // Just return children directly to prevent double wrapping
                     // The CodeBlock component already has its own <pre> tag
                     return <>{children}</>

@@ -2,10 +2,10 @@
  * Chat input component - Premium design with mode selector
  */
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import { useChatStore } from '../store/chatStore'
-import { PEDAGOGY_MODES } from '../types/pedagogy'
-import type { PedagogyMode } from '../types/pedagogy'
-import { trackMessageSent, trackCodeEditorToggled, trackModeChanged } from '../utils/analytics'
+import { useChatStore } from '../../store/chatStore'
+import { PEDAGOGY_MODES } from '../../types/pedagogy'
+import type { PedagogyMode } from '../../types/pedagogy'
+import { trackMessageSent, trackCodeEditorToggled, trackModeChanged } from '../../utils/analytics'
 
 interface ChatInputProps {
   onSend: (message: string) => void

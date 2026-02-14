@@ -1,14 +1,15 @@
 import React from 'react';
-import { SessionSkeletonList } from '../SessionSkeleton';
+import { SessionSkeletonList } from '../chat/SessionSkeleton';
 import { formatRelativeTime } from '../../utils/formatTime';
+import type { SessionInfo } from '../../types/session';
 
 interface SidebarSessionListProps {
-  sessions: any[];
+  sessions: SessionInfo[];
   isLoadingSessions: boolean;
   sessionId: string | null;
   loadingSessionId: string | null;
   handleLoadSession: (sid: string) => void;
-  handleDeleteClick: (sid: string, title: string, e: React.MouseEvent) => void;
+  handleDeleteClick: (sid: string, title: string, e: React.SyntheticEvent<HTMLElement>) => void;
 }
 
 export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
@@ -72,7 +73,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
                 </p>
               </div>
               <div
-                onClick={(e) => handleDeleteClick(session.session_id, session.title, e)}
+                onClick={(e) => handleDeleteClick(session.session_id, session.title || 'Untitled', e)}
                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-opacity flex-shrink-0 cursor-pointer"
                 title="Delete session"
                 role="button"
@@ -80,7 +81,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handleDeleteClick(session.session_id, session.title, e as any);
+                    handleDeleteClick(session.session_id, session.title || 'Untitled', e);
                   }
                 }}
               >

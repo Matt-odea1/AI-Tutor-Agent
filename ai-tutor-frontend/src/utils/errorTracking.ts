@@ -175,7 +175,7 @@ export const addBreadcrumb = (
  * @param context - Error context
  * @returns Wrapped function
  */
-export const withErrorTracking = <T extends (...args: any[]) => Promise<any>>(
+export const withErrorTracking = <T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   context?: ErrorContext
 ): T => {

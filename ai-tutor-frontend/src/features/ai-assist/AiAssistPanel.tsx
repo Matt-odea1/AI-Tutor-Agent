@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { useAssistantChat } from '../hooks/useAssistantChat'
-import { useChatStore } from '../store/chatStore'
-import type { AssistantThreadResponse } from '../api/historyV2'
-import { AiAssistHeader, AiAssistInput, AiAssistMessageList } from './ai-assist'
+import { useEffect, useState, useCallback } from 'react'
+import { useAssistantChat } from '../../hooks/useAssistantChat'
+import { useChatStore } from '../../store/chatStore'
+import type { AssistantThreadResponse } from '../../api/historyV2'
+import { AiAssistHeader, AiAssistInput, AiAssistMessageList } from './index'
 
 export const AiAssistPanel = () => {
   const { messages, isLoading, sendMessage, loadHistory, loadThreads, createNewThread } = useAssistantChat()
@@ -17,7 +17,7 @@ export const AiAssistPanel = () => {
     setInput('')
   }
 
-  const refreshThreads = async () => {
+  const refreshThreads = useCallback(async () => {
     if (!codeMemoryId) return
     setIsLoadingThreads(true)
     try {
@@ -26,7 +26,7 @@ export const AiAssistPanel = () => {
     } finally {
       setIsLoadingThreads(false)
     }
-  }
+  }, [codeMemoryId, loadThreads])
 
   const handleNewChat = async () => {
     const threadId = await createNewThread()
@@ -42,8 +42,8 @@ export const AiAssistPanel = () => {
   }
 
   useEffect(() => {
-    refreshThreads()
-  }, [codeMemoryId, assistantThreadId])
+    void refreshThreads()
+  }, [refreshThreads, assistantThreadId])
 
 
   return (

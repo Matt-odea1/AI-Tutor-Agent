@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { useChatStore } from '../store/chatStore'
-import { AiAssistPanel } from './AiAssistPanel'
+import { useChatStore } from '../../store/chatStore'
+import { AiAssistPanel } from '../ai-assist/AiAssistPanel'
 
 const CodeEditor = lazy(() => import('./CodeEditor').then((module) => ({ default: module.CodeEditor })))
 

@@ -3,19 +3,19 @@
  */
 import { useEffect, useState } from 'react'
 import './App.css'
-import { ChatContainer } from './components/ChatContainer'
-import { Sidebar } from './components/Sidebar'
-import { ToastContainer } from './components/ToastContainer'
-import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
-import { ModeSelector } from './components/ModeSelector'
-import { IdeWorkspace } from './components/IdeWorkspace'
-import SEO from './components/SEO'
+import { ChatContainer } from './features/chat/ChatContainer'
+import { Sidebar } from './features/sidebar/Sidebar'
+import { ToastContainer } from './shared/ToastContainer'
+import { KeyboardShortcutsModal } from './shared/KeyboardShortcutsModal'
+import { ModeSelector } from './features/chat/ModeSelector'
+import { IdeWorkspace } from './features/code-editor/IdeWorkspace'
+import SEO from './shared/SEO'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useToastStore } from './store/toastStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
-import { LoginGate } from './components/LoginGate'
+import { LoginGate } from './shared/LoginGate'
 import { getUserSession, setUserSession, type UserSession } from './utils/userSession'
 
 function App() {
@@ -23,14 +23,8 @@ function App() {
   const { addToast } = useToastStore()
   const { setEditorOpen, setLayoutMode, codeEditor, appMode } = useChatStore()
   const [showShortcuts, setShowShortcuts] = useState(false)
-  const [userSession, setUserSessionState] = useState<UserSession | null>(null)
-  const [isReady, setIsReady] = useState(false)
-
-  useEffect(() => {
-    const session = getUserSession()
-    setUserSessionState(session)
-    setIsReady(true)
-  }, [])
+  const [userSession, setUserSessionState] = useState<UserSession | null>(() => getUserSession())
+  const [isReady] = useState(true)
 
   // Show toast when network status changes
   useEffect(() => {

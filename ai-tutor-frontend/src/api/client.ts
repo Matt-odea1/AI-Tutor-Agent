@@ -13,6 +13,11 @@ import { getUserSession } from '../utils/userSession'
 // Retry configuration
 const { MAX_RETRIES, RETRY_DELAY, RETRY_STATUS_CODES } = RETRY_CONFIG
 
+type TimedRequestConfig = InternalAxiosRequestConfig & {
+  startTime?: number
+  retryCount?: number
+}
+
 export const apiClient = axios.create({
   baseURL: API_CONFIG.baseURL,
   timeout: API_CONFIG.timeout,
@@ -43,7 +48,8 @@ const shouldRetry = (error: AxiosError, retryCount: number): boolean => {
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Start timing the request
-    ;(config as any).startTime = performance.now()
+    const timedConfig = config as TimedRequestConfig
+    timedConfig.startTime = performance.now()
 
     const session = getUserSession()
     if (session?.user_id) {
@@ -73,7 +79,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Track API timing
-    const startTime = (response.config as any).startTime
+    const startTime = (response.config as TimedRequestConfig).startTime
     if (startTime) {
       const duration = performance.now() - startTime
       const endpoint = response.config.url || 'unknown'
@@ -87,7 +93,7 @@ apiClient.interceptors.response.use(
     return response
   },
   async (error: AxiosError) => {
-    const config = error.config as any
+    const config = error.config as TimedRequestConfig | undefined
     
     // Track API errors
     if (error.response) {

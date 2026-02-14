@@ -1,7 +1,7 @@
-import { useChatStore } from '../store/chatStore'
-import chatIcon from '../assets/person.png'
-import ideIcon from '../assets/code.png'
-import questionIcon from '../assets/exam.png'
+import { useChatStore } from '../../store/chatStore'
+import chatIcon from '../../assets/person.png'
+import ideIcon from '../../assets/code.png'
+import questionIcon from '../../assets/exam.png'
 
 export const ModeSelector = () => {
   const { setAppMode } = useChatStore()

@@ -2,7 +2,7 @@
  * Main chat container component - Supports stacked and split layouts
  */
 
-import { useChat } from '../hooks/useChat'
+import { useChat } from '../../hooks/useChat'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 

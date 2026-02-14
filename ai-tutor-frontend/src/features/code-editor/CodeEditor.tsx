@@ -1,15 +1,18 @@
 import { useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import { useChatStore } from '../store/chatStore';
-import { useCodeExecution } from '../hooks/useCodeExecution';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { trackCodeExecuted } from '../utils/analytics';
-import { usePrograms } from '../hooks/usePrograms';
-import { EDITOR_TEMPLATE } from '../config/editorDefaults';
+import { useChatStore } from '../../store/chatStore';
+import { useCodeExecution } from '../../hooks/useCodeExecution';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { trackCodeExecuted } from '../../utils/analytics';
+import { usePrograms } from '../../hooks/usePrograms';
+import { EDITOR_TEMPLATE } from '../../config/editorDefaults';
 import { 
   CodeEditorHeader, 
   CodeEditorControls, 
-} from './CodeEditor/index';
+} from './index';
+import type { editor as MonacoEditor } from 'monaco-editor';
+
+type MonacoInstance = typeof import('monaco-editor');
 
 interface CodeEditorProps {
   onSendMessage: (message: string) => void;
@@ -21,14 +24,14 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
   const { runCode, isLoading } = useCodeExecution();
   const { programs, activeProgramId, createNewProgram, saveProgram, loadProgram } = usePrograms();
   const editorRef = useRef<HTMLDivElement>(null);
-  const monacoEditorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const monacoEditorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<MonacoInstance | null>(null);
   const decorationIdsRef = useRef<string[]>([]);
   const viewZoneIdsRef = useRef<string[]>([]);
   const hasUserEditsRef = useRef(false);
   const didInitProgramRef = useRef(false);
 
-  const handleBeforeMount = (monaco: any) => {
+  const handleBeforeMount = (monaco: MonacoInstance) => {
     monaco.editor.defineTheme('chat9021-light', {
       base: 'vs',
       inherit: true,
@@ -46,7 +49,7 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
     });
   };
 
-  const handleEditorMount = (editor: any, monaco: any) => {
+  const handleEditorMount = (editor: MonacoEditor.IStandaloneCodeEditor, monaco: MonacoInstance) => {
     monacoEditorRef.current = editor;
     monacoRef.current = monaco;
     monaco.editor.setTheme('chat9021-light');
@@ -87,7 +90,7 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
   useEffect(() => {
     const editor = monacoEditorRef.current;
     if (!editor) return;
-    editor.changeViewZones((accessor: any) => {
+    editor.changeViewZones((accessor: MonacoEditor.IViewZoneChangeAccessor) => {
       viewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
       viewZoneIdsRef.current = [];
 
@@ -216,7 +219,7 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
         loadProgram(activeProgramId);
       }
     }
-  }, [activeProgramId, codeEditor.isOpen, createNewProgram, loadProgram, programs]);
+  }, [activeProgramId, codeEditor.code, codeEditor.isOpen, createNewProgram, loadProgram, programs]);
 
   if (!codeEditor.isOpen) {
     return null;

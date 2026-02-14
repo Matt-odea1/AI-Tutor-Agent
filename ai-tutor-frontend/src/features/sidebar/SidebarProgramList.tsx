@@ -1,14 +1,15 @@
 import React from 'react';
-import { SessionSkeletonList } from '../SessionSkeleton';
+import { SessionSkeletonList } from '../chat/SessionSkeleton';
 import { formatRelativeTime } from '../../utils/formatTime';
+import type { CodeProgram } from '../../types/code';
 
 interface SidebarProgramListProps {
-  programs: any[];
+  programs: CodeProgram[];
   isLoadingPrograms: boolean;
   activeProgramId: string | null;
   loadingProgramId: string | null;
   handleLoadProgram: (programId: string) => void;
-  handleDeleteProgramClick: (programId: string, title: string, e: React.MouseEvent) => void;
+  handleDeleteProgramClick: (programId: string, title: string, e: React.SyntheticEvent<HTMLElement>) => void;
 }
 
 export const SidebarProgramList: React.FC<SidebarProgramListProps> = ({
@@ -80,7 +81,7 @@ export const SidebarProgramList: React.FC<SidebarProgramListProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handleDeleteProgramClick(program.program_id, program.title, e as any);
+                    handleDeleteProgramClick(program.program_id, program.title, e);
                   }
                 }}
               >

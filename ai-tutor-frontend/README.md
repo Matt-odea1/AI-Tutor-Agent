@@ -35,6 +35,30 @@ An AI-powered tutoring system designed to help students learn computer science c
   - Research study compliance
   - Anonymized data collection
 
+## 🗂 Project Structure
+
+The frontend is organized by feature for scalability and maintainability:
+
+```
+src/
+  features/
+    ai-assist/
+    chat/
+    code-editor/
+    sidebar/
+  shared/
+  hooks/
+  store/
+  types/
+  utils/
+  pages/
+  assets/
+```
+
+- `features/`: Feature-specific UI and logic, grouped by domain.
+- `shared/`: Reusable UI components (modals, skeletons, error boundaries).
+- `hooks/`, `store/`, `types/`, `utils/`: Shared logic, state, types, and helpers.
+
 ## 🚀 Quick Start
 
 ### Prerequisites

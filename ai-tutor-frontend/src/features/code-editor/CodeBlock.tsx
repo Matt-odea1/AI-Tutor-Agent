@@ -1,12 +1,12 @@
 /**
  * Enhanced code block component with syntax highlighting, copy button, and collapse
  */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 interface CodeBlockProps {
-  children: string
+  children: ReactNode
   language?: string
   className?: string
 }
@@ -20,7 +20,7 @@ export const CodeBlock = ({ children, language, className }: CodeBlockProps) => 
   const lang = language || match?.[1] || 'python'
   
   // Count lines
-  const code = String(children).replace(/\n$/, '')
+  const code = (Array.isArray(children) ? children.join('') : String(children ?? '')).replace(/\n$/, '')
   const lineCount = code.split('\n').length
   
   // Single-line code blocks: render as simple minimal block

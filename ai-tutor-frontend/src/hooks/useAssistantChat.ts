@@ -116,11 +116,11 @@ export const useAssistantChat = () => {
     }
   }
 
-  const persistThreadId = (codeMemoryIdValue: string, threadIdValue: string) => {
+  const persistThreadId = useCallback((codeMemoryIdValue: string, threadIdValue: string) => {
     const map = loadThreadMap()
     map[codeMemoryIdValue] = threadIdValue
     localStorage.setItem(STORAGE_KEYS.ASSISTANT_THREAD_MAP, JSON.stringify(map))
-  }
+  }, [])
 
   const ensureWorkspaceAndMemory = useCallback(async () => {
     let currentWorkspaceId = workspaceId
@@ -173,7 +173,7 @@ export const useAssistantChat = () => {
     persistThreadId(resolvedCodeMemoryId, thread.thread_id)
     setAssistantMessages([])
     return thread.thread_id
-  }, [codeEditor.code, codeEditor.lastError, codeEditor.lastOutput, ensureWorkspaceAndMemory, setAssistantMessages, setAssistantThreadId])
+  }, [codeEditor.code, codeEditor.lastError, codeEditor.lastOutput, ensureWorkspaceAndMemory, persistThreadId, setAssistantMessages, setAssistantThreadId])
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -286,13 +286,13 @@ export const useAssistantChat = () => {
             persistThreadId(resolvedCodeMemoryId, threadId)
           }
         }
-      } catch (err) {
+      } catch {
         setError("I'm having trouble saving this assistant message right now.")
       } finally {
         setLoading(false)
       }
     },
-    [addAssistantMessage, assistantThreadId, codeEditor, ensureWorkspaceAndMemory, isLoading, setAssistantThreadId, setError, setLoading]
+    [addAssistantMessage, assistantThreadId, codeEditor, ensureWorkspaceAndMemory, isLoading, persistThreadId, setAssistantThreadId, setError, setLoading]
   )
 
   return {

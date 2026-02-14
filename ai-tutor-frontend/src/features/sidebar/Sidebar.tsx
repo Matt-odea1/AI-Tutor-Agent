@@ -1,18 +1,18 @@
 /**
  * Sidebar component for session management - ChatGPT style
  */
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '../../store/chatStore';
 import { useState, useEffect, useRef } from 'react';
-import { useSessions } from '../hooks/useSessions';
-import { usePrograms } from '../hooks/usePrograms';
-import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { SidebarHeader } from './Sidebar/SidebarHeader';
-import { SidebarModeSwitcher } from './Sidebar/SidebarModeSwitcher';
-import { SidebarSessionList } from './Sidebar/SidebarSessionList';
-import { SidebarProgramList } from './Sidebar/SidebarProgramList';
-import { SidebarUserMenu } from './Sidebar/SidebarUserMenu';
-import { getUserSession } from '../utils/userSession';
-import type { AppMode } from '../types/appMode';
+import { useSessions } from '../../hooks/useSessions';
+import { usePrograms } from '../../hooks/usePrograms';
+import { DeleteConfirmModal } from '../../shared/DeleteConfirmModal';
+import { SidebarHeader } from './SidebarHeader';
+import { SidebarModeSwitcher } from './SidebarModeSwitcher';
+import { SidebarSessionList } from './SidebarSessionList';
+import { SidebarProgramList } from './SidebarProgramList';
+import { SidebarUserMenu } from './SidebarUserMenu';
+import { getUserSession } from '../../utils/userSession';
+import type { AppMode } from '../../types/appMode';
 
 export const Sidebar = () => {
   const { sessionId, appMode, setAppMode } = useChatStore()
@@ -73,12 +73,12 @@ export const Sidebar = () => {
       }
     };
 
-    const handleDeleteClick = (sid: string, title: string, e: React.MouseEvent) => {
+    const handleDeleteClick = (sid: string, title: string, e: React.SyntheticEvent<HTMLElement>) => {
       e.stopPropagation();
       setDeleteConfirm({ kind: 'session', id: sid, title });
     };
 
-    const handleDeleteProgramClick = (programId: string, title: string, e: React.MouseEvent) => {
+    const handleDeleteProgramClick = (programId: string, title: string, e: React.SyntheticEvent<HTMLElement>) => {
       e.stopPropagation();
       setDeleteConfirm({ kind: 'program', id: programId, title });
     };

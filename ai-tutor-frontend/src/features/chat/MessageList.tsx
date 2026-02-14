@@ -1,14 +1,16 @@
 /**
  * List of messages in the chat - Premium design
  */
-import { useEffect, useRef, lazy, Suspense } from 'react'
+import { useEffect, useRef, lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react'
 import { MessageBubble } from './MessageBubble'
-import { MessageSkeleton } from './Skeletons'
-import { useChatStore } from '../store/chatStore'
-import type { Message } from '../types/chat'
+import { MessageSkeleton } from '../../shared/Skeletons'
+import { useChatStore } from '../../store/chatStore'
+import type { Message } from '../../types/chat'
 
 // Lazy load CodeEditor for inline view
-const CodeEditor = lazy(() => import('./CodeEditor').then(module => ({ default: module.CodeEditor })))
+const CodeEditor = lazy(() =>
+  import('../code-editor/CodeEditor').then((module) => ({ default: module.CodeEditor }))
+) as LazyExoticComponent<ComponentType<{ onSendMessage: (message: string) => void }>>
 
 interface MessageListProps {
   messages: Message[]

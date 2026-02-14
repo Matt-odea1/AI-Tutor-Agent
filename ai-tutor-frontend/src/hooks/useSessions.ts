@@ -41,7 +41,7 @@ export const useSessions = () => {
     } finally {
       setLoadingSessions(false)
     }
-  }, [setSessions, setLoadingSessions, workspaceId])
+  }, [setSessions, setLoadingSessions, setWorkspaceId, workspaceId])
 
   /**
    * Load a specific session's history

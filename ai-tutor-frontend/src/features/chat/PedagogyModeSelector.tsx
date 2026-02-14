@@ -2,9 +2,9 @@
  * Pedagogy mode selector component - Custom dropdown with descriptions
  */
 import { useState, useRef, useEffect } from 'react'
-import { useChatStore } from '../store/chatStore'
-import { PEDAGOGY_MODES } from '../types/pedagogy'
-import type { PedagogyMode } from '../types/pedagogy'
+import { useChatStore } from '../../store/chatStore'
+import { PEDAGOGY_MODES } from '../../types/pedagogy'
+import type { PedagogyMode } from '../../types/pedagogy'
 
 export const PedagogyModeSelector = () => {
   const { pedagogyMode, setPedagogyMode } = useChatStore()
