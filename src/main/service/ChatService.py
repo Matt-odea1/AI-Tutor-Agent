@@ -64,6 +64,8 @@ class ChatService:
         last_stdout: Optional[str] = None,
         last_error: Optional[str] = None,
         language: Optional[str] = None,
+        history_override: Optional[List[dict]] = None,
+        persist_history: bool = True,
     ) -> dict:
         """
         Process a chat query with conversation history and context retrieval.
@@ -80,12 +82,13 @@ class ChatService:
                            pedagogy_mode, context_ids, tokens_input, tokens_output, model_id
         """
         # Step 1: Handle session ID (hybrid approach)
+        using_external_history = history_override is not None
         if session_id is None:
             session_id = str(uuid.uuid4())
             is_new_session = True
             logger.info(f"Generated new session ID: {session_id[:8]}...")
         else:
-            is_new_session = not self.memory.session_exists(session_id)
+            is_new_session = len(history_override) == 0 if using_external_history else not self.memory.session_exists(session_id)
             if is_new_session:
                 logger.info(f"First message for session: {session_id[:8]}...")
             else:
@@ -94,7 +97,7 @@ class ChatService:
         # Step 1.5: Determine and set pedagogy mode
         if pedagogy_mode is None:
             # Use session's existing mode or default
-            pedagogy_mode = self.memory.get_pedagogy_mode(session_id)
+            pedagogy_mode = self.memory.get_pedagogy_mode(session_id) if not using_external_history else "explanatory"
             # Migrate old mode values to new 3-mode system
             pedagogy_mode = self._migrate_old_mode(pedagogy_mode)
             logger.debug(f"Using session pedagogy mode: {pedagogy_mode}")
@@ -103,17 +106,24 @@ class ChatService:
             try:
                 mode_enum = self.prompt_service.validate_mode(pedagogy_mode)
                 pedagogy_mode = mode_enum.value
-                self.memory.set_pedagogy_mode(session_id, pedagogy_mode)
+                if not using_external_history:
+                    self.memory.set_pedagogy_mode(session_id, pedagogy_mode)
                 logger.info(f"Set pedagogy mode for session {session_id[:8]}... to '{pedagogy_mode}'")
             except ValueError as e:
                 logger.warning(f"Invalid pedagogy mode '{pedagogy_mode}', using default: {e}")
                 pedagogy_mode = "explanatory"
-                self.memory.set_pedagogy_mode(session_id, pedagogy_mode)
+                if not using_external_history:
+                    self.memory.set_pedagogy_mode(session_id, pedagogy_mode)
         
         # Step 2: Retrieve conversation history
         history = []
-        if include_history and not is_new_session:
-            history = self.memory.get_history(session_id, max_messages=self.max_history_messages)
+        if include_history:
+            if using_external_history:
+                history = list(history_override or [])
+                if self.max_history_messages > 0 and len(history) > self.max_history_messages:
+                    history = history[-self.max_history_messages:]
+            elif not is_new_session:
+                history = self.memory.get_history(session_id, max_messages=self.max_history_messages)
             logger.debug(f"Retrieved {len(history)} previous messages for session {session_id[:8]}...")
         
         # Step 3: Perform vector search for relevant context
@@ -174,31 +184,32 @@ class ChatService:
         # Step 6.5: Clean reasoning tags from model output
         answer = self._strip_reasoning_tags(answer)
         
-        # Step 7: Store this conversation exchange in memory
-        self.memory.add_message(
-            session_id=session_id,
-            role="user",
-            content=query,
-            tokens=tokens_input
-        )
-        self.memory.add_message(
-            session_id=session_id,
-            role="assistant",
-            content=answer,
-            tokens=tokens_output,
-            context_ids=context_ids
-        )
-        
-        logger.info(f"Stored conversation exchange in session {session_id[:8]}...")
-        
-        # Step 7.5: Generate session title if this is the first message
-        if is_new_session:
-            try:
-                title = self._generate_session_title(query)
-                self.memory.update_session_title(session_id, title)
-                logger.info(f"Generated title for session {session_id[:8]}...: '{title}'")
-            except Exception as e:
-                logger.warning(f"Failed to generate session title: {e}")
+        # Step 7: Store this conversation exchange in memory (legacy path only)
+        if persist_history and not using_external_history:
+            self.memory.add_message(
+                session_id=session_id,
+                role="user",
+                content=query,
+                tokens=tokens_input
+            )
+            self.memory.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=answer,
+                tokens=tokens_output,
+                context_ids=context_ids
+            )
+
+            logger.info(f"Stored conversation exchange in session {session_id[:8]}...")
+
+            # Step 7.5: Generate session title if this is the first message
+            if is_new_session:
+                try:
+                    title = self._generate_session_title(query)
+                    self.memory.update_session_title(session_id, title)
+                    logger.info(f"Generated title for session {session_id[:8]}...: '{title}'")
+                except Exception as e:
+                    logger.warning(f"Failed to generate session title: {e}")
         
         # Step 8: Return enhanced response
         return {

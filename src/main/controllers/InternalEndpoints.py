@@ -14,9 +14,7 @@ from src.main.service.ContextVectorService import ContextVectorService
 from src.main.service.ChatService import ChatService, ChatServiceError
 from src.main.dtos.ChatRequest import ChatRequest
 from src.main.dtos.ChatResponse import ChatResponse
-from src.main.dtos.ChatHistoryResponse import ChatHistoryResponse, ChatMessage
-from src.main.dtos.SessionListResponse import SessionListResponse, SessionInfo
-from src.main.dtos.HistoryV2Models import (
+from src.main.dtos.HistoryModels import (
     WorkspaceCreateRequest,
     WorkspaceResponse,
     ViewCreateRequest,
@@ -95,8 +93,8 @@ from src.main.service.BatchJobManager import get_batch_job_manager, JobType, Job
 # Conversation Memory
 from src.main.agentcore_setup.memory import ConversationMemory
 from src.main.agentcore_setup.dynamodb_memory import DynamoDBConversationMemory
-from src.main.agentcore_setup.history_v2 import HistoryV2Store
-from src.main.agentcore_setup.dynamodb_history_v2 import DynamoDBHistoryV2Store
+from src.main.agentcore_setup.history import HistoryStore
+from src.main.agentcore_setup.dynamodb_history import DynamoDBHistoryStore
 
 
 # --- Dependency injection ------------------------------------------------------
@@ -134,21 +132,21 @@ def get_memory_service():
     return _memory_singleton()
 
 
-# --- HistoryV2 Store DI -------------------------------------------------------
+# --- History Store DI -------------------------------------------------------
 @lru_cache(maxsize=1)
-def _history_v2_singleton():
+def _history_singleton():
     use_dynamodb = os.getenv('USE_DYNAMODB', 'false').lower() == 'true'
     if use_dynamodb:
-        logger.info("Using DynamoDB for history v2 persistence")
-        return DynamoDBHistoryV2Store(
+        logger.info("Using DynamoDB for history persistence")
+        return DynamoDBHistoryStore(
             table_name=os.getenv('DYNAMODB_TABLE_NAME', 'chat_sessions'),
             region=os.getenv('DYNAMODB_REGION', 'us-east-1')
         )
-    logger.info("Using in-memory history v2 storage")
-    return HistoryV2Store()
+    logger.info("Using in-memory history storage")
+    return HistoryStore()
 
-def get_history_v2_store():
-    return _history_v2_singleton()
+def get_history_store():
+    return _history_singleton()
 
 
 # --- ChatService DI -----------------------------------------------------------
@@ -203,7 +201,7 @@ def get_instructor_assessment_service() -> InstructorAssessmentService:
 
 router = APIRouter(prefix="/internal/context", tags=["context"])
 chat_router = APIRouter(prefix="/internal/chat", tags=["chat"])
-history_v2_router = APIRouter(prefix="/internal/history-v2", tags=["history-v2"])
+history_router = APIRouter(prefix="/internal/history", tags=["history"])
 questions_router = APIRouter(prefix="/internal/questions", tags=["questions"])
 evaluations_router = APIRouter(prefix="/internal/evaluations", tags=["evaluations"])
 student_router = APIRouter(prefix="/api/student", tags=["student"])
@@ -359,7 +357,7 @@ async def transcribe_uploaded_audio(
 # --- Chat API models ----------------------------------------------------------
 # (ChatRequest and ChatResponse now imported from DTOs)
 
-@chat_router.post("", response_model=ChatResponse)
+@chat_router.post("", response_model=ChatResponse, deprecated=True)
 def chat_endpoint(request: ChatRequest = Body(...), svc: ChatService = Depends(get_chat_service)):
     try:
         result = svc.chat(
@@ -381,111 +379,12 @@ def chat_endpoint(request: ChatRequest = Body(...), svc: ChatService = Depends(g
         return {"error": f"Unexpected error: {e}"}
 
 
-# --- Conversation History Endpoints -------------------------------------------
-
-@chat_router.get("/history/{session_id}", response_model=ChatHistoryResponse)
-def get_history_endpoint(
-    session_id: str,
-    max_messages: int = None,
-    memory: ConversationMemory = Depends(get_memory_service)
-):
-    """
-    Retrieve conversation history for a specific session.
-    
-    Args:
-        session_id: Session identifier
-        max_messages: Optional limit on number of messages to return (most recent first)
-    
-    Returns:
-        ChatHistoryResponse with session info and message history
-    """
-    # Check if session exists
-    if not memory.session_exists(session_id):
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
-    
-    # Get history and stats
-    messages = memory.get_history(session_id, max_messages=max_messages)
-    stats = memory.get_session_stats(session_id)
-    
-    # Convert to ChatMessage DTOs
-    message_dtos = [
-        ChatMessage(
-            role=msg["role"],
-            content=msg["content"],
-            timestamp=msg["timestamp"],
-            tokens=msg.get("tokens"),
-            context_ids=msg.get("context_ids", [])
-        )
-        for msg in messages
-    ]
-    
-    return ChatHistoryResponse(
-        session_id=session_id,
-        messages=message_dtos,
-        total_messages=stats["message_count"],
-        created_at=stats["created_at"],
-        last_accessed=stats["last_accessed"],
-        total_tokens=stats["total_tokens"]
-    )
-
-
-@chat_router.get("/sessions", response_model=SessionListResponse)
-def list_sessions_endpoint(memory: ConversationMemory = Depends(get_memory_service)):
-    """
-    List all active conversation sessions.
-    
-    Returns:
-        SessionListResponse with list of all sessions and their metadata
-    """
-    sessions = memory.list_sessions()
-    
-    # Convert to SessionInfo DTOs
-    session_dtos = [
-        SessionInfo(
-            session_id=s["session_id"],
-            message_count=s["message_count"],
-            created_at=s["created_at"],
-            last_accessed=s["last_accessed"],
-            total_tokens=s["total_tokens"],
-            title=s.get("title", "New Chat")
-        )
-        for s in sessions
-    ]
-    
-    return SessionListResponse(
-        sessions=session_dtos,
-        total=len(session_dtos)
-    )
-
-
-@chat_router.delete("/history/{session_id}")
-def clear_history_endpoint(
-    session_id: str,
-    memory: ConversationMemory = Depends(get_memory_service)
-):
-    """
-    Clear conversation history for a specific session.
-    
-    Args:
-        session_id: Session identifier to clear
-    
-    Returns:
-        Confirmation message
-    """
-    memory.clear_session(session_id)
-    return {
-        "ok": True,
-        "session_id": session_id,
-        "message": f"Session '{session_id}' cleared successfully"
-    }
-
-
 # --- History v2 Endpoints -----------------------------------------------------
 
-@history_v2_router.post("/workspaces", response_model=WorkspaceResponse)
+@history_router.post("/workspaces", response_model=WorkspaceResponse)
 def create_workspace_endpoint(
     request: WorkspaceCreateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     workspace = store.create_workspace(request.title or "New Workspace", user_id)
@@ -498,10 +397,10 @@ def create_workspace_endpoint(
     )
 
 
-@history_v2_router.post("/views", response_model=ViewSessionResponse)
+@history_router.post("/views", response_model=ViewSessionResponse)
 def create_view_session_endpoint(
     request: ViewCreateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, request.workspace_id, user_id)
@@ -510,6 +409,7 @@ def create_view_session_endpoint(
         view_session_id=view["view_session_id"],
         workspace_id=view["workspace_id"],
         view_type=view["view_type"],
+        title=view.get("title"),
         created_at=view["created_at"],
         last_accessed=view["last_accessed"],
         message_count=view.get("message_count", 0),
@@ -518,11 +418,11 @@ def create_view_session_endpoint(
     )
 
 
-@history_v2_router.get("/workspaces/{workspace_id}/views", response_model=ViewSessionListResponse)
+@history_router.get("/workspaces/{workspace_id}/views", response_model=ViewSessionListResponse)
 def list_view_sessions_endpoint(
     workspace_id: str,
     view_type: Optional[str] = None,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, workspace_id, user_id)
@@ -534,10 +434,10 @@ def list_view_sessions_endpoint(
     )
 
 
-@history_v2_router.get("/views/{view_session_id}/history", response_model=ViewHistoryResponse)
+@history_router.get("/views/{view_session_id}/history", response_model=ViewHistoryResponse)
 def get_view_history_endpoint(
     view_session_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     view = _assert_view_owner(store, view_session_id, user_id)
@@ -553,10 +453,10 @@ def get_view_history_endpoint(
     )
 
 
-@history_v2_router.delete("/views/{view_session_id}")
+@history_router.delete("/views/{view_session_id}")
 def delete_view_session_endpoint(
     view_session_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_view_owner(store, view_session_id, user_id)
@@ -564,15 +464,17 @@ def delete_view_session_endpoint(
     return {"ok": True, "view_session_id": view_session_id}
 
 
-@history_v2_router.post("/views/{view_session_id}/message", response_model=ChatResponse)
+@history_router.post("/views/{view_session_id}/message", response_model=ChatResponse)
 def post_view_message_endpoint(
     view_session_id: str,
     request: ChatRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     svc: ChatService = Depends(get_chat_service),
     user_id: str = Depends(_require_user_id),
 ):
-    _assert_view_owner(store, view_session_id, user_id)
+    view = _assert_view_owner(store, view_session_id, user_id)
+    existing_history = store.get_view_history(view_session_id)
+    initial_message_count = view.get("message_count", 0)
 
     result = svc.chat(
         query=request.query,
@@ -585,6 +487,8 @@ def post_view_message_endpoint(
         last_stdout=request.last_stdout,
         last_error=request.last_error,
         language=request.language,
+        history_override=existing_history,
+        persist_history=False,
     )
 
     store.add_view_message(view_session_id, "user", request.query, tokens=result.get("tokens_input"))
@@ -596,13 +500,20 @@ def post_view_message_endpoint(
         context_ids=result.get("context_ids")
     )
 
+    if initial_message_count == 0 and view.get("title") in {None, "", "New Chat", "New Session"}:
+        try:
+            title = svc._generate_session_title(request.query)
+            store.update_view_title(view_session_id, title)
+        except Exception as e:
+            logger.warning(f"Failed to generate view title: {e}")
+
     return ChatResponse(**result)
 
 
-@history_v2_router.post("/codememory", response_model=CodeMemoryResponse)
+@history_router.post("/codememory", response_model=CodeMemoryResponse)
 def create_code_memory_endpoint(
     request: CodeMemoryCreateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, request.workspace_id, user_id)
@@ -610,11 +521,11 @@ def create_code_memory_endpoint(
     return CodeMemoryResponse(**memory)
 
 
-@history_v2_router.patch("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
+@history_router.patch("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
 def update_code_memory_endpoint(
     code_memory_id: str,
     request: CodeMemoryUpdateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_code_memory_owner(store, code_memory_id, user_id)
@@ -622,20 +533,20 @@ def update_code_memory_endpoint(
     return CodeMemoryResponse(**memory)
 
 
-@history_v2_router.get("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
+@history_router.get("/codememory/{code_memory_id}", response_model=CodeMemoryResponse)
 def get_code_memory_endpoint(
     code_memory_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     memory = _assert_code_memory_owner(store, code_memory_id, user_id)
     return CodeMemoryResponse(**memory)
 
 
-@history_v2_router.post("/programs", response_model=ProgramResponse)
+@history_router.post("/programs", response_model=ProgramResponse)
 def create_program_endpoint(
     request: ProgramCreateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, request.workspace_id, user_id)
@@ -651,10 +562,10 @@ def create_program_endpoint(
     return ProgramResponse(**program)
 
 
-@history_v2_router.get("/workspaces/{workspace_id}/programs", response_model=ProgramListResponse)
+@history_router.get("/workspaces/{workspace_id}/programs", response_model=ProgramListResponse)
 def list_programs_endpoint(
     workspace_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, workspace_id, user_id)
@@ -665,21 +576,21 @@ def list_programs_endpoint(
     )
 
 
-@history_v2_router.get("/programs/{program_id}", response_model=ProgramResponse)
+@history_router.get("/programs/{program_id}", response_model=ProgramResponse)
 def get_program_endpoint(
     program_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     program = _assert_program_owner(store, program_id, user_id)
     return ProgramResponse(**program)
 
 
-@history_v2_router.patch("/programs/{program_id}", response_model=ProgramResponse)
+@history_router.patch("/programs/{program_id}", response_model=ProgramResponse)
 def update_program_endpoint(
     program_id: str,
     request: ProgramUpdateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     program = _assert_program_owner(store, program_id, user_id)
@@ -689,10 +600,10 @@ def update_program_endpoint(
     return ProgramResponse(**updated)
 
 
-@history_v2_router.delete("/programs/{program_id}")
+@history_router.delete("/programs/{program_id}")
 def delete_program_endpoint(
     program_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_program_owner(store, program_id, user_id)
@@ -700,11 +611,11 @@ def delete_program_endpoint(
     return {"ok": True, "program_id": program_id}
 
 
-@history_v2_router.post("/codememory/{code_memory_id}/threads", response_model=AssistantThreadResponse)
+@history_router.post("/codememory/{code_memory_id}/threads", response_model=AssistantThreadResponse)
 def create_thread_endpoint(
     code_memory_id: str,
     request: AssistantThreadCreateRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_code_memory_owner(store, code_memory_id, user_id)
@@ -718,10 +629,10 @@ def create_thread_endpoint(
     )
 
 
-@history_v2_router.get("/codememory/{code_memory_id}/threads", response_model=AssistantThreadListResponse)
+@history_router.get("/codememory/{code_memory_id}/threads", response_model=AssistantThreadListResponse)
 def list_threads_endpoint(
     code_memory_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     _assert_code_memory_owner(store, code_memory_id, user_id)
@@ -741,10 +652,10 @@ def list_threads_endpoint(
     )
 
 
-@history_v2_router.get("/threads/{thread_id}/history", response_model=AssistantHistoryResponse)
+@history_router.get("/threads/{thread_id}/history", response_model=AssistantHistoryResponse)
 def get_thread_history_endpoint(
     thread_id: str,
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     user_id: str = Depends(_require_user_id),
 ):
     thread = _assert_thread_owner(store, thread_id, user_id)
@@ -759,15 +670,17 @@ def get_thread_history_endpoint(
     )
 
 
-@history_v2_router.post("/threads/{thread_id}/message", response_model=ChatResponse)
+@history_router.post("/threads/{thread_id}/message", response_model=ChatResponse)
 def post_thread_message_endpoint(
     thread_id: str,
     request: ChatRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     svc: ChatService = Depends(get_chat_service),
     user_id: str = Depends(_require_user_id),
 ):
     thread = _assert_thread_owner(store, thread_id, user_id)
+    existing_history = store.get_thread_history(thread_id)
+    initial_message_count = thread.get("message_count", 0)
 
     result = svc.chat(
         query=request.query,
@@ -780,6 +693,8 @@ def post_thread_message_endpoint(
         last_stdout=request.last_stdout,
         last_error=request.last_error,
         language=request.language,
+        history_override=existing_history,
+        persist_history=False,
     )
 
     store.add_thread_message(thread_id, "user", request.query, tokens=result.get("tokens_input"))
@@ -791,7 +706,7 @@ def post_thread_message_endpoint(
         context_ids=result.get("context_ids")
     )
 
-    if thread.get("message_count", 0) <= 1 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
+    if initial_message_count == 0 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
         try:
             title = svc._generate_session_title(request.query)
             store.update_thread_title(thread_id, title)
@@ -801,16 +716,20 @@ def post_thread_message_endpoint(
     return ChatResponse(**result)
 
 
-@history_v2_router.post("/edit-proposal", response_model=EditProposalResponse)
+@history_router.post("/edit-proposal", response_model=EditProposalResponse)
 def create_edit_proposal(
     request: EditProposalRequest = Body(...),
-    store=Depends(get_history_v2_store),
+    store=Depends(get_history_store),
     svc: ChatService = Depends(get_chat_service),
     user_id: str = Depends(_require_user_id),
 ):
     thread = None
+    existing_history = []
+    initial_message_count = 0
     if request.thread_id:
         thread = _assert_thread_owner(store, request.thread_id, user_id)
+        existing_history = store.get_thread_history(request.thread_id)
+        initial_message_count = thread.get("message_count", 0)
 
     result = svc.chat(
         query=request.query,
@@ -823,6 +742,8 @@ def create_edit_proposal(
         last_stdout=request.last_stdout,
         last_error=request.last_error,
         language=request.language,
+        history_override=existing_history,
+        persist_history=False,
     )
 
     answer = result.get("answer", "")
@@ -837,7 +758,7 @@ def create_edit_proposal(
             tokens=result.get("tokens_output"),
             context_ids=result.get("context_ids")
         )
-        if thread.get("message_count", 0) <= 1 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
+        if initial_message_count == 0 and thread.get("title") in {"New Assistant Thread", "New Thread"}:
             try:
                 title = svc._generate_session_title(request.query)
                 store.update_thread_title(request.thread_id, title)

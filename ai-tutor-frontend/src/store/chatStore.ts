@@ -97,7 +97,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   assistantMessages: [],
   sessionId: null,
   assistantThreadId: null,
-  workspaceId: null,
+  workspaceId: localStorage.getItem(STORAGE_KEYS.WORKSPACE_ID),
   codeMemoryId: null,
   appMode: (localStorage.getItem(STORAGE_KEYS.APP_MODE) as AppMode) || null,
   pedagogyMode: (localStorage.getItem(STORAGE_KEYS.PEDAGOGY_MODE) as PedagogyMode) || DEFAULT_PEDAGOGY_MODE,
@@ -153,7 +153,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   },
 
   setAssistantThreadId: (id) => set({ assistantThreadId: id }),
-  setWorkspaceId: (id) => set({ workspaceId: id }),
+  setWorkspaceId: (id) => {
+    if (id) {
+      localStorage.setItem(STORAGE_KEYS.WORKSPACE_ID, id)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.WORKSPACE_ID)
+    }
+    set({ workspaceId: id })
+  },
   setCodeMemoryId: (id) => set({ codeMemoryId: id }),
 
   setAppMode: (mode) => {

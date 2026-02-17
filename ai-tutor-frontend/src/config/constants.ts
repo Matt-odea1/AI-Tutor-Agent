@@ -10,6 +10,7 @@ export const DEFAULT_TOP_K = 5
 
 export const STORAGE_KEYS = {
   SESSION_ID: 'ai-tutor-session-id',
+  WORKSPACE_ID: 'ai-tutor-workspace-id',
   PEDAGOGY_MODE: 'ai-tutor-pedagogy-mode',
   APP_MODE: 'ai-tutor-app-mode',
   THEME: 'ai-tutor-theme',

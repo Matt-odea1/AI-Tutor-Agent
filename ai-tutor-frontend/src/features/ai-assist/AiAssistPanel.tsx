@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAssistantChat } from '../../hooks/useAssistantChat'
 import { useChatStore } from '../../store/chatStore'
-import type { AssistantThreadResponse } from '../../api/historyV2'
+import type { AssistantThreadResponse } from '../../api/history'
 import { AiAssistHeader, AiAssistInput, AiAssistMessageList } from './index'
 
 export const AiAssistPanel = () => {

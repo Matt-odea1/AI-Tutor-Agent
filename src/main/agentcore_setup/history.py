@@ -1,5 +1,5 @@
 """
-In-memory History v2 store for workspaces, view sessions, code memories, and assistant threads.
+In-memory History store for workspaces, view sessions, code memories, and assistant threads.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -14,7 +14,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class HistoryV2Store:
+class HistoryStore:
     def __init__(self):
         self.workspaces: Dict[str, Dict[str, Any]] = {}
         self.view_sessions: Dict[str, Dict[str, Any]] = {}
@@ -24,7 +24,6 @@ class HistoryV2Store:
         self.threads: Dict[str, Dict[str, Any]] = {}
         self.thread_messages: Dict[str, List[Dict[str, Any]]] = {}
 
-    # Workspace
     def create_workspace(self, title: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         workspace_id = str(uuid.uuid4())
         now = _now_iso()
@@ -41,14 +40,15 @@ class HistoryV2Store:
     def get_workspace(self, workspace_id: str) -> Optional[Dict[str, Any]]:
         return self.workspaces.get(workspace_id)
 
-    # View sessions
     def create_view_session(self, workspace_id: str, view_type: str, pedagogy_mode: Optional[str]) -> Dict[str, Any]:
         view_session_id = str(uuid.uuid4())
         now = _now_iso()
+        default_title = "New Chat" if view_type == "chat" else "New Session"
         session = {
             "view_session_id": view_session_id,
             "workspace_id": workspace_id,
             "view_type": view_type,
+            "title": default_title,
             "created_at": now,
             "last_accessed": now,
             "message_count": 0,
@@ -61,6 +61,12 @@ class HistoryV2Store:
 
     def get_view_session(self, view_session_id: str) -> Optional[Dict[str, Any]]:
         return self.view_sessions.get(view_session_id)
+
+    def update_view_title(self, view_session_id: str, title: str) -> Dict[str, Any]:
+        view = self.view_sessions[view_session_id]
+        view["title"] = title
+        view["last_accessed"] = _now_iso()
+        return view
 
     def list_view_sessions(self, workspace_id: str, view_type: Optional[str] = None) -> List[Dict[str, Any]]:
         sessions = [v for v in self.view_sessions.values() if v.get("workspace_id") == workspace_id]
@@ -107,7 +113,6 @@ class HistoryV2Store:
         if view:
             logger.info(f"Deleted view session {view_session_id[:8]}... from workspace {view.get('workspace_id')}")
 
-    # Code memories
     def create_code_memory(self, workspace_id: str, language: str, current_code: str) -> Dict[str, Any]:
         code_memory_id = str(uuid.uuid4())
         now = _now_iso()
@@ -138,7 +143,6 @@ class HistoryV2Store:
     def get_code_memory(self, code_memory_id: str) -> Optional[Dict[str, Any]]:
         return self.code_memories.get(code_memory_id)
 
-    # Programs
     def create_program(
         self,
         workspace_id: str,
@@ -193,7 +197,6 @@ class HistoryV2Store:
     def delete_program(self, program_id: str) -> None:
         self.programs.pop(program_id, None)
 
-    # Assistant threads
     def create_thread(self, code_memory_id: str, title: str) -> Dict[str, Any]:
         thread_id = str(uuid.uuid4())
         now = _now_iso()

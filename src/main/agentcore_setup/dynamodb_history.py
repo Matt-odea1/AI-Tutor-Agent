@@ -1,5 +1,5 @@
 """
-DynamoDB-backed History v2 store.
+DynamoDB-backed History store.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -18,15 +18,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class DynamoDBHistoryV2Store:
+class DynamoDBHistoryStore:
     def __init__(self, table_name: Optional[str] = None, region: Optional[str] = None):
         self.table_name = table_name or os.getenv('DYNAMODB_TABLE_NAME', 'chat_sessions')
         self.region = region or os.getenv('DYNAMODB_REGION', 'us-east-1')
         self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
         self.table = self.dynamodb.Table(self.table_name)
-        logger.info(f"DynamoDBHistoryV2Store initialized: table={self.table_name}, region={self.region}")
+        logger.info(f"DynamoDBHistoryStore initialized: table={self.table_name}, region={self.region}")
 
-    # Workspace
     def create_workspace(self, title: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         workspace_id = str(uuid.uuid4())
         now = _now_iso()
@@ -46,16 +45,17 @@ class DynamoDBHistoryV2Store:
         response = self.table.get_item(Key={"PK": f"WORKSPACE#{workspace_id}", "SK": "METADATA"})
         return response.get("Item")
 
-    # View sessions
     def create_view_session(self, workspace_id: str, view_type: str, pedagogy_mode: Optional[str]) -> Dict[str, Any]:
         view_session_id = str(uuid.uuid4())
         now = _now_iso()
+        default_title = "New Chat" if view_type == "chat" else "New Session"
         metadata = {
             "PK": f"VIEW#{view_session_id}",
             "SK": "METADATA",
             "view_session_id": view_session_id,
             "workspace_id": workspace_id,
             "view_type": view_type,
+            "title": default_title,
             "created_at": now,
             "last_accessed": now,
             "message_count": 0,
@@ -68,6 +68,7 @@ class DynamoDBHistoryV2Store:
             "view_session_id": view_session_id,
             "workspace_id": workspace_id,
             "view_type": view_type,
+            "title": default_title,
             "created_at": now,
             "last_accessed": now,
             "message_count": 0,
@@ -81,6 +82,29 @@ class DynamoDBHistoryV2Store:
     def get_view_session(self, view_session_id: str) -> Optional[Dict[str, Any]]:
         response = self.table.get_item(Key={"PK": f"VIEW#{view_session_id}", "SK": "METADATA"})
         return response.get("Item")
+
+    def update_view_title(self, view_session_id: str, title: str) -> Dict[str, Any]:
+        expr_vals = {":title": title, ":la": _now_iso()}
+        response = self.table.update_item(
+            Key={"PK": f"VIEW#{view_session_id}", "SK": "METADATA"},
+            UpdateExpression="SET title = :title, last_accessed = :la",
+            ExpressionAttributeValues=expr_vals,
+            ReturnValues="ALL_NEW",
+        )
+        updated = response.get("Attributes")
+        if updated:
+            try:
+                self.table.update_item(
+                    Key={
+                        "PK": f"WORKSPACE#{updated['workspace_id']}",
+                        "SK": f"VIEW#{updated['view_type']}#{view_session_id}",
+                    },
+                    UpdateExpression="SET title = :title, last_accessed = :la",
+                    ExpressionAttributeValues=expr_vals,
+                )
+            except ClientError:
+                pass
+        return updated
 
     def add_view_message(
         self,
@@ -168,7 +192,6 @@ class DynamoDBHistoryV2Store:
         for item in response.get("Items", []):
             self.table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
 
-    # Code memories
     def create_code_memory(self, workspace_id: str, language: str, current_code: str) -> Dict[str, Any]:
         code_memory_id = str(uuid.uuid4())
         now = _now_iso()
@@ -213,7 +236,6 @@ class DynamoDBHistoryV2Store:
         response = self.table.get_item(Key={"PK": f"CODEMEM#{code_memory_id}", "SK": "METADATA"})
         return response.get("Item")
 
-    # Programs
     def create_program(
         self,
         workspace_id: str,
@@ -321,7 +343,6 @@ class DynamoDBHistoryV2Store:
             except ClientError:
                 pass
 
-    # Assistant threads
     def create_thread(self, code_memory_id: str, title: str) -> Dict[str, Any]:
         thread_id = str(uuid.uuid4())
         now = _now_iso()

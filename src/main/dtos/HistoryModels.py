@@ -1,5 +1,5 @@
 """
-DTOs for History v2 (workspaces, views, code memory, assistant threads).
+DTOs for History (workspaces, views, code memory, assistant threads).
 """
 from pydantic import BaseModel
 from typing import List, Optional
@@ -29,6 +29,7 @@ class ViewSessionResponse(BaseModel):
     view_session_id: str
     workspace_id: str
     view_type: str
+    title: Optional[str] = None
     created_at: str
     last_accessed: str
     message_count: int

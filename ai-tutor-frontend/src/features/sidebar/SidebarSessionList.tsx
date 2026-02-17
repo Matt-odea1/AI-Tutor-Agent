@@ -49,6 +49,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
       {sessions.map((session) => {
         const isActive = sessionId === session.session_id;
         const isLoading = loadingSessionId === session.session_id;
+        const sessionTitle = session.title?.trim() || 'Untitled';
         return (
           <button
             key={session.session_id}
@@ -63,7 +64,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
             <div className="flex items-center justify-between gap-1">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-medium truncate">{session.title}</p>
+                  <p className="text-xs font-medium truncate">{sessionTitle}</p>
                   {isLoading && (
                     <div className="animate-spin h-2.5 w-2.5 border border-primary-500 border-t-transparent rounded-full" />
                   )}
@@ -73,7 +74,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
                 </p>
               </div>
               <div
-                onClick={(e) => handleDeleteClick(session.session_id, session.title || 'Untitled', e)}
+                onClick={(e) => handleDeleteClick(session.session_id, sessionTitle, e)}
                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-opacity flex-shrink-0 cursor-pointer"
                 title="Delete session"
                 role="button"
@@ -81,7 +82,7 @@ export const SidebarSessionList: React.FC<SidebarSessionListProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handleDeleteClick(session.session_id, session.title || 'Untitled', e);
+                    handleDeleteClick(session.session_id, sessionTitle, e);
                   }
                 }}
               >

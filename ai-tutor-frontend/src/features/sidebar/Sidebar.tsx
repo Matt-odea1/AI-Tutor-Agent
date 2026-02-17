@@ -60,6 +60,16 @@ export const Sidebar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isUserMenuOpen]);
 
+  useEffect(() => {
+    if (appMode === 'ide') {
+      fetchPrograms();
+      return;
+    }
+    if (appMode) {
+      fetchSessions();
+    }
+  }, [appMode, fetchPrograms, fetchSessions]);
+
     const handleLoadSession = async (sid: string) => {
       if (sid === sessionId) return;
       setLoadingSessionId(sid);

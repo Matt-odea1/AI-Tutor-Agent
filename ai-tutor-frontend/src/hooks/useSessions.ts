@@ -4,7 +4,7 @@
 import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { listSessions, getSessionHistory, deleteSession } from '../api/sessions'
-import { createWorkspace } from '../api/historyV2'
+import { createWorkspace } from '../api/history'
 import type { Message } from '../types'
 
 export const useSessions = () => {
@@ -102,7 +102,7 @@ export const useSessions = () => {
       setWorkspaceId(resolvedWorkspaceId)
     }
     // Create a new general chat session (view)
-    const newSession = await import('../api/historyV2').then(m => m.createViewSession(resolvedWorkspaceId, 'chat'))
+    const newSession = await import('../api/history').then(m => m.createViewSession(resolvedWorkspaceId, 'chat'))
     // Fetch sessions and load the new session
     await fetchSessions()
     await loadSessionHistory(newSession.view_session_id)

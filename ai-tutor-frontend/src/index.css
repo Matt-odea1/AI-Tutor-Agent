@@ -157,7 +157,7 @@
 
   .markdown-content th,
   .markdown-content td {
-    @apply border border-gray-300 px-3 py-2 text-left;
+    @apply border border-gray-300 px-3 py-2 text-left align-top break-words;
   }
 
   .markdown-content th {

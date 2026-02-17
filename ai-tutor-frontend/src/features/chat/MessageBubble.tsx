@@ -132,6 +132,11 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
                   ul: ({ children }) => <ul className="ml-4 mb-3 space-y-1 list-disc">{children}</ul>,
                   ol: ({ children }) => <ol className="ml-4 mb-3 space-y-1 list-decimal">{children}</ol>,
                   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                  table: ({ children }) => (
+                    <div className="max-w-full overflow-x-auto my-4">
+                      <table className="min-w-full">{children}</table>
+                    </div>
+                  ),
                   a: ({ children, ...props }) => (
                     <a className="text-primary-600 hover:text-primary-700 underline font-medium" target="_blank" rel="noopener noreferrer" {...props}>
                       {children}

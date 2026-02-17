@@ -1,7 +1,7 @@
 /**
  * Session management API methods
  */
-import { listViewSessions, getViewHistory, deleteViewSession } from './historyV2'
+import { listViewSessions, getViewHistory, deleteViewSession } from './history'
 import type { SessionListResponse, ChatHistoryResponse } from '../types'
 import { getUserSession } from '../utils/userSession'
 
@@ -21,6 +21,7 @@ export const listSessions = async (workspaceId: string | null): Promise<SessionL
     last_accessed: view.last_accessed,
     total_tokens: view.total_tokens,
     pedagogy_mode: view.pedagogy_mode || undefined,
+    title: view.title || undefined,
   }))
   return { sessions, total: sessions.length }
 }

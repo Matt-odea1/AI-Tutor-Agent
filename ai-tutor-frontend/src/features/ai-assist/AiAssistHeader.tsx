@@ -1,4 +1,4 @@
-import type { AssistantThreadResponse } from '../../api/historyV2'
+import type { AssistantThreadResponse } from '../../api/history'
 
 interface AiAssistHeaderProps {
   threads: AssistantThreadResponse[]
