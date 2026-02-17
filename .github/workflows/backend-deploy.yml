@@ -27,9 +27,26 @@ jobs:
       - name: Deploy via SSM Run Command
         run: |
           set -euo pipefail
+          INSTANCE_ID="${{ vars.EC2_INSTANCE_ID }}"
+
+          if [[ -z "${INSTANCE_ID}" ]]; then
+            INSTANCE_ID=$(aws ec2 describe-instances \
+              --region "${DEPLOY_REGION}" \
+              --filters "Name=tag:Name,Values=ai-tutor-app" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[0].Instances[0].InstanceId' \
+              --output text)
+          fi
+
+          if [[ -z "${INSTANCE_ID}" || "${INSTANCE_ID}" == "None" ]]; then
+            echo "EC2 instance id not found. Set repository variable EC2_INSTANCE_ID or ensure an instance tagged Name=ai-tutor-app is running in ${DEPLOY_REGION}."
+            exit 1
+          fi
+
+          echo "Using EC2 instance: ${INSTANCE_ID}"
+
           aws ssm send-command \
             --region "${DEPLOY_REGION}" \
-            --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
+            --instance-ids "${INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy backend from GitHub Actions" \
             --parameters commands='[
