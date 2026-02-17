@@ -3,8 +3,7 @@
  */
 import { apiClient } from './client'
 import { API_ENDPOINTS } from '../config/api.config'
-import type { ChatRequest, ChatResponse } from '../types/chat'
-import type { ChatHistoryResponse } from '../types/session'
+import type { ChatRequest, ChatResponse, ChatHistoryResponse } from '../types'
 
 /**
  * Send a chat message to the AI tutor

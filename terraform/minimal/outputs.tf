@@ -6,6 +6,10 @@ output "ec2_public_dns" {
   value = aws_instance.app.public_dns
 }
 
+output "ec2_instance_id" {
+  value = aws_instance.app.id
+}
+
 output "s3_bucket_name" {
   value = aws_s3_bucket.frontend.bucket
 }

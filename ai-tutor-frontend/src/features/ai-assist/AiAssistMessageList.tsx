@@ -1,4 +1,4 @@
-import type { Message } from '../../types/chat'
+import type { Message } from '../../types'
 import { AiAssistMessageBubble } from './AiAssistMessageBubble'
 
 interface AiAssistMessageListProps {

@@ -42,7 +42,7 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory:
 ```env
 # Neo4j Configuration
-NEO4J_URI=bolt://localhost:7687
+NEO4J_URI=bolt://3.27.56.110:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_password
 
@@ -306,7 +306,7 @@ AI-Tutor-Agent/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEO4J_URI` | Neo4j connection URI | `bolt://localhost:7687` |
+| `NEO4J_URI` | Neo4j connection URI | `bolt://3.27.56.110:7687` |
 | `NEO4J_USERNAME` | Neo4j username | `neo4j` |
 | `NEO4J_PASSWORD` | Neo4j password | - |
 | `AWS_REGION` | AWS region for Bedrock | `ap-southeast-2` |
@@ -447,7 +447,7 @@ for student in students:
 neo4j status
 
 # Verify credentials in .env
-NEO4J_URI=bolt://localhost:7687
+NEO4J_URI=bolt://3.27.56.110:7687
 ```
 
 **AWS Bedrock Access Error:**

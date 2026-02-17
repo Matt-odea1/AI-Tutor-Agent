@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 import { API_ENDPOINTS } from '../config/api.config'
-import type { ChatRequest, ChatResponse } from '../types/chat'
+import type { ChatRequest, ChatResponse } from '../types'
 import { getUserSession } from '../utils/userSession'
 
 export interface WorkspaceResponse {

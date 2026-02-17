@@ -9,6 +9,7 @@ This Terraform stack provisions the **cheapest workable** AWS setup:
 - Terraform installed
 - AWS credentials configured
 - An EC2 key pair already created in AWS
+- IAM permissions to manage EC2 + S3, and (for SSM CI/CD) create/attach IAM role + instance profile
 
 ## Quick Start
 ```bash
@@ -36,6 +37,7 @@ terraform output
 Key outputs:
 - `ec2_public_ip`
 - `ec2_public_dns`
+- `ec2_instance_id`
 - `s3_bucket_name`
 
 ## Notes

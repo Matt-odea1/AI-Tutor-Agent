@@ -1,7 +1,7 @@
 import React from 'react';
 import { SessionSkeletonList } from '../chat/SessionSkeleton';
 import { formatRelativeTime } from '../../utils/formatTime';
-import type { SessionInfo } from '../../types/session';
+import type { SessionInfo } from '../../types';
 
 interface SidebarSessionListProps {
   sessions: SessionInfo[];

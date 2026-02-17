@@ -25,7 +25,7 @@
 import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { createWorkspace, createViewSession, postViewMessage } from '../api/historyV2'
-import type { Message, ChatEditorContext } from '../types/chat'
+import type { Message, ChatEditorContext } from '../types'
 
 export const useChat = () => {
   const {

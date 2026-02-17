@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { getPyodide } from '../utils/pyodideLoader';
-import type { CodeExecutionResult } from '../types/code';
+import type { CodeExecutionResult } from '../types';
 
 /**
  * Custom hook for executing Python code in the browser using Pyodide

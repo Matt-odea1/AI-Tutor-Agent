@@ -3,8 +3,7 @@
  */
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { useChatStore } from '../../store/chatStore'
-import { PEDAGOGY_MODES } from '../../types/pedagogy'
-import type { PedagogyMode } from '../../types/pedagogy'
+import { PEDAGOGY_MODES, type PedagogyMode } from '../../types'
 import { trackMessageSent, trackCodeEditorToggled, trackModeChanged } from '../../utils/analytics'
 
 interface ChatInputProps {

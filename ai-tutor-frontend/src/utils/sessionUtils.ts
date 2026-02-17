@@ -1,8 +1,7 @@
 /**
  * Session utility functions
  */
-import type { Message } from '../types/chat'
-import type { SessionInfo } from '../types/session'
+import type { Message, SessionInfo } from '../types'
 import { SESSION_CONFIG } from '../config/theme'
 
 /**

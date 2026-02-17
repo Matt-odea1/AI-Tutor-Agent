@@ -3,12 +3,11 @@
  */
 import { useEffect, useState } from 'react'
 import './App.css'
-import { ChatContainer } from './features/chat/ChatContainer'
-import { Sidebar } from './features/sidebar/Sidebar'
+import { ChatContainer, ModeSelector } from './features/chat'
+import { Sidebar } from './features/sidebar'
 import { ToastContainer } from './shared/ToastContainer'
 import { KeyboardShortcutsModal } from './shared/KeyboardShortcutsModal'
-import { ModeSelector } from './features/chat/ModeSelector'
-import { IdeWorkspace } from './features/code-editor/IdeWorkspace'
+import { IdeWorkspace } from './features/code-editor'
 import SEO from './shared/SEO'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useToastStore } from './store/toastStore'
@@ -113,33 +112,33 @@ function App() {
       <div className="app-container h-screen flex bg-white" role="application" aria-label="AI Tutor Chat Application">
         {/* Toast Notifications */}
         <ToastContainer />
-        
+
         {/* Keyboard Shortcuts Modal */}
         {showShortcuts && <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />}
-        
+
         {/* Sidebar - ChatGPT Style */}
         <Sidebar />
 
-      {/* Main Content Area - Full Width */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
-          <div className="h-full">
-            {!appMode && <ModeSelector />}
-            {appMode === 'chat' && <ChatContainer />}
-            {appMode === 'ide' && <IdeWorkspace />}
-            {appMode === 'questions' && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center space-y-2">
-                  <div className="text-3xl">📝</div>
-                  <h2 className="text-xl font-semibold text-gray-900">Question Generation</h2>
-                  <p className="text-sm text-gray-600">Coming soon.</p>
+        {/* Main Content Area - Full Width */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
+            <div className="h-full">
+              {!appMode && <ModeSelector />}
+              {appMode === 'chat' && <ChatContainer />}
+              {appMode === 'ide' && <IdeWorkspace />}
+              {appMode === 'questions' && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center space-y-2">
+                    <div className="text-3xl">📝</div>
+                    <h2 className="text-xl font-semibold text-gray-900">Question Generation</h2>
+                    <p className="text-sm text-gray-600">Coming soon.</p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </main>
+              )}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
     </>
   )
 }

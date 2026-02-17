@@ -13,6 +13,35 @@ provider "aws" {
   region = var.aws_region
 }
 
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "ai-tutor-ec2-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_ssm_core" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ec2_ssm_profile" {
+  name = "ai-tutor-ec2-ssm-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
 # Use default VPC to keep costs and complexity low
 resource "aws_default_vpc" "default" {}
 
@@ -63,6 +92,22 @@ resource "aws_security_group" "app_sg" {
     cidr_blocks = [var.admin_ip_cidr]
   }
 
+  ingress {
+    description = "Neo4j Bolt (restricted)"
+    from_port   = 7687
+    to_port     = 7687
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_ip_cidr]
+  }
+
+  ingress {
+    description = "Neo4j Browser HTTP (restricted)"
+    from_port   = 7474
+    to_port     = 7474
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_ip_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -80,6 +125,7 @@ resource "aws_instance" "app" {
   subnet_id                   = data.aws_subnets.default.ids[0]
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_ssm_profile.name
 
   root_block_device {
     volume_type = "gp3"

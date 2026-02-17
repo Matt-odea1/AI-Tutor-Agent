@@ -2,11 +2,16 @@
  * Zustand store for chat state management
  */
 import { create } from 'zustand'
-import type { Message } from '../types/chat'
-import type { PedagogyMode } from '../types/pedagogy'
-import type { CodeEditorState, CodeProgram, EditorDecoration, EditorDeletionZone } from '../types/code'
-import type { SessionInfo } from '../types/session'
-import type { AppMode } from '../types/appMode'
+import type {
+  AppMode,
+  Message,
+  PedagogyMode,
+  CodeEditorState,
+  CodeProgram,
+  EditorDecoration,
+  EditorDeletionZone,
+  SessionInfo,
+} from '../types'
 import { DEFAULT_PEDAGOGY_MODE, STORAGE_KEYS } from '../config/constants'
 import { EDITOR_TEMPLATE } from '../config/editorDefaults'
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { diffLines } from 'diff'
 import { useChatStore } from '../../store/chatStore'
-import type { Message } from '../../types/chat'
+import type { Message } from '../../types'
 import { hashString } from '../../utils/hash'
 
 interface AiAssistMessageBubbleProps {

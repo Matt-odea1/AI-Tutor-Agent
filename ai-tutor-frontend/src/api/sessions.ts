@@ -2,7 +2,7 @@
  * Session management API methods
  */
 import { listViewSessions, getViewHistory, deleteViewSession } from './historyV2'
-import type { SessionListResponse, ChatHistoryResponse } from '../types/session'
+import type { SessionListResponse, ChatHistoryResponse } from '../types'
 import { getUserSession } from '../utils/userSession'
 
 /**

@@ -1,4 +1,4 @@
-import type { CodeExecutionHistoryEntry } from '../../types/code';
+import type { CodeExecutionHistoryEntry } from '../../types';
 
 interface CodeHistoryModalProps {
   history: CodeExecutionHistoryEntry[];

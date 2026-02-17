@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { createWorkspace } from '../api/historyV2'
 import { createProgram, deleteProgram, getProgram, listPrograms, updateProgram } from '../api/historyV2'
-import type { CodeProgram } from '../types/code'
+import type { CodeProgram } from '../types'
 
 const generateProgramTitle = (code: string) => {
   const lines = code

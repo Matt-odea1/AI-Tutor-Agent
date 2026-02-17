@@ -1,7 +1,7 @@
 import React from 'react';
 import { SessionSkeletonList } from '../chat/SessionSkeleton';
 import { formatRelativeTime } from '../../utils/formatTime';
-import type { CodeProgram } from '../../types/code';
+import type { CodeProgram } from '../../types';
 
 interface SidebarProgramListProps {
   programs: CodeProgram[];

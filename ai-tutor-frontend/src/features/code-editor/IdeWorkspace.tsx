@@ -1,8 +1,15 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import { useChatStore } from '../../store/chatStore'
-import { AiAssistPanel } from '../ai-assist/AiAssistPanel'
+import { AiAssistPanel } from '../ai-assist'
 
-const CodeEditor = lazy(() => import('./CodeEditor').then((module) => ({ default: module.CodeEditor })))
+type CodeEditorProps = {
+  onSendMessage: (message: string) => void
+  showAskAI?: boolean
+}
+
+const CodeEditor = lazy(() =>
+  import('./CodeEditor').then((module) => ({ default: module.CodeEditor }))
+) as LazyExoticComponent<ComponentType<CodeEditorProps>>
 
 export const IdeWorkspace = () => {
   const { setEditorOpen, setEditorMinimized, setLayoutMode } = useChatStore()

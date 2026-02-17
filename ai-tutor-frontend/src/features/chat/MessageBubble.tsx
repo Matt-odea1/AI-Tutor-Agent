@@ -4,8 +4,8 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { HTMLAttributes, ReactNode } from 'react'
-import type { Message } from '../../types/chat'
-import { CodeBlock } from '../code-editor/CodeBlock'
+import type { Message } from '../../types'
+import { CodeBlock } from '../code-editor'
 
 interface MessageBubbleProps {
   message: Message
@@ -13,18 +13,23 @@ interface MessageBubbleProps {
 }
 
 // Clean up markdown formatting issues
-const cleanMarkdown = (text: string): string => {
+const normalizeInlineMarkdown = (text: string): string => {
   return text
-    // Remove standalone punctuation paragraphs after code blocks
-    .replace(/```\n\n([.,!?;:])\n/g, '```$1\n')
-    .replace(/```\n\n([.,!?;:])\s/g, '```$1 ')
-    // Remove standalone punctuation at start of line
-    .replace(/\n\n([.,!?;:])\n/g, '$1\n')
-    // Fix spacing around code blocks - ensure blank lines
-    .replace(/([^\n])\n```/g, '$1\n\n```')
-    .replace(/```\n([^\n`])/g, '```\n\n$1')
     // Remove excessive blank lines (more than 2)
     .replace(/\n{3,}/g, '\n\n')
+    // Keep inline code from becoming standalone lines
+    .replace(/\n\s*(\*\*`[^`\n]+`\*\*|`[^`\n]+`)\s*\n/g, ' $1 ')
+    .replace(/\n\s*(\*\*`[^`\n]+`\*\*|`[^`\n]+`)\s+(?=\S)/g, ' $1 ')
+    // Remove newlines inside inline code (defensive)
+    .replace(/`([^`\n]+)\n([^`]+)`/g, '`$1 $2`')
+}
+
+const cleanMarkdown = (text: string): string => {
+  const segments = text.split(/(```[\s\S]*?```)/g)
+
+  return segments
+    .map((segment) => (segment.startsWith('```') ? segment : normalizeInlineMarkdown(segment)))
+    .join('')
 }
 
 type CodeRendererProps = HTMLAttributes<HTMLElement> & {
@@ -40,7 +45,6 @@ type PreRendererProps = HTMLAttributes<HTMLPreElement> & {
 export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProps) => {
   const isUser = message.role === 'user'
   const isError = message.isError
-  
   // Clean markdown for assistant messages
   const cleanedContent = !isUser ? cleanMarkdown(message.content) : message.content
 
@@ -88,15 +92,25 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
                 remarkPlugins={[remarkGfm]}
                 components={{
                   p: ({ children }) => {
-                    // Skip paragraphs that are just standalone punctuation
                     const text = String(children).trim()
+                    // If paragraph is just punctuation, don't wrap
                     if (text.length === 1 && /[.,!?;:]/.test(text)) {
+                      return <>{children}</>
+                    }
+                    // If paragraph is just inline code or bold inline code, don't wrap
+                    if (/^(\*\*`[^`]+`\*\*|`[^`]+`)$/.test(text)) {
                       return <>{children}</>
                     }
                     return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
                   },
                   code: ({ inline, children, className, ...props }: CodeRendererProps) => {
-                    if (inline) {
+                    const codeText = Array.isArray(children) ? children.join('') : String(children ?? '')
+                    const isBlockCode =
+                      inline === false ||
+                      Boolean(className?.includes('language-')) ||
+                      codeText.includes('\n')
+
+                    if (!isBlockCode) {
                       return (
                         <code className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-sm font-medium" {...props}>
                           {children}

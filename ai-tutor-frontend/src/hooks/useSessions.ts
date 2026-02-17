@@ -5,7 +5,7 @@ import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { listSessions, getSessionHistory, deleteSession } from '../api/sessions'
 import { createWorkspace } from '../api/historyV2'
-import type { Message } from '../types/chat'
+import type { Message } from '../types'
 
 export const useSessions = () => {
   const {

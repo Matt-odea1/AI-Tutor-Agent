@@ -3,8 +3,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { getSessionTitle, getSessionTitleFromInfo } from './sessionUtils'
-import type { Message } from '../types/chat'
-import type { SessionInfo } from '../types/session'
+import type { Message, SessionInfo } from '../types'
 
 describe('sessionUtils', () => {
   describe('getSessionTitle', () => {

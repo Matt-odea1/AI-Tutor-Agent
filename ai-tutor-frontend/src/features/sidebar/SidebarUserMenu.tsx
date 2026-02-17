@@ -7,6 +7,7 @@ interface SidebarUserMenuProps {
   userMenuRef: RefObject<HTMLDivElement>;
   userEmail: string;
   userInitial: string;
+  showDetails?: boolean;
 }
 
 export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
@@ -15,17 +16,28 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   userMenuRef,
   userEmail,
   userInitial,
+  showDetails = true,
 }) => (
-  <div className="relative" ref={userMenuRef}>
+  <div className={`relative w-full ${showDetails ? '' : 'flex justify-center'}`} ref={userMenuRef}>
     <button
-      className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold"
+      className={`flex items-center rounded-lg hover:bg-gray-800 transition-colors ${
+        showDetails ? 'w-full gap-3 px-2 py-2' : 'w-10 h-10 justify-center p-0 mx-auto'
+      }`}
       onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
       aria-label="User menu"
     >
-      {userInitial}
+      <span className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold shrink-0">
+        {userInitial}
+      </span>
+      {showDetails && (
+        <span className="min-w-0 text-left">
+          <span className="block text-xs uppercase tracking-wide text-gray-400">Signed in</span>
+          <span className="block text-sm font-medium text-gray-100 truncate">{userEmail}</span>
+        </span>
+      )}
     </button>
     {isUserMenuOpen && (
-      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-2 z-50">
+      <div className="absolute right-0 bottom-full mb-2 w-56 bg-white rounded-md shadow-lg py-2 z-50">
         <div className="px-4 py-2 text-gray-700 text-sm">{userEmail}</div>
         {/* Add more user menu items here */}
       </div>

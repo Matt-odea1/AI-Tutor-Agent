@@ -12,7 +12,7 @@ import { SidebarSessionList } from './SidebarSessionList';
 import { SidebarProgramList } from './SidebarProgramList';
 import { SidebarUserMenu } from './SidebarUserMenu';
 import { getUserSession } from '../../utils/userSession';
-import type { AppMode } from '../../types/appMode';
+import type { AppMode } from '../../types';
 
 export const Sidebar = () => {
   const { sessionId, appMode, setAppMode } = useChatStore()
@@ -113,51 +113,31 @@ export const Sidebar = () => {
       }
     };
 
-    if (isCollapsed) {
-      return (
-        <aside className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4">
-          <button
-            onClick={() => setIsCollapsed(false)}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors mb-4"
-            title="Expand sidebar"
-          >
-            <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          {appMode === 'chat' && (
-            <button
-              onClick={createNewChatSession}
-              className="p-2 text-gray-400 hover:bg-gray-800 hover:text-white rounded-md border border-dashed border-gray-700"
-              title="New Chat"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
-          <SidebarUserMenu
-            userEmail={userEmail}
-            userInitial={userInitial}
-            isUserMenuOpen={isUserMenuOpen}
-            setIsUserMenuOpen={setIsUserMenuOpen}
-            userMenuRef={userMenuRef}
-          />
-        </aside>
-      );
-    }
-
     return (
-      <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
-        <SidebarHeader setAppMode={setAppMode as (mode: AppMode | null) => void} />
+      <aside
+        className={`bg-gray-900 border-r border-gray-800 flex flex-col h-full overflow-hidden transition-[width] duration-300 ease-in-out ${
+          isCollapsed ? 'w-16 items-center pl-2' : 'w-64 pl-2'
+        }`}
+      >
+        <SidebarHeader
+          setAppMode={setAppMode as (mode: AppMode | null) => void}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        />
         {appMode !== null && (
           <SidebarModeSwitcher
             appMode={appMode as 'chat' | 'ide' | 'questions'}
             handleModeChange={setAppMode as (mode: 'chat' | 'ide' | 'questions') => void}
             createNewChatSession={createNewChatSession}
+            compact={isCollapsed}
           />
         )}
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
+        <div
+          className={`flex-1 overflow-y-auto py-4 px-3 space-y-2 ${
+            isCollapsed ? 'opacity-0 pointer-events-none' : ''
+          }`}
+          aria-hidden={isCollapsed}
+        >
           {appMode === 'ide' ? (
             <SidebarProgramList
               programs={programs}
@@ -178,13 +158,16 @@ export const Sidebar = () => {
             />
           )}
         </div>
-        <SidebarUserMenu
-          userEmail={userEmail}
-          userInitial={userInitial}
-          isUserMenuOpen={isUserMenuOpen}
-          setIsUserMenuOpen={setIsUserMenuOpen}
-          userMenuRef={userMenuRef}
-        />
+        <div className={`mt-auto pb-4 ${isCollapsed ? 'w-full px-0 flex justify-center' : 'px-3'}`}>
+          <SidebarUserMenu
+            userEmail={userEmail}
+            userInitial={userInitial}
+            isUserMenuOpen={isUserMenuOpen}
+            setIsUserMenuOpen={setIsUserMenuOpen}
+            userMenuRef={userMenuRef}
+            showDetails={!isCollapsed}
+          />
+        </div>
         {deleteConfirm && (
           <DeleteConfirmModal
             isOpen={!!deleteConfirm}

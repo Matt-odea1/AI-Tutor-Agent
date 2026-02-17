@@ -10,7 +10,7 @@ import {
   getAssistantHistory,
   listAssistantThreads,
 } from '../api/historyV2'
-import type { Message } from '../types/chat'
+import type { Message } from '../types'
 import { hashString } from '../utils/hash'
 import { STORAGE_KEYS } from '../config/constants'
 
