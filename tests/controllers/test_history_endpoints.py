@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
 
 from app import create_app
-from src.main.controllers import InternalEndpoints
+from src.main.controllers import controller_helpers
+from src.main.controllers import controller_dependencies
 
 
 @pytest.fixture
@@ -99,8 +100,9 @@ def mock_history_store():
 @pytest.fixture
 def client(mock_chat_service, mock_history_store):
     app = create_app()
-    app.dependency_overrides[InternalEndpoints.get_chat_service] = lambda: mock_chat_service
-    app.dependency_overrides[InternalEndpoints.get_history_store] = lambda: mock_history_store
+    app.dependency_overrides[controller_dependencies.get_chat_service] = lambda: mock_chat_service
+    app.dependency_overrides[controller_dependencies.get_history_store] = lambda: mock_history_store
+    app.dependency_overrides[controller_helpers._require_user_id] = lambda: "user-1"
     return TestClient(app), mock_chat_service, mock_history_store
 
 

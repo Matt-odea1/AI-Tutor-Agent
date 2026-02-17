@@ -4,7 +4,7 @@ Unit tests for AgentCoreClient (Bedrock chat/embed logic, error handling).
 """
 import pytest
 from unittest.mock import MagicMock
-from main.agentcore_setup.AgentCoreClient import AgentCoreClient
+from src.main.agentcore_setup.AgentCoreClient import AgentCoreClient
 
 @pytest.fixture
 def client():

@@ -23,28 +23,33 @@ class DummyVectorService:
 class DummyAgentClient:
     """Mock agent client for testing."""
     def chat(self, messages):
-        # Simulate different responses based on context
-        # messages format: [{"role": "user", "content": [{"text": "..."}, {"text": "..."}, ...]}]
-        
+        # Simulate different responses based on context.
+        # Supports both legacy content list format and current string content format.
+        def _message_text(msg):
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts = []
+                for part in content:
+                    if isinstance(part, dict) and "text" in part:
+                        parts.append(str(part["text"]))
+                    elif isinstance(part, str):
+                        parts.append(part)
+                return "\n".join(parts)
+            return str(content) if content is not None else ""
+
         # Check if any message content contains "fail"
         for msg in messages:
-            if msg.get("role") == "user" and "content" in msg:
-                content_parts = msg["content"]
-                for part in content_parts:
-                    if isinstance(part, dict) and "text" in part:
-                        if "fail" in part["text"]:
-                            raise Exception("Agent call failed")
-        
+            if msg.get("role") == "user" and "fail" in _message_text(msg):
+                raise Exception("Agent call failed")
+
         # Check if history is present by looking for "Previous conversation" in content
         has_history = False
         for msg in messages:
-            if msg.get("role") == "user" and "content" in msg:
-                content_parts = msg["content"]
-                for part in content_parts:
-                    if isinstance(part, dict) and "text" in part:
-                        if "Previous conversation" in part["text"]:
-                            has_history = True
-                            break
+            if msg.get("role") == "user" and "Previous conversation" in _message_text(msg):
+                has_history = True
+                break
         
         if has_history:
             response = "Based on our previous discussion, here's more information..."

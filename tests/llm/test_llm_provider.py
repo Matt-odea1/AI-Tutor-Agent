@@ -3,7 +3,7 @@ test_llm_provider.py
 Unit tests for LlmProvider base logic.
 """
 import pytest
-from main.llm.LlmProvider import LlmProvider
+from src.main.llm.LlmProvider import LlmProvider
 
 def test_llm_provider_init():
     provider = LlmProvider()

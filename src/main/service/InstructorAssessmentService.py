@@ -21,7 +21,10 @@ import boto3
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from decimal import Decimal
-from boto3.dynamodb.conditions import Key, Attr
+from src.main.service.InstructorAssessmentCatalog import InstructorAssessmentCatalog
+from src.main.service.InstructorAssessmentEnrollment import InstructorAssessmentEnrollment
+from src.main.service.InstructorAssessmentProgressAggregator import InstructorAssessmentProgressAggregator
+from src.main.service.InstructorAssessmentResultsAggregator import InstructorAssessmentResultsAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,19 @@ class InstructorAssessmentService:
             # Initialize DynamoDB
             self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
             self.table = self.dynamodb.Table(self.table_name)
+            self.catalog = InstructorAssessmentCatalog(table=self.table)
+            self.enrollment = InstructorAssessmentEnrollment(
+                table=self.table,
+                assessment_exists=self.catalog.get_assessment,
+            )
+            self.progress_aggregator = InstructorAssessmentProgressAggregator(
+                table=self.table,
+                get_students=self.enrollment.get_assessment_students,
+            )
+            self.results_aggregator = InstructorAssessmentResultsAggregator(
+                table=self.table,
+                get_students=self.enrollment.get_assessment_students,
+            )
             
             logger.info(f"Connected to DynamoDB table: {self.table_name}")
         except Exception as e:
@@ -129,31 +145,7 @@ class InstructorAssessmentService:
             List of assessments ordered by creation date (newest first)
         """
         try:
-            response = self.table.query(
-                IndexName='GSI1',
-                KeyConditionExpression=Key('GSI1PK').eq('ASSESSMENT'),
-                ScanIndexForward=False  # Descending order (newest first)
-            )
-            
-            assessments = []
-            for item in response.get('Items', []):
-                created_by = item.get('createdBy')
-                if owner_user_id and created_by and created_by != owner_user_id:
-                    continue
-                assessment = {
-                    'id': item['id'],
-                    'createdBy': created_by,
-                    'title': item['title'],
-                    'course': item['course'],
-                    'description': item.get('description', ''),
-                    'dueDate': item['dueDate'],
-                    'totalQuestions': int(item['totalQuestions']),
-                    'timeLimit': int(item['timeLimit']) if item.get('timeLimit') else None,
-                    'status': item.get('status', 'draft'),
-                    'createdAt': item['createdAt'],
-                    'updatedAt': item.get('updatedAt', item['createdAt'])
-                }
-                assessments.append(assessment)
+            assessments = self.catalog.list_assessments(owner_user_id=owner_user_id)
             
             logger.info(f"Retrieved {len(assessments)} assessments")
             return assessments
@@ -176,33 +168,9 @@ class InstructorAssessmentService:
             InstructorAssessmentServiceError: If assessment not found
         """
         try:
-            response = self.table.get_item(
-                Key={
-                    'PK': f"ASSESSMENT#{assessment_id}",
-                    'SK': 'METADATA'
-                }
-            )
-            
-            if 'Item' not in response:
-                raise InstructorAssessmentServiceError(f"Assessment {assessment_id} not found")
-            
-            item = response['Item']
-            assessment = {
-                'id': item['id'],
-                'createdBy': item.get('createdBy'),
-                'title': item['title'],
-                'course': item['course'],
-                'description': item.get('description', ''),
-                'dueDate': item['dueDate'],
-                'totalQuestions': int(item['totalQuestions']),
-                'timeLimit': int(item['timeLimit']) if item.get('timeLimit') else None,
-                'status': item.get('status', 'draft'),
-                'createdAt': item['createdAt'],
-                'updatedAt': item.get('updatedAt', item['createdAt'])
-            }
-            
-            return assessment
-            
+            return self.catalog.get_assessment(assessment_id)
+        except ValueError as e:
+            raise InstructorAssessmentServiceError(str(e))
         except InstructorAssessmentServiceError:
             raise
         except Exception as e:
@@ -225,38 +193,11 @@ class InstructorAssessmentService:
             Upload confirmation with count
         """
         try:
-            # Verify assessment exists
-            self.get_assessment(assessment_id)
-            
-            # Batch write students
-            enrolled_at = datetime.utcnow().isoformat()
-            
-            with self.table.batch_writer() as batch:
-                for student in students:
-                    batch.put_item(
-                        Item={
-                            'PK': f"ASSESSMENT#{assessment_id}",
-                            'SK': f"STUDENT#{student['studentId']}",
-                            'GSI1PK': f"STUDENT#{student['studentId']}",
-                            'GSI1SK': f"ASSESSMENT#{assessment_id}",
-                            'name': student['name'],
-                            'email': student['email'],
-                            'studentId': student['studentId'],
-                            'code': student['code'],
-                            'assignmentFile': student.get('assignmentFile', ''),
-                            'status': 'enrolled',
-                            'enrolledAt': enrolled_at
-                        }
-                    )
-            
+            result = self.enrollment.upload_students(assessment_id, students)
             logger.info(f"Uploaded {len(students)} students to assessment {assessment_id}")
-            
-            return {
-                'ok': True,
-                'assessmentId': assessment_id,
-                'studentsUploaded': len(students)
-            }
-            
+            return result
+        except ValueError as e:
+            raise InstructorAssessmentServiceError(str(e))
         except InstructorAssessmentServiceError:
             raise
         except Exception as e:
@@ -274,23 +215,7 @@ class InstructorAssessmentService:
             List of enrolled students
         """
         try:
-            response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(f"ASSESSMENT#{assessment_id}") & 
-                                      Key('SK').begins_with('STUDENT#')
-            )
-            
-            students = []
-            for item in response.get('Items', []):
-                student = {
-                    'studentId': item['studentId'],
-                    'name': item['name'],
-                    'email': item['email'],
-                    'code': item['code'],
-                    'assignmentFile': item.get('assignmentFile', ''),
-                    'status': item.get('status', 'enrolled'),
-                    'enrolledAt': item.get('enrolledAt', '')
-                }
-                students.append(student)
+            students = self.enrollment.get_assessment_students(assessment_id)
             
             logger.info(f"Retrieved {len(students)} students for assessment {assessment_id}")
             return students
@@ -310,49 +235,7 @@ class InstructorAssessmentService:
             List of student progress data
         """
         try:
-            # Get all students
-            students = self.get_assessment_students(assessment_id)
-            
-            progress_list = []
-            
-            for student in students:
-                student_id = student['studentId']
-                pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-                
-                # Get progress item
-                progress_response = self.table.get_item(
-                    Key={'PK': pk, 'SK': 'PROGRESS'}
-                )
-                
-                if 'Item' in progress_response:
-                    progress = progress_response['Item']
-                    progress_data = {
-                        'studentId': student_id,
-                        'name': student['name'],
-                        'email': student['email'],
-                        'status': progress.get('status', 'not-started'),
-                        'totalQuestions': int(progress.get('totalQuestions', 0)),
-                        'answeredQuestions': int(progress.get('answeredQuestions', 0)),
-                        'percentage': float(progress.get('percentage', 0)),
-                        'startedAt': student.get('startedAt'),
-                        'submittedAt': student.get('submittedAt')
-                    }
-                else:
-                    # No progress yet
-                    progress_data = {
-                        'studentId': student_id,
-                        'name': student['name'],
-                        'email': student['email'],
-                        'status': 'not-started',
-                        'totalQuestions': 0,
-                        'answeredQuestions': 0,
-                        'percentage': 0,
-                        'startedAt': None,
-                        'submittedAt': None
-                    }
-                
-                progress_list.append(progress_data)
-            
+            progress_list = self.progress_aggregator.get_assessment_progress(assessment_id)
             logger.info(f"Retrieved progress for {len(progress_list)} students")
             return progress_list
             
@@ -371,70 +254,7 @@ class InstructorAssessmentService:
             List of student results
         """
         try:
-            students = self.get_assessment_students(assessment_id)
-            
-            results_list = []
-            
-            for student in students:
-                student_id = student['studentId']
-                pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-                
-                # Get all evaluations
-                evaluations_response = self.table.query(
-                    KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('EVALUATION#')
-                )
-                
-                evaluations = evaluations_response.get('Items', [])
-                
-                if not evaluations:
-                    # No results yet
-                    continue
-                
-                # Calculate totals
-                total_score = 0
-                max_score = 0
-                
-                for eval_item in evaluations:
-                    score = int(eval_item.get('score', 0)) if eval_item.get('score') is not None else 0
-                    q_max = int(eval_item.get('maxScore', 10)) if eval_item.get('maxScore') is not None else 10
-                    total_score += score
-                    max_score += q_max
-                
-                percentage = round((total_score / max_score * 100), 1) if max_score > 0 else 0
-                
-                # Determine grade
-                if percentage >= 90:
-                    grade = "Excellent"
-                elif percentage >= 75:
-                    grade = "Competent"
-                elif percentage >= 60:
-                    grade = "Developing"
-                else:
-                    grade = "Unsatisfactory"
-                
-                # Get submission time
-                enrollment_response = self.table.get_item(
-                    Key={
-                        'PK': f"ASSESSMENT#{assessment_id}",
-                        'SK': f"STUDENT#{student_id}"
-                    }
-                )
-                
-                enrollment = enrollment_response.get('Item', {})
-                
-                result = {
-                    'studentId': student_id,
-                    'name': student['name'],
-                    'email': student['email'],
-                    'totalScore': total_score,
-                    'maxScore': max_score,
-                    'percentage': percentage,
-                    'grade': grade,
-                    'completedAt': enrollment.get('submittedAt')
-                }
-                
-                results_list.append(result)
-            
+            results_list = self.results_aggregator.get_assessment_results(assessment_id)
             logger.info(f"Retrieved results for {len(results_list)} students")
             return results_list
             

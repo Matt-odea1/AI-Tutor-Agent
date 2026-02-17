@@ -204,8 +204,9 @@ class ChatService:
             if is_new_session:
                 try:
                     title = self._generate_session_title(query)
-                    self.memory.update_session_title(session_id, title)
-                    logger.info(f"Generated title for session {session_id[:8]}...: '{title}'")
+                    if hasattr(self.memory, "update_session_title"):
+                        self.memory.update_session_title(session_id, title)
+                        logger.info(f"Generated title for session {session_id[:8]}...: '{title}'")
                 except Exception as e:
                     logger.warning(f"Failed to generate session title: {e}")
         

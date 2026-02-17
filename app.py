@@ -1,38 +1,43 @@
 # src/app.py
 from __future__ import annotations
 
-import logging
-import os
-import traceback
 from typing import List
-from urllib.request import Request
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv, find_dotenv
-from starlette.responses import JSONResponse
 
 load_dotenv(find_dotenv(filename=".env", usecwd=True), override=False)
 
-from src.main.controllers.InternalEndpoints import router as context_router, chat_router, history_router, questions_router, evaluations_router, student_router, assessment_router, s3_router, auth_router
+from src.main.config import get_settings
+from src.main.controllers.api_errors import register_exception_handlers
+from src.main.controllers.InternalEndpoints import router as context_router, s3_router
+from src.main.controllers.chat_router import chat_router
+from src.main.controllers.auth_router import auth_router
+from src.main.controllers.history_router import history_router
+from src.main.controllers.questions_router import questions_router
+from src.main.controllers.evaluations_router import evaluations_router
+from src.main.controllers.student_router import student_router
+from src.main.controllers.assessment_router import assessment_router
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(
-        title=os.getenv("AI_TUTOR", "Context API"),
-        version=os.getenv("APP_VERSION", "0.1.0"),
-        docs_url=os.getenv("DOCS_URL", "/docs"),
-        redoc_url=os.getenv("REDOC_URL", "/redoc"),
-        openapi_url=os.getenv("OPENAPI_URL", "/openapi.json"),
+        title=settings.app_title,
+        version=settings.app_version,
+        docs_url=settings.docs_url,
+        redoc_url=settings.redoc_url,
+        openapi_url=settings.openapi_url,
     )
 
     # CORS Configuration
     # Default: Allow all localhost addresses for development
-    origins_env = os.getenv("ALLOW_ORIGINS", "http://localhost:*")
+    origins_env = settings.allow_origins_raw
     
     if origins_env == "http://localhost:*":
         # Allow all localhost ports for development
-        origins: List[str] = ["*"]  # Allow all origins in dev (will be filtered by credentials)
+        origins: List[str] = settings.allow_origins  # Allow all origins in dev (will be filtered by credentials)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -42,7 +47,7 @@ def create_app() -> FastAPI:
         )
     elif origins_env:
         # Production: Use specific origins from env variable
-        origins: List[str] = [o.strip() for o in origins_env.split(",") if o.strip()]
+        origins: List[str] = settings.allow_origins
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -55,13 +60,7 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    @app.exception_handler(Exception)
-    async def unhandled_exception(request: Request, exc: Exception):
-        logging.exception("Unhandled error on %s %s", request.method, request.url.path)
-        detail = {"ok": False, "error": str(exc)}
-        if logging.DEBUG:
-            detail["trace"] = traceback.format_exc()
-        return JSONResponse(status_code=500, content=detail)
+    register_exception_handlers(app)
 
     app.include_router(context_router)
     app.include_router(chat_router)
@@ -79,7 +78,8 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    reload = os.getenv("RELOAD", "true").lower() == "true"
+    settings = get_settings()
+    host = settings.host
+    port = settings.port
+    reload = settings.reload
     uvicorn.run("app:app", host=host, port=port, reload=reload)

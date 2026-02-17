@@ -4,7 +4,7 @@ Unit tests for ContextVectorService.upload_document and embed.
 """
 import pytest
 from unittest.mock import MagicMock
-from main.service.ContextVectorService import ContextVectorService
+from src.main.service.ContextVectorService import ContextVectorService
 
 class DummyDriver:
     def session(self):
@@ -19,6 +19,7 @@ def service():
     svc = ContextVectorService()
     svc.driver = DummyDriver()  # Patch out Neo4j
     svc.llm = MagicMock()
+    svc.preprocessor.preprocess_to_markdown = MagicMock(side_effect=lambda text, **_: text)
     return svc
 
 def test_upload_document_basic(service):

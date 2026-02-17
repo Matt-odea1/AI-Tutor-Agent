@@ -19,7 +19,11 @@ import boto3
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from decimal import Decimal
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
+from src.main.service.OralAssessmentProgressTracker import OralAssessmentProgressTracker
+from src.main.service.OralAssessmentQuestionAccess import OralAssessmentQuestionAccess
+from src.main.service.OralAssessmentAnswerSubmission import OralAssessmentAnswerSubmission
+from src.main.service.OralAssessmentResultsAggregator import OralAssessmentResultsAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,13 @@ class OralAssessmentService:
             
             # Initialize S3
             self.s3 = boto3.client('s3', region_name=self.region)
+            self.progress_tracker = OralAssessmentProgressTracker(table=self.table)
+            self.question_access = OralAssessmentQuestionAccess(table=self.table)
+            self.answer_submission = OralAssessmentAnswerSubmission(
+                table=self.table,
+                progress_updater=self._update_progress,
+            )
+            self.results_aggregator = OralAssessmentResultsAggregator(table=self.table)
             
             logger.info(f"Connected to DynamoDB table: {self.table_name}")
             logger.info(f"Using S3 bucket: {self.s3_bucket}")
@@ -72,44 +83,7 @@ class OralAssessmentService:
     def _update_progress(self, student_id: str, assessment_id: str):
         """Update progress summary for a student"""
         try:
-            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-            
-            # Count total questions
-            questions_response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('QUESTION#')
-            )
-            total_questions = len(questions_response.get('Items', []))
-            
-            # Count answered questions
-            answers_response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('ANSWER#')
-            )
-            answered_questions = len(answers_response.get('Items', []))
-            
-            # Calculate percentage
-            percentage = round((answered_questions / total_questions * 100), 1) if total_questions > 0 else 0
-            
-            # Determine status
-            if answered_questions == 0:
-                status = 'not-started'
-            elif answered_questions < total_questions:
-                status = 'in-progress'
-            else:
-                status = 'completed'
-            
-            # Update progress item
-            self.table.put_item(
-                Item={
-                    'PK': pk,
-                    'SK': 'PROGRESS',
-                    'totalQuestions': total_questions,
-                    'answeredQuestions': answered_questions,
-                    'percentage': Decimal(str(percentage)),
-                    'status': status,
-                    'lastUpdated': datetime.utcnow().isoformat()
-                }
-            )
-            
+            self.progress_tracker.update_progress(student_id, assessment_id)
         except Exception as e:
             logger.warning(f"Failed to update progress: {e}")
     
@@ -134,56 +108,24 @@ class OralAssessmentService:
             OralAssessmentServiceError: If student or assessment not found
         """
         try:
-            # First check if student is enrolled
-            enrollment = self.table.get_item(
-                Key={
-                    'PK': f"STUDENT#{student_id}",
-                    'SK': f"ASSESSMENT#{assessment_id}"
-                }
-            )
-            
-            if 'Item' not in enrollment:
-                raise OralAssessmentServiceError(
-                    f"Student {student_id} not enrolled in assessment {assessment_id}"
-                )
-            
-            # Query questions from assessment (questions are shared across students)
-            response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(f"ASSESSMENT#{assessment_id}") & Key('SK').begins_with('QUESTION#')
-            )
-            
-            items = response.get('Items', [])
+            self.question_access.ensure_student_enrollment(student_id, assessment_id)
+            items = self.question_access.get_assessment_questions(assessment_id)
             
             if not items:
                 # No questions generated yet
                 logger.warning(f"No questions found for assessment {assessment_id}")
                 return []
-            
-            # Convert DynamoDB items to question format
-            questions = []
-            for item in items:
-                question = {
-                    'id': item.get('QuestionId', item['SK'].replace('QUESTION#', '')),
-                    'questionNumber': item.get('QuestionNumber', 0),
-                    'type': item.get('QuestionType', 'general'),
-                    'text': item.get('QuestionText', ''),
-                    'difficulty': item.get('Difficulty', 'medium'),
-                    'topic': item.get('Topic', ''),
-                    'codeContext': item.get('CodeContext'),
-                    'lineReference': item.get('LineReference'),
-                    'rationale': item.get('Rationale', ''),
-                    'assessmentId': assessment_id,
-                    'studentId': student_id,
-                    'createdAt': item.get('CreatedAt', '')
-                }
-                questions.append(question)
-            
-            # Sort by question number
-            questions.sort(key=lambda x: x.get('questionNumber', 999))
+            questions = self.question_access.to_student_question_view(
+                items,
+                student_id=student_id,
+                assessment_id=assessment_id,
+            )
             
             logger.info(f"Retrieved {len(questions)} questions for student {student_id}")
             return self._convert_decimals(questions)
             
+        except ValueError as e:
+            raise OralAssessmentServiceError(str(e))
         except OralAssessmentServiceError:
             raise
         except Exception as e:
@@ -215,58 +157,17 @@ class OralAssessmentService:
             OralAssessmentServiceError: If question not found
         """
         try:
-            # First verify question exists
-            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id if assessment_id else '*'}"
-            
-            # If we don't have assessment_id, we need to find it
-            if not assessment_id:
-                # Query all questions for this student to find the one with matching question_id
-                response = self.table.query(
-                    KeyConditionExpression=Key('PK').begins_with(f"STUDENT#{student_id}#ASSESSMENT#") & 
-                                          Key('SK').eq(f"QUESTION#{question_id}")
-                )
-                
-                if not response.get('Items'):
-                    raise OralAssessmentServiceError(
-                        f"Question {question_id} not found for student {student_id}"
-                    )
-                
-                # Extract assessment_id from PK
-                item = response['Items'][0]
-                pk = item['PK']
-                assessment_id = pk.split('#')[3]  # PK format: STUDENT#id#ASSESSMENT#id
-            
-            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-            
-            # Store answer in DynamoDB
-            submitted_at = datetime.utcnow().isoformat()
-            
-            self.table.put_item(
-                Item={
-                    'PK': pk,
-                    'SK': f"ANSWER#{question_id}",
-                    'audioUrl': audio_url,
-                    'duration': duration,
-                    'submittedAt': submitted_at,
-                    'status': 'submitted'
-                }
+            result = self.answer_submission.submit_answer(
+                student_id=student_id,
+                question_id=question_id,
+                audio_url=audio_url,
+                duration=duration,
+                assessment_id=assessment_id,
             )
-            
-            # Update progress
-            self._update_progress(student_id, assessment_id)
-            
             logger.info(f"Recorded answer for question {question_id} from student {student_id}")
-            
-            return {
-                "ok": True,
-                "studentId": student_id,
-                "questionId": question_id,
-                "audioUrl": audio_url,
-                "duration": duration,
-                "submittedAt": submitted_at,
-                "assessmentId": assessment_id
-            }
-            
+            return result
+        except ValueError as e:
+            raise OralAssessmentServiceError(str(e))
         except OralAssessmentServiceError:
             raise
         except Exception as e:
@@ -327,8 +228,6 @@ class OralAssessmentService:
                 raise OralAssessmentServiceError(
                     f"Student {student_id} not enrolled in assessment {assessment_id}"
                 )
-            
-            enrollment = enrollment_response['Item']
             
             # Update status
             self.table.update_item(
@@ -478,119 +377,18 @@ class OralAssessmentService:
             OralAssessmentServiceError: If results not available yet
         """
         try:
-            # Get enrollment data
-            enrollment_response = self.table.get_item(
-                Key={
-                    'PK': f"ASSESSMENT#{assessment_id}",
-                    'SK': f"STUDENT#{student_id}"
-                }
+            results = self.results_aggregator.get_student_results(
+                student_id=student_id,
+                assessment_id=assessment_id,
             )
-            
-            if 'Item' not in enrollment_response:
-                raise OralAssessmentServiceError(
-                    f"Student {student_id} not enrolled in assessment {assessment_id}"
-                )
-            
-            enrollment = enrollment_response['Item']
-            
-            # Get assessment metadata
-            assessment_response = self.table.get_item(
-                Key={
-                    'PK': f"ASSESSMENT#{assessment_id}",
-                    'SK': 'METADATA'
-                }
+            logger.info(
+                f"Retrieved results for student {student_id}: "
+                f"{results.get('percentage', 0)}% ({results.get('grade', 'unknown')})"
             )
-            
-            assessment = assessment_response.get('Item', {})
-            
-            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-            
-            # Get all questions
-            questions_response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('QUESTION#')
-            )
-            
-            # Get all answers
-            answers_response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('ANSWER#')
-            )
-            
-            # Get all evaluations
-            evaluations_response = self.table.query(
-                KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with('EVALUATION#')
-            )
-            
-            # Build maps for quick lookup
-            questions_map = {item['SK'].replace('QUESTION#', ''): item for item in questions_response.get('Items', [])}
-            answers_map = {item['SK'].replace('ANSWER#', ''): item for item in answers_response.get('Items', [])}
-            evaluations_map = {item['SK'].replace('EVALUATION#', ''): item for item in evaluations_response.get('Items', [])}
-            
-            if not evaluations_map:
-                raise OralAssessmentServiceError(
-                    f"Results not available yet for student {student_id}"
-                )
-            
-            # Build complete question results
-            question_results = []
-            total_score = 0
-            max_score = 0
-            
-            for question_id, question in questions_map.items():
-                answer = answers_map.get(question_id, {})
-                evaluation = evaluations_map.get(question_id, {})
-                
-                score = int(evaluation.get('score', 0)) if evaluation.get('score') is not None else None
-                q_max_score = int(evaluation.get('maxScore', 10)) if evaluation.get('maxScore') is not None else 10
-                
-                if score is not None:
-                    total_score += score
-                    max_score += q_max_score
-                
-                question_results.append({
-                    "questionId": question_id,
-                    "questionText": question.get('text', ''),
-                    "audioUrl": answer.get('audioUrl'),
-                    "duration": int(answer.get('duration', 0)) if answer.get('duration') else None,
-                    "score": score,
-                    "maxScore": q_max_score,
-                    "feedback": evaluation.get('feedback'),
-                    "strengths": evaluation.get('strengths'),
-                    "improvements": evaluation.get('improvements'),
-                    "evaluatedAt": evaluation.get('evaluatedAt')
-                })
-            
-            percentage = round((total_score / max_score * 100), 1) if max_score > 0 else 0
-            
-            # Determine grade
-            if percentage >= 90:
-                grade = "Excellent"
-            elif percentage >= 75:
-                grade = "Competent"
-            elif percentage >= 60:
-                grade = "Developing"
-            else:
-                grade = "Unsatisfactory"
-            
-            results = {
-                "studentId": student_id,
-                "studentName": enrollment.get('name', ''),
-                "studentEmail": enrollment.get('email', ''),
-                "assessmentId": assessment_id,
-                "assessmentTitle": assessment.get('title', 'Unknown Assessment'),
-                "status": enrollment.get('status', 'unknown'),
-                "totalScore": total_score,
-                "maxScore": max_score,
-                "percentage": percentage,
-                "grade": grade,
-                "submittedAt": enrollment.get('submittedAt'),
-                "evaluatedQuestions": len(evaluations_map),
-                "totalQuestions": len(questions_map),
-                "questions": question_results
-            }
-            
-            logger.info(f"Retrieved results for student {student_id}: {percentage}% ({grade})")
             return self._convert_decimals(results)
-            
+
+        except ValueError as e:
+            raise OralAssessmentServiceError(str(e))
         except OralAssessmentServiceError:
             raise
         except Exception as e:

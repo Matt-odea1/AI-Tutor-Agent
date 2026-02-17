@@ -3,7 +3,7 @@ test_file_to_text_service.py
 Unit tests for FileToTextService PDF extraction logic.
 """
 import pytest
-from main.service.FileToTextService import FileToTextService
+from src.main.service.FileToTextService import FileToTextService
 from PyPDF2 import PdfWriter
 import os
 
