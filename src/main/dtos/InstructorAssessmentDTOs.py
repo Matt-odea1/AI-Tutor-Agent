@@ -48,6 +48,7 @@ class EvaluateBatchRequest(BaseModel):
 class AssessmentResponse(BaseModel):
     """Assessment data response"""
     id: str
+    createdBy: Optional[str] = None
     title: str
     course: str
     description: str

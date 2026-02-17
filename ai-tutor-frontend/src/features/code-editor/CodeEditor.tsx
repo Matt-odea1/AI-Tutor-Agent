@@ -20,7 +20,7 @@ interface CodeEditorProps {
 }
 
 export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps) => {
-  const { codeEditor, editorDecorations, editorDeletionZones, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, clearEditor, layoutMode } = useChatStore();
+  const { codeEditor, editorDecorations, editorDeletionZones, setEditorCode, setEditorOpen, setEditorOutput, setEditorExecuting, setEditorSelection, addToHistory, layoutMode } = useChatStore();
   const { runCode, isLoading } = useCodeExecution();
   const { programs, activeProgramId, createNewProgram, saveProgram, loadProgram } = usePrograms();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -132,25 +132,6 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
     } finally {
       setEditorExecuting(false);
     }
-  };
-
-  const handleNewCode = async () => {
-    if (activeProgramId) {
-      const activeProgram = programs.find((program) => program.program_id === activeProgramId);
-      if (activeProgram) {
-        await saveProgram(activeProgram, {
-          current_code: codeEditor.code,
-          last_output: codeEditor.lastOutput,
-          last_error: codeEditor.lastError,
-        });
-      }
-    }
-
-    clearEditor();
-    setEditorCode(EDITOR_TEMPLATE);
-    hasUserEditsRef.current = false;
-    didInitProgramRef.current = true;
-    await createNewProgram(EDITOR_TEMPLATE);
   };
 
   const handleAskAI = () => {
@@ -288,7 +269,6 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
             {/* Header */}
             <CodeEditorHeader
               onRunCode={handleRunCode}
-              onNewCode={handleNewCode}
               isExecuting={codeEditor.isExecuting}
               isLoading={isLoading}
             />

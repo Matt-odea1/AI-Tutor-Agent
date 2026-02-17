@@ -11,11 +11,12 @@ import { SidebarModeSwitcher } from './SidebarModeSwitcher';
 import { SidebarSessionList } from './SidebarSessionList';
 import { SidebarProgramList } from './SidebarProgramList';
 import { SidebarUserMenu } from './SidebarUserMenu';
-import { getUserSession } from '../../utils/userSession';
+import { clearUserSession, getUserSession } from '../../utils/userSession';
 import type { AppMode } from '../../types';
+import { EDITOR_TEMPLATE } from '../../config/editorDefaults';
 
 export const Sidebar = () => {
-  const { sessionId, appMode, setAppMode } = useChatStore()
+  const { sessionId, appMode, setAppMode, codeEditor } = useChatStore()
   const {
     sessions,
     isLoadingSessions,
@@ -30,6 +31,8 @@ export const Sidebar = () => {
     activeProgramId,
     isLoadingPrograms,
     fetchPrograms,
+    createNewProgram,
+    saveProgram,
     loadProgram,
     removeProgram,
   } = usePrograms()
@@ -123,6 +126,30 @@ export const Sidebar = () => {
       }
     };
 
+    const handleLogout = () => {
+      clearUserSession()
+    }
+
+    const handleCreateNewFile = async () => {
+      try {
+        if (activeProgramId) {
+          const activeProgram = programs.find((program) => program.program_id === activeProgramId)
+          if (activeProgram) {
+            await saveProgram(activeProgram, {
+              current_code: codeEditor.code,
+              last_output: codeEditor.lastOutput,
+              last_error: codeEditor.lastError,
+            })
+          }
+        }
+
+        const newProgram = await createNewProgram(EDITOR_TEMPLATE)
+        await loadProgram(newProgram.program_id)
+      } catch (error) {
+        console.error('Error creating new file:', error)
+      }
+    }
+
     return (
       <aside
         className={`bg-gray-900 border-r border-gray-800 flex flex-col h-full overflow-hidden transition-[width] duration-300 ease-in-out ${
@@ -134,21 +161,25 @@ export const Sidebar = () => {
           isCollapsed={isCollapsed}
           onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
         />
-        {appMode !== null && (
-          <SidebarModeSwitcher
-            appMode={appMode as 'chat' | 'ide' | 'questions'}
-            handleModeChange={setAppMode as (mode: 'chat' | 'ide' | 'questions') => void}
-            createNewChatSession={createNewChatSession}
-            compact={isCollapsed}
-          />
-        )}
+        <SidebarModeSwitcher
+          appMode={appMode as 'chat' | 'ide' | 'questions' | null}
+          handleModeChange={setAppMode as (mode: 'chat' | 'ide' | 'questions') => void}
+          createNewChatSession={createNewChatSession}
+          createNewFile={handleCreateNewFile}
+          compact={isCollapsed}
+        />
         <div
           className={`flex-1 overflow-y-auto py-4 px-3 space-y-2 ${
             isCollapsed ? 'opacity-0 pointer-events-none' : ''
           }`}
           aria-hidden={isCollapsed}
         >
-          {appMode === 'ide' ? (
+          {appMode === null ? (
+            <div className="px-3 py-8 text-center">
+              <p className="text-sm text-gray-400">Choose a mode to get started</p>
+              <p className="text-xs text-gray-500 mt-1">Use the sidebar options above</p>
+            </div>
+          ) : appMode === 'ide' ? (
             <SidebarProgramList
               programs={programs}
               isLoadingPrograms={isLoadingPrograms}
@@ -176,6 +207,7 @@ export const Sidebar = () => {
             setIsUserMenuOpen={setIsUserMenuOpen}
             userMenuRef={userMenuRef}
             showDetails={!isCollapsed}
+            onLogout={handleLogout}
           />
         </div>
         {deleteConfirm && (

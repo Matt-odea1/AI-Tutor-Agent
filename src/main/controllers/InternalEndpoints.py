@@ -34,6 +34,7 @@ from src.main.dtos.HistoryModels import (
     AssistantHistoryResponse,
 )
 from src.main.dtos.EditProposalDTOs import EditProposalRequest, EditProposalResponse
+from src.main.dtos.AuthDTOs import LoginRequest, LoginResponse, SignupRequest
 from src.main.service.FileToTextService import FileToTextService
 
 # Add Deepgram Speech-to-Text import and tempfile/os
@@ -95,6 +96,11 @@ from src.main.agentcore_setup.memory import ConversationMemory
 from src.main.agentcore_setup.dynamodb_memory import DynamoDBConversationMemory
 from src.main.agentcore_setup.history import HistoryStore
 from src.main.agentcore_setup.dynamodb_history import DynamoDBHistoryStore
+from src.main.auth.models import AuthPrincipal
+from src.main.auth.dependencies import require_auth_principal
+from src.main.auth.dependencies import resolve_user_id_from_headers
+from src.main.auth.dependencies import get_auth_service
+from src.main.auth.service import AuthService
 
 
 # --- Dependency injection ------------------------------------------------------
@@ -207,12 +213,14 @@ evaluations_router = APIRouter(prefix="/internal/evaluations", tags=["evaluation
 student_router = APIRouter(prefix="/api/student", tags=["student"])
 assessment_router = APIRouter(prefix="/api/assessment", tags=["assessment"])
 s3_router = APIRouter(prefix="/api/s3", tags=["s3"])
+auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _require_user_id(x_user_id: str = Header(None, alias="X-User-Id")) -> str:
-    if not x_user_id:
-        raise HTTPException(status_code=400, detail="Missing X-User-Id header")
-    return x_user_id
+def _require_user_id(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+) -> str:
+    return resolve_user_id_from_headers(authorization=authorization, x_user_id=x_user_id)
 
 
 def _assert_workspace_owner(store, workspace_id: str, user_id: str) -> dict:
@@ -262,7 +270,67 @@ def _resolve_pedagogy_mode(requested_mode: Optional[str], default_mode: str) -> 
     return requested_mode
 
 
+def _has_role(principal: AuthPrincipal, roles: set[str]) -> bool:
+    principal_roles = {role.lower() for role in principal.roles}
+    return not roles.isdisjoint(principal_roles)
+
+
+def _assert_instructor_access(principal: AuthPrincipal) -> None:
+    if _has_role(principal, {"instructor", "admin"}):
+        return
+
+    if principal.source == "x-user-id":
+        return
+
+    raise HTTPException(status_code=403, detail="Instructor access required")
+
+
+def _assert_student_access(principal: AuthPrincipal, student_id: str) -> None:
+    if principal.user_id == student_id:
+        return
+
+    if _has_role(principal, {"instructor", "admin"}):
+        return
+
+    raise HTTPException(status_code=403, detail="Student access denied")
+
+
+def _assert_assessment_owner(principal: AuthPrincipal, assessment: dict) -> None:
+    if _has_role(principal, {"admin"}):
+        return
+
+    created_by = assessment.get("createdBy")
+    if created_by:
+        if principal.user_id == created_by:
+            return
+        raise HTTPException(status_code=403, detail="Assessment access denied")
+
+    if principal.source == "x-user-id":
+        return
+
+    raise HTTPException(status_code=403, detail="Assessment ownership metadata missing")
+
+
 # --- Endpoints -----------------------------------------------------------------
+
+@auth_router.post("/login", response_model=LoginResponse)
+def login_with_email_password(
+    request: LoginRequest = Body(...),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    principal = auth_service.authenticate_credentials(request.email, request.password)
+    token_payload = auth_service.issue_access_token(principal)
+    return LoginResponse(**token_payload)
+
+
+@auth_router.post("/signup", response_model=LoginResponse, status_code=201)
+def signup_with_email_password(
+    request: SignupRequest = Body(...),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    principal = auth_service.register_user(request.email, request.password)
+    token_payload = auth_service.issue_access_token(principal)
+    return LoginResponse(**token_payload)
 
 @router.post("/upload", status_code=201)
 def upload_context(dto: UploadRequest = Body(...), svc: ContextVectorService = Depends(get_context_service)):
@@ -932,18 +1000,20 @@ async def get_evaluation_status(
 async def get_student_questions(
     student_id: str,
     assessment_id: str,
-    svc: OralAssessmentService = Depends(get_oral_assessment_service)
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get all questions for a specific student and assessment.
     
-    Authentication: STUBBED - Direct access via URL params
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - List of questions with metadata
     - Empty list if questions not yet generated
     """
     try:
+        _assert_student_access(_principal, student_id)
         questions = svc.get_student_questions(student_id, assessment_id)
         
         # Convert to response DTOs
@@ -979,12 +1049,13 @@ async def get_student_questions(
 async def submit_answer(
     student_id: str,
     request: SubmitAnswerRequest = Body(...),
-    svc: OralAssessmentService = Depends(get_oral_assessment_service)
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Submit an audio answer for a specific question.
     
-    Authentication: STUBBED - Direct access via student_id
+    Authentication: REQUIRED - Authenticated principal required
     
     Args:
     - question_id: Question identifier
@@ -995,6 +1066,7 @@ async def submit_answer(
     - Confirmation with answer details
     """
     try:
+        _assert_student_access(_principal, student_id)
         result = svc.submit_answer(
             student_id=student_id,
             question_id=request.question_id,
@@ -1015,12 +1087,13 @@ async def submit_answer(
 async def submit_assessment(
     student_id: str,
     request: SubmitAssessmentRequest = Body(...),
-    svc: OralAssessmentService = Depends(get_oral_assessment_service)
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Mark an assessment as completed/submitted.
     
-    Authentication: STUBBED - Direct access via student_id
+    Authentication: REQUIRED - Authenticated principal required
     
     Validates that all questions have been answered before allowing submission.
     
@@ -1028,6 +1101,7 @@ async def submit_assessment(
     - Confirmation with submission details
     """
     try:
+        _assert_student_access(_principal, student_id)
         result = svc.submit_assessment(
             student_id=student_id,
             assessment_id=request.assessment_id
@@ -1046,12 +1120,13 @@ async def submit_assessment(
 async def get_student_progress(
     student_id: str,
     assessment_id: str,
-    svc: OralAssessmentService = Depends(get_oral_assessment_service)
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get current progress for a student in an assessment.
     
-    Authentication: STUBBED - Direct access via URL params
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - Progress data including answered/total questions
@@ -1059,6 +1134,7 @@ async def get_student_progress(
     - Timestamps for start and submission
     """
     try:
+        _assert_student_access(_principal, student_id)
         progress = svc.get_student_progress(student_id, assessment_id)
         return StudentProgressResponse(**progress)
         
@@ -1073,12 +1149,13 @@ async def get_student_progress(
 async def get_student_results(
     student_id: str,
     assessment_id: str,
-    svc: OralAssessmentService = Depends(get_oral_assessment_service)
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get evaluation results for a completed assessment.
     
-    Authentication: STUBBED - Direct access via URL params
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - Complete results including scores, grades, and feedback
@@ -1089,6 +1166,7 @@ async def get_student_results(
     - 404: If results not yet available (evaluation not complete)
     """
     try:
+        _assert_student_access(_principal, student_id)
         results = svc.get_student_results(student_id, assessment_id)
         return StudentResultsResponse(**results)
         
@@ -1104,12 +1182,13 @@ async def get_student_results(
 @assessment_router.post("/create", response_model=AssessmentResponse, status_code=201)
 async def create_assessment(
     request: CreateAssessmentRequest = Body(...),
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Create a new oral assessment.
     
-    Authentication: STUBBED - No auth required for MVP
+    Authentication: REQUIRED - Authenticated principal required
     
     Args:
     - title: Assessment title
@@ -1123,13 +1202,15 @@ async def create_assessment(
     - Created assessment with generated UUID
     """
     try:
+        _assert_instructor_access(_principal)
         result = svc.create_assessment(
             title=request.title,
             course=request.course,
             description=request.description,
             due_date=request.dueDate,
             total_questions=request.totalQuestions,
-            time_limit=request.timeLimit
+            time_limit=request.timeLimit,
+            owner_user_id=_principal.user_id,
         )
         
         return AssessmentResponse(**result)
@@ -1143,18 +1224,23 @@ async def create_assessment(
 
 @assessment_router.get("/list", response_model=AssessmentListResponse)
 async def list_assessments(
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     List all assessments (sorted by creation date, newest first).
     
-    Authentication: STUBBED - Returns all assessments
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - List of all assessments with metadata
     """
     try:
-        assessments = svc.list_assessments()
+        _assert_instructor_access(_principal)
+        if _principal.source == "x-user-id":
+            assessments = svc.list_assessments()
+        else:
+            assessments = svc.list_assessments(owner_user_id=_principal.user_id)
         
         return AssessmentListResponse(
             ok=True,
@@ -1172,12 +1258,13 @@ async def list_assessments(
 @assessment_router.get("/{id}", response_model=AssessmentResponse)
 async def get_assessment(
     id: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get a specific assessment by ID.
     
-    Authentication: STUBBED - Direct access via ID
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - Assessment details
@@ -1186,7 +1273,9 @@ async def get_assessment(
     - 404: If assessment not found
     """
     try:
+        _assert_instructor_access(_principal)
         assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         return AssessmentResponse(**assessment)
         
     except InstructorAssessmentServiceError as e:
@@ -1200,12 +1289,13 @@ async def get_assessment(
 async def upload_students(
     id: str,
     request: UploadStudentsRequest = Body(...),
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Upload/enroll students to an assessment.
     
-    Authentication: STUBBED - No auth required
+    Authentication: REQUIRED - Authenticated principal required
     
     Args:
     - students: List of student objects with name, email, studentId, code, assignmentFile
@@ -1214,6 +1304,9 @@ async def upload_students(
     - Confirmation with number of students uploaded
     """
     try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         # Convert Pydantic models to dicts
         students = [student.model_dump() for student in request.students]
         
@@ -1235,17 +1328,21 @@ async def upload_students(
 @assessment_router.get("/{id}/students", response_model=StudentListResponse)
 async def get_assessment_students(
     id: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get all students enrolled in an assessment.
     
-    Authentication: STUBBED - Direct access via assessment ID
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - List of enrolled students with enrollment details
     """
     try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         students = svc.get_assessment_students(id)
         
         from src.main.dtos.InstructorAssessmentDTOs import StudentResponse
@@ -1268,12 +1365,13 @@ async def generate_questions_batch(
     id: str,
     request: GenerateQuestionsBatchRequest = Body(...),
     instructor_svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
-    question_svc: QuestionGenerationService = Depends(get_question_service)
+    question_svc: QuestionGenerationService = Depends(get_question_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Start batch question generation for all (or specific) students in an assessment.
     
-    Authentication: STUBBED - No auth required
+    Authentication: REQUIRED - Authenticated principal required
     
     Args:
     - studentIds: Optional list of specific students (or all if empty)
@@ -1282,8 +1380,10 @@ async def generate_questions_batch(
     - Job ID for status polling
     """
     try:
+        _assert_instructor_access(_principal)
         # Get assessment details
         assessment = instructor_svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         
         # Get students to process
         all_students = instructor_svc.get_assessment_students(id)
@@ -1352,16 +1452,20 @@ async def generate_questions_batch(
 async def get_generation_status(
     id: str,
     jobId: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Check status of a question generation job.
     
-    Authentication: STUBBED - Direct access via IDs
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - Job status and progress
     """
+    _assert_instructor_access(_principal)
+    assessment = svc.get_assessment(id)
+    _assert_assessment_owner(_principal, assessment)
     job_manager = get_batch_job_manager()
     job = job_manager.get_job(jobId)
     
@@ -1386,18 +1490,22 @@ async def get_generation_status(
 @assessment_router.get("/{id}/progress", response_model=ProgressSummaryResponse)
 async def get_assessment_progress(
     id: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get progress summary for all students in an assessment.
     
-    Authentication: STUBBED - Direct access via assessment ID
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - List of student progress with completion stats
     - Summary statistics (total, not-started, in-progress, completed)
     """
     try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         progress_list = svc.get_assessment_progress(id)
         
         # Calculate summary stats
@@ -1431,12 +1539,13 @@ async def evaluate_batch(
     id: str,
     request: EvaluateBatchRequest = Body(...),
     instructor_svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
-    evaluation_svc: ResponseEvaluationService = Depends(get_evaluation_service)
+    evaluation_svc: ResponseEvaluationService = Depends(get_evaluation_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Start batch evaluation for all (or specific) students in an assessment.
     
-    Authentication: STUBBED - No auth required
+    Authentication: REQUIRED - Authenticated principal required
     
     Args:
     - studentIds: Optional list of specific students (or all if empty)
@@ -1445,8 +1554,10 @@ async def evaluate_batch(
     - Job ID for status polling
     """
     try:
+        _assert_instructor_access(_principal)
         # Get assessment details
         assessment = instructor_svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         
         # Get students to process
         all_students = instructor_svc.get_assessment_students(id)
@@ -1522,16 +1633,20 @@ async def evaluate_batch(
 async def get_evaluation_status(
     id: str,
     jobId: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Check status of an evaluation job.
     
-    Authentication: STUBBED - Direct access via IDs
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - Job status and progress
     """
+    _assert_instructor_access(_principal)
+    assessment = svc.get_assessment(id)
+    _assert_assessment_owner(_principal, assessment)
     job_manager = get_batch_job_manager()
     job = job_manager.get_job(jobId)
     
@@ -1556,12 +1671,13 @@ async def get_evaluation_status(
 @assessment_router.get("/{id}/results", response_model=ResultsSummaryResponse)
 async def get_assessment_results(
     id: str,
-    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service)
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Get evaluation results for all students in an assessment.
     
-    Authentication: STUBBED - Direct access via assessment ID
+    Authentication: REQUIRED - Authenticated principal required
     
     Returns:
     - List of student results with scores and grades
@@ -1570,6 +1686,9 @@ async def get_assessment_results(
     Note: Only returns results for students who have been evaluated
     """
     try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
         results_list = svc.get_assessment_results(id)
         
         # Calculate summary stats
@@ -1608,7 +1727,8 @@ async def get_assessment_results(
 @s3_router.post("/upload-url")
 async def get_upload_url(
     filename: str,
-    content_type: str = "audio/webm"
+    content_type: str = "audio/webm",
+    _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     """
     Generate a presigned URL for uploading audio files to S3.
@@ -1629,6 +1749,7 @@ async def get_upload_url(
     2. Client uploads file directly to S3 using PUT request to uploadUrl
     3. Client stores fileUrl in database for later playback
     """
+    _assert_instructor_access(_principal)
     import boto3
     from botocore.exceptions import ClientError
     

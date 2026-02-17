@@ -8,6 +8,7 @@ interface SidebarUserMenuProps {
   userEmail: string;
   userInitial: string;
   showDetails?: boolean;
+  onLogout: () => void;
 }
 
 export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
@@ -17,6 +18,7 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   userEmail,
   userInitial,
   showDetails = true,
+  onLogout,
 }) => (
   <div className={`relative w-full ${showDetails ? '' : 'flex justify-center'}`} ref={userMenuRef}>
     <button
@@ -39,7 +41,16 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
     {isUserMenuOpen && (
       <div className="absolute right-0 bottom-full mb-2 w-56 bg-white rounded-md shadow-lg py-2 z-50">
         <div className="px-4 py-2 text-gray-700 text-sm">{userEmail}</div>
-        {/* Add more user menu items here */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsUserMenuOpen(false)
+            onLogout()
+          }}
+          className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-gray-50"
+        >
+          Log out
+        </button>
       </div>
     )}
   </div>

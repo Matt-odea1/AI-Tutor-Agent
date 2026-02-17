@@ -8,7 +8,7 @@ import { API_CONFIG as RETRY_CONFIG } from '../config/theme'
 import { trackAPIError } from '../utils/analytics'
 import { trackAPITiming } from '../utils/performance'
 import { trackError } from '../utils/errorTracking'
-import { getUserSession } from '../utils/userSession'
+import { clearUserSession, getUserSession } from '../utils/userSession'
 
 // Retry configuration
 const { MAX_RETRIES, RETRY_DELAY, RETRY_STATUS_CODES } = RETRY_CONFIG
@@ -52,10 +52,10 @@ apiClient.interceptors.request.use(
     timedConfig.startTime = performance.now()
 
     const session = getUserSession()
-    if (session?.user_id) {
+    if (session?.access_token) {
       config.headers = {
         ...config.headers,
-        'X-User-Id': session.user_id,
+        Authorization: `Bearer ${session.access_token}`,
       } as unknown as import('axios').AxiosRequestHeaders
     }
     
@@ -107,6 +107,10 @@ apiClient.interceptors.response.use(
           statusText: error.response.statusText,
         },
       })
+
+      if (error.response.status === 401 || error.response.status === 403) {
+        clearUserSession()
+      }
     }
     
     // Initialize retry count if not present

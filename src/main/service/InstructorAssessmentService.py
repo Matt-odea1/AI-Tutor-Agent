@@ -73,7 +73,8 @@ class InstructorAssessmentService:
         description: str,
         due_date: str,
         total_questions: int,
-        time_limit: Optional[int] = None
+        time_limit: Optional[int] = None,
+        owner_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new assessment.
@@ -99,6 +100,7 @@ class InstructorAssessmentService:
                 'GSI1PK': 'ASSESSMENT',
                 'GSI1SK': created_at,
                 'id': assessment_id,
+                'createdBy': owner_user_id,
                 'title': title,
                 'course': course,
                 'description': description,
@@ -119,7 +121,7 @@ class InstructorAssessmentService:
             logger.error(f"Failed to create assessment: {e}")
             raise InstructorAssessmentServiceError(f"Failed to create assessment: {e}")
     
-    def list_assessments(self) -> List[Dict[str, Any]]:
+    def list_assessments(self, owner_user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         List all assessments.
         
@@ -135,8 +137,12 @@ class InstructorAssessmentService:
             
             assessments = []
             for item in response.get('Items', []):
+                created_by = item.get('createdBy')
+                if owner_user_id and created_by and created_by != owner_user_id:
+                    continue
                 assessment = {
                     'id': item['id'],
+                    'createdBy': created_by,
                     'title': item['title'],
                     'course': item['course'],
                     'description': item.get('description', ''),
@@ -183,6 +189,7 @@ class InstructorAssessmentService:
             item = response['Item']
             assessment = {
                 'id': item['id'],
+                'createdBy': item.get('createdBy'),
                 'title': item['title'],
                 'course': item['course'],
                 'description': item.get('description', ''),

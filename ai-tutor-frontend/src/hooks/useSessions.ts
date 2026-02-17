@@ -103,10 +103,11 @@ export const useSessions = () => {
     }
     // Create a new general chat session (view)
     const newSession = await import('../api/history').then(m => m.createViewSession(resolvedWorkspaceId, 'chat'))
-    // Fetch sessions and load the new session
+    // Immediately switch UI to the new chat
+    loadSession(newSession.view_session_id, [])
+    // Refresh session list in the background
     await fetchSessions()
-    await loadSessionHistory(newSession.view_session_id)
-  }, [workspaceId, setWorkspaceId, fetchSessions, loadSessionHistory])
+  }, [workspaceId, setWorkspaceId, fetchSessions, loadSession])
 
   return {
     sessions,

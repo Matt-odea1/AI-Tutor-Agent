@@ -15,15 +15,32 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
 import { LoginGate } from './shared/LoginGate'
-import { getUserSession, setUserSession, type UserSession } from './utils/userSession'
+import { AUTH_SESSION_CHANGED_EVENT, getUserSession, setUserSessionWithToken, type UserSession } from './utils/userSession'
+import { loginWithEmailPassword, signupWithEmailPassword } from './api/auth'
 
 function App() {
   const isOnline = useOnlineStatus()
   const { addToast } = useToastStore()
-  const { setEditorOpen, setLayoutMode, codeEditor, appMode } = useChatStore()
+  const { setEditorOpen, setLayoutMode, codeEditor, appMode, setWorkspaceId, clearSession, setSessions, setAppMode } = useChatStore()
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [userSession, setUserSessionState] = useState<UserSession | null>(() => getUserSession())
   const [isReady] = useState(true)
+
+  useEffect(() => {
+    const syncSession = () => {
+      setUserSessionState(getUserSession())
+    }
+
+    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, syncSession)
+    window.addEventListener('storage', syncSession)
+    window.addEventListener('focus', syncSession)
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syncSession)
+      window.removeEventListener('storage', syncSession)
+      window.removeEventListener('focus', syncSession)
+    }
+  }, [])
 
   // Show toast when network status changes
   useEffect(() => {
@@ -82,11 +99,44 @@ function App() {
   }
 
   if (!userSession) {
+    const normalizeAuthError = (error: unknown, fallback: string) => {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+          ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : fallback
+      return new Error(message)
+    }
+
     return (
       <LoginGate
-        onLogin={async (email) => {
-          const session = await setUserSession(email)
-          setUserSessionState(session)
+        onLogin={async (email, password) => {
+          try {
+            const loginResult = await loginWithEmailPassword(email, password)
+            clearSession()
+            setWorkspaceId(null)
+            setSessions([])
+            setAppMode(null)
+            const session = setUserSessionWithToken(loginResult.access_token, loginResult.email || email)
+            setUserSessionState(session)
+          } catch (error: unknown) {
+            throw normalizeAuthError(error, 'Unable to sign in. Please check your email and password.')
+          }
+        }}
+        onSignup={async (email, password) => {
+          try {
+            const signupResult = await signupWithEmailPassword(email, password)
+            clearSession()
+            setWorkspaceId(null)
+            setSessions([])
+            setAppMode(null)
+            const session = setUserSessionWithToken(signupResult.access_token, signupResult.email || email)
+            setUserSessionState(session)
+          } catch (error: unknown) {
+            throw normalizeAuthError(error, 'Unable to create your account. Please try again.')
+          }
         }}
       />
     )

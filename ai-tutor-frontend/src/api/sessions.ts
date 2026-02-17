@@ -23,6 +23,18 @@ export const listSessions = async (workspaceId: string | null): Promise<SessionL
     pedagogy_mode: view.pedagogy_mode || undefined,
     title: view.title || undefined,
   }))
+
+  sessions.sort((left, right) => {
+    const leftTime = Date.parse(left.last_accessed || left.created_at || '')
+    const rightTime = Date.parse(right.last_accessed || right.created_at || '')
+
+    if (Number.isNaN(leftTime) && Number.isNaN(rightTime)) return 0
+    if (Number.isNaN(leftTime)) return 1
+    if (Number.isNaN(rightTime)) return -1
+
+    return rightTime - leftTime
+  })
+
   return { sessions, total: sessions.length }
 }
 

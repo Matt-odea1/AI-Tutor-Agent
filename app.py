@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 
 load_dotenv(find_dotenv(filename=".env", usecwd=True), override=False)
 
-from src.main.controllers.InternalEndpoints import router as context_router, chat_router, history_router, questions_router, evaluations_router, student_router, assessment_router, s3_router
+from src.main.controllers.InternalEndpoints import router as context_router, chat_router, history_router, questions_router, evaluations_router, student_router, assessment_router, s3_router, auth_router
 
 
 def create_app() -> FastAPI:
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(student_router)
     app.include_router(assessment_router)
     app.include_router(s3_router)
+    app.include_router(auth_router)
 
     return app
 
