@@ -112,6 +112,19 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
 
   const handleRunCode = async () => {
     setEditorExecuting(true);
+    let programToSave = activeProgramId
+      ? programs.find((program) => program.program_id === activeProgramId) ?? null
+      : null;
+
+    if (!activeProgramId) {
+      try {
+        programToSave = await createNewProgram(codeEditor.code || EDITOR_TEMPLATE);
+        didInitProgramRef.current = true;
+      } catch {
+        didInitProgramRef.current = false;
+      }
+    }
+
     try {
       const result = await runCode(codeEditor.code);
       setEditorOutput(result.output, result.error);
@@ -119,15 +132,12 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
       addToHistory(codeEditor.code, result.output, result.error);
       // Track code execution
       trackCodeExecuted(!!result.error);
-      if (activeProgramId) {
-        const activeProgram = programs.find((program) => program.program_id === activeProgramId);
-        if (activeProgram) {
-          await saveProgram(activeProgram, {
-            current_code: codeEditor.code,
-            last_output: result.output,
-            last_error: result.error,
-          });
-        }
+      if (programToSave) {
+        await saveProgram(programToSave, {
+          current_code: codeEditor.code,
+          last_output: result.output,
+          last_error: result.error,
+        });
       }
     } finally {
       setEditorExecuting(false);
@@ -191,7 +201,9 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
     if (!activeProgramId && !didInitProgramRef.current) {
       didInitProgramRef.current = true;
       hasUserEditsRef.current = false;
-      createNewProgram(codeEditor.code || EDITOR_TEMPLATE);
+      void createNewProgram(codeEditor.code || EDITOR_TEMPLATE).catch(() => {
+        didInitProgramRef.current = false;
+      });
       return;
     }
     if (activeProgramId && !hasUserEditsRef.current) {
