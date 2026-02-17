@@ -7,7 +7,7 @@ class ChatRequest(BaseModel):
     top_k: Optional[int] = 5
     session_id: Optional[str] = None
     include_history: bool = True  # Whether to include conversation history in context
-    pedagogy_mode: Optional[str] = "explanatory"  # Teaching mode: explanatory, debugging, practice
+    pedagogy_mode: Optional[str] = None  # Optional; endpoint applies story-specific default when omitted
     editor_code: Optional[str] = None
     editor_selection: Optional[str] = None
     last_stdout: Optional[str] = None

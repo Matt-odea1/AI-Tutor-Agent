@@ -24,27 +24,6 @@ class PedagogyMode(str, Enum):
     Best for: Learning new concepts, reference material, clear answers
     """
     
-    DEBUGGING = "debugging"
-    """
-    Debugging Mode - Guided Problem-Solving with Hints
-    
-    Helps students fix code and solve problems without giving away solutions.
-    Provides hints and guides them to find and fix issues themselves.
-    
-    Best for: Homework help, debugging assistance, avoiding giving solutions
-    """
-    
-    PRACTICE = "practice"
-    """
-    Practice Mode - Guided Questions & Active Learning
-    
-    Combines Socratic questioning with active testing. Uses guided questions
-    to help discover concepts and poses challenges to test understanding.
-    Provides constructive feedback and identifies knowledge gaps.
-    
-    Best for: Active practice, self-assessment, exam prep, discovering insights
-    """
-
     CONCISE = "concise"
     """
     Concise Mode - UI-Friendly Responses
@@ -98,7 +77,11 @@ class PedagogyMode(str, Enum):
         Returns:
             Filename in the prompts/ directory
         """
-        return f"{self.value}_mode_prompt.md"
+        prompt_files = {
+            self.EXPLANATORY: "general_chat_prompt.md",
+            self.CONCISE: "code_assistant_prompt.md",
+        }
+        return prompt_files[self]
     
     def get_description(self) -> str:
         """
@@ -108,9 +91,7 @@ class PedagogyMode(str, Enum):
             Description string
         """
         descriptions = {
-            self.EXPLANATORY: "Direct instruction with clear explanations and examples",
-            self.DEBUGGING: "Hint-based problem solving without giving away solutions",
-            self.PRACTICE: "Guided questions and active testing for deeper understanding",
-            self.CONCISE: "Short, direct answers optimized for compact UI surfaces",
+            self.EXPLANATORY: "General Chat tutor behavior with clear explanations",
+            self.CONCISE: "Code Assistant behavior with short, direct responses",
         }
         return descriptions.get(self, "Unknown mode")

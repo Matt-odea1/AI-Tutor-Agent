@@ -7,7 +7,6 @@
  * @returns Object containing:
  *   - messages: Array of chat messages
  *   - sessionId: Current session ID (null for new sessions)
- *   - pedagogyMode: Active pedagogy mode
  *   - isLoading: Loading state during API calls
  *   - error: Error message (if any)
  *   - sendMessage: Function to send a user message
@@ -32,7 +31,6 @@ export const useChat = () => {
     messages,
     sessionId,
     workspaceId,
-    pedagogyMode,
     isLoading,
     error,
     addMessage,
@@ -67,7 +65,7 @@ export const useChat = () => {
         const activeWorkspaceId = await ensureWorkspace()
         let viewSessionId = sessionId
         if (!viewSessionId) {
-          const view = await createViewSession(activeWorkspaceId, 'chat', pedagogyMode)
+          const view = await createViewSession(activeWorkspaceId, 'chat')
           viewSessionId = view.view_session_id
           setSessionId(viewSessionId)
         }
@@ -76,7 +74,6 @@ export const useChat = () => {
           query: content.trim(),
           session_id: viewSessionId,
           include_history: true,
-          pedagogy_mode: pedagogyMode,
           top_k: 5,
           ...editorContext,
         })
@@ -123,13 +120,12 @@ export const useChat = () => {
         setLoading(false)
       }
     },
-    [sessionId, pedagogyMode, isLoading, addMessage, setSessionId, setLoading, setError, ensureWorkspace]
+    [sessionId, isLoading, addMessage, setSessionId, setLoading, setError, ensureWorkspace]
   )
 
   return {
     messages,
     sessionId,
-    pedagogyMode,
     isLoading,
     error,
     sendMessage,

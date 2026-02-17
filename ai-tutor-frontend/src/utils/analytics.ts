@@ -118,9 +118,9 @@ export const setUserProperties = (properties: EventProperties) => {
 /**
  * Track when a message is sent
  */
-export const trackMessageSent = (mode: string) => {
+export const trackMessageSent = (experienceMode: string) => {
   trackEvent('message_sent', {
-    pedagogy_mode: mode,
+    experience_mode: experienceMode,
   })
 }
 

@@ -1,5 +1,9 @@
 # AI Agent Prompt: Programming Assignment Question Generator
 
+**UX Mapping:**
+- **Primary experience:** Question Generation
+- **Scope:** Generate oral-assessment questions from assignment context and student submissions
+
 **Purpose:**  
 Generate oral questions for students based on a programming assignment submission.
 

@@ -5,14 +5,13 @@ import { create } from 'zustand'
 import type {
   AppMode,
   Message,
-  PedagogyMode,
   CodeEditorState,
   CodeProgram,
   EditorDecoration,
   EditorDeletionZone,
   SessionInfo,
 } from '../types'
-import { DEFAULT_PEDAGOGY_MODE, STORAGE_KEYS } from '../config/constants'
+import { STORAGE_KEYS } from '../config/constants'
 import { EDITOR_TEMPLATE } from '../config/editorDefaults'
 
 interface ChatStore {
@@ -24,7 +23,6 @@ interface ChatStore {
   workspaceId: string | null
   codeMemoryId: string | null
   appMode: AppMode | null
-  pedagogyMode: PedagogyMode
   isLoading: boolean
   error: string | null
   layoutMode: 'stacked' | 'split'
@@ -53,7 +51,6 @@ interface ChatStore {
   setWorkspaceId: (id: string | null) => void
   setCodeMemoryId: (id: string | null) => void
   setAppMode: (mode: AppMode | null) => void
-  setPedagogyMode: (mode: PedagogyMode) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   setLayoutMode: (mode: 'stacked' | 'split') => void
@@ -100,7 +97,6 @@ export const useChatStore = create<ChatStore>((set) => ({
   workspaceId: localStorage.getItem(STORAGE_KEYS.WORKSPACE_ID),
   codeMemoryId: null,
   appMode: (localStorage.getItem(STORAGE_KEYS.APP_MODE) as AppMode) || null,
-  pedagogyMode: (localStorage.getItem(STORAGE_KEYS.PEDAGOGY_MODE) as PedagogyMode) || DEFAULT_PEDAGOGY_MODE,
   isLoading: false,
   error: null,
   layoutMode: 'split',
@@ -170,11 +166,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       localStorage.removeItem(STORAGE_KEYS.APP_MODE)
     }
     set({ appMode: mode })
-  },
-
-  setPedagogyMode: (mode) => {
-    localStorage.setItem(STORAGE_KEYS.PEDAGOGY_MODE, mode)
-    set({ pedagogyMode: mode })
   },
 
   setLoading: (loading) => set({ isLoading: loading }),

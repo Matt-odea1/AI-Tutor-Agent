@@ -177,6 +177,7 @@ class TestHistoryMessaging:
         assert call_kwargs["session_id"] == "view-123"
         assert call_kwargs["persist_history"] is False
         assert call_kwargs["history_override"] == mock_store.get_view_history.return_value
+        assert call_kwargs["pedagogy_mode"] == "explanatory"
 
     def test_post_thread_message_uses_history_override(self, client):
         test_client, mock_chat, mock_store = client
@@ -192,6 +193,7 @@ class TestHistoryMessaging:
         assert call_kwargs["session_id"] == "thread-123"
         assert call_kwargs["persist_history"] is False
         assert call_kwargs["history_override"] == mock_store.get_thread_history.return_value
+        assert call_kwargs["pedagogy_mode"] == "concise"
 
 
 class TestHealth:

@@ -75,7 +75,7 @@ class ChatService:
             top_k: Number of context chunks to retrieve
             session_id: Optional session ID (auto-generated if None)
             include_history: Whether to include conversation history
-            pedagogy_mode: Teaching mode (explanatory, debugging, practice)
+            pedagogy_mode: Teaching mode (explanatory, concise)
         
         Returns:
             dict with keys: answer, session_id, is_new_session, history_length, 
@@ -98,8 +98,6 @@ class ChatService:
         if pedagogy_mode is None:
             # Use session's existing mode or default
             pedagogy_mode = self.memory.get_pedagogy_mode(session_id) if not using_external_history else "explanatory"
-            # Migrate old mode values to new 3-mode system
-            pedagogy_mode = self._migrate_old_mode(pedagogy_mode)
             logger.debug(f"Using session pedagogy mode: {pedagogy_mode}")
         else:
             # Validate and set new mode for session
@@ -561,32 +559,6 @@ Provide only the title, nothing else. Keep it short and descriptive."""
         except Exception as e:
             logger.error(f"Error generating session title: {e}")
             return "New Chat"
-    
-    def _migrate_old_mode(self, mode: str) -> str:
-        """
-        Migrate old 5-mode system values to new 3-mode system.
-        
-        Args:
-            mode: Old or new mode value
-            
-        Returns:
-            Valid mode value from new 3-mode system
-        """
-        # Map old modes to new modes
-        mode_migration = {
-            'socratic': 'practice',      # Socratic -> Practice
-            'assessment': 'practice',     # Assessment -> Practice
-            'review': 'explanatory',      # Review -> Explanatory
-            # New modes pass through
-            'explanatory': 'explanatory',
-            'debugging': 'debugging',
-            'practice': 'practice'
-        }
-        
-        migrated = mode_migration.get(mode, 'explanatory')
-        if migrated != mode:
-            logger.info(f"Migrated old mode '{mode}' to '{migrated}'")
-        return migrated
     
     def _strip_reasoning_tags(self, text: str) -> str:
         """

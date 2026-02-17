@@ -256,6 +256,12 @@ def _assert_thread_owner(store, thread_id: str, user_id: str) -> dict:
     return thread
 
 
+def _resolve_pedagogy_mode(requested_mode: Optional[str], default_mode: str) -> str:
+    if requested_mode is None or requested_mode == "":
+        return default_mode
+    return requested_mode
+
+
 # --- Endpoints -----------------------------------------------------------------
 
 @router.post("/upload", status_code=201)
@@ -365,7 +371,7 @@ def chat_endpoint(request: ChatRequest = Body(...), svc: ChatService = Depends(g
             top_k=request.top_k or 5, 
             session_id=request.session_id,
             include_history=request.include_history,
-            pedagogy_mode=request.pedagogy_mode,
+            pedagogy_mode=_resolve_pedagogy_mode(request.pedagogy_mode, "explanatory"),
             editor_code=request.editor_code,
             editor_selection=request.editor_selection,
             last_stdout=request.last_stdout,
@@ -404,7 +410,9 @@ def create_view_session_endpoint(
     user_id: str = Depends(_require_user_id),
 ):
     _assert_workspace_owner(store, request.workspace_id, user_id)
-    view = store.create_view_session(request.workspace_id, request.view_type, request.pedagogy_mode)
+    default_mode = "explanatory" if request.view_type == "chat" else None
+    resolved_mode = _resolve_pedagogy_mode(request.pedagogy_mode, default_mode)
+    view = store.create_view_session(request.workspace_id, request.view_type, resolved_mode)
     return ViewSessionResponse(
         view_session_id=view["view_session_id"],
         workspace_id=view["workspace_id"],
@@ -481,7 +489,7 @@ def post_view_message_endpoint(
         top_k=request.top_k or 5,
         session_id=view_session_id,
         include_history=request.include_history,
-        pedagogy_mode=request.pedagogy_mode,
+        pedagogy_mode=_resolve_pedagogy_mode(request.pedagogy_mode, "explanatory"),
         editor_code=request.editor_code,
         editor_selection=request.editor_selection,
         last_stdout=request.last_stdout,
@@ -687,7 +695,7 @@ def post_thread_message_endpoint(
         top_k=request.top_k or 5,
         session_id=thread_id,
         include_history=request.include_history,
-        pedagogy_mode=request.pedagogy_mode,
+        pedagogy_mode=_resolve_pedagogy_mode(request.pedagogy_mode, "concise"),
         editor_code=request.editor_code,
         editor_selection=request.editor_selection,
         last_stdout=request.last_stdout,
@@ -736,7 +744,7 @@ def create_edit_proposal(
         top_k=5,
         session_id=request.thread_id,
         include_history=request.include_history,
-        pedagogy_mode=request.pedagogy_mode,
+        pedagogy_mode=_resolve_pedagogy_mode(request.pedagogy_mode, "concise"),
         editor_code=request.editor_code,
         editor_selection=request.editor_selection,
         last_stdout=request.last_stdout,

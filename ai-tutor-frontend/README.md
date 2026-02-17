@@ -1,14 +1,14 @@
 # AI Tutor - Intelligent Learning Assistant
 
-An AI-powered tutoring system designed to help students learn computer science concepts through interactive conversation, code practice, and personalized pedagogy modes.
+An AI-powered tutoring system designed to help students learn computer science concepts through interactive conversation, code practice, and workflow-based experiences.
 
 ## 🌟 Features
 
 ### Core Functionality
-- **3 Pedagogy Modes**
-  - 📖 **Explanatory Mode**: Get detailed explanations and step-by-step learning
-  - 🐛 **Debug Help Mode**: Get assistance fixing code errors and understanding issues
-  - 🎯 **Practice Mode**: Active learning with guided questions and exercises
+- **Workflow UX Modes**
+  - 📖 **General Chat**: Detailed explanations and concept learning
+  - 🧩 **Code Assistant**: Concise coding support and edit-focused help
+  - ❓ **Question Generation**: Oral-assessment question creation workflow
 
 - **Interactive Code Editor**
   - Built-in Python code editor with Monaco Editor
@@ -171,12 +171,11 @@ ai-tutor-frontend/
 | `VITE_APP_NAME` | Application name | `AI Tutor` |
 | `VITE_APP_VERSION` | Application version | `1.0.0` |
 
-### Pedagogy Modes
+### Pedagogy Behavior
 
-The system supports three teaching modes:
-1. **Explanatory** - Best for learning new concepts
-2. **Debugging** - Best for fixing code issues
-3. **Practice** - Best for active learning and testing knowledge
+The backend supports two pedagogy behaviors:
+1. **Explanatory** - General Chat defaults
+2. **Concise** - Code Assistant defaults
 
 ## 🌐 Deployment
 
