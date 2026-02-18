@@ -73,10 +73,17 @@ jobs:
 
           echo "SSM command id: ${COMMAND_ID}"
 
+          set +e
           aws ssm wait command-executed \
             --region "${DEPLOY_REGION}" \
             --command-id "${COMMAND_ID}" \
             --instance-id "${INSTANCE_ID}"
+          WAIT_EXIT=$?
+          set -e
+
+          if [[ "${WAIT_EXIT}" -ne 0 ]]; then
+            echo "SSM waiter exited non-zero (${WAIT_EXIT}); fetching invocation details..."
+          fi
 
           STATUS=$(aws ssm get-command-invocation \
             --region "${DEPLOY_REGION}" \
