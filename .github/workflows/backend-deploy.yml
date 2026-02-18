@@ -44,7 +44,7 @@ jobs:
 
           echo "Using EC2 instance: ${INSTANCE_ID}"
 
-          aws ssm send-command \
+          COMMAND_ID=$(aws ssm send-command \
             --region "${DEPLOY_REGION}" \
             --instance-ids "${INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
@@ -67,4 +67,43 @@ jobs:
               "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/login",
               "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/signup",
               "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/google"
-            ]'
+            ]' \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM command id: ${COMMAND_ID}"
+
+          aws ssm wait command-executed \
+            --region "${DEPLOY_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}"
+
+          STATUS=$(aws ssm get-command-invocation \
+            --region "${DEPLOY_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}" \
+            --query 'Status' \
+            --output text)
+
+          echo "SSM final status: ${STATUS}"
+
+          echo "---- SSM STDOUT ----"
+          aws ssm get-command-invocation \
+            --region "${DEPLOY_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}" \
+            --query 'StandardOutputContent' \
+            --output text || true
+
+          echo "---- SSM STDERR ----"
+          aws ssm get-command-invocation \
+            --region "${DEPLOY_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}" \
+            --query 'StandardErrorContent' \
+            --output text || true
+
+          if [[ "${STATUS}" != "Success" ]]; then
+            echo "Backend deploy failed on EC2 (SSM status: ${STATUS})"
+            exit 1
+          fi
