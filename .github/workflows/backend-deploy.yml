@@ -57,7 +57,7 @@ jobs:
               "docker compose build --pull --no-cache api",
               "docker compose up -d --force-recreate --no-deps api",
               "curl -fsS http://localhost:8000/health",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q '\"/api/auth/login\"'",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q '\"/api/auth/signup\"'",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q '\"/api/auth/google\"'"
+              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/login",
+              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/signup",
+              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/google"
             ]'
