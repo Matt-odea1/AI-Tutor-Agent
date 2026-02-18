@@ -23,15 +23,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ai-tutor-frontend/package-lock.json
 
       - name: Configure frontend env
         run: |
           echo "VITE_API_BASE_URL=${{ vars.FRONTEND_API_BASE_URL }}" > .env.production
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build
