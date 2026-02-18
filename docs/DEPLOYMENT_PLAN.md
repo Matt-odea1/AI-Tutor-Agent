@@ -101,7 +101,7 @@ Expected: `HTTP/2 200` (or 403/404 from app origin if content misconfigured, but
 
 ---
 
-## Phase 3 — API HTTPS on EC2 with Caddy
+## Phase 3 — API HTTPS on EC2 with Nginx + Certbot
 
 This phase makes `https://api.chat9021.org` serve your FastAPI backend.
 
@@ -112,34 +112,59 @@ EC2 instance security group inbound rules:
 - Allow TCP 80 from `0.0.0.0/0`
 - Allow TCP 443 from `0.0.0.0/0`
 
-## 3.2 Install and configure Caddy on EC2
+## 3.2 Install and configure Nginx reverse proxy on EC2
 
 SSH to EC2, then run:
 
 ```bash
 sudo apt update
-sudo apt install -y caddy
+sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
-Write Caddyfile:
+Write Nginx site config:
 
 ```bash
-sudo tee /etc/caddy/Caddyfile > /dev/null <<'EOF'
-api.chat9021.org {
-    reverse_proxy 127.0.0.1:8000
+sudo tee /etc/nginx/sites-available/ai-tutor > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name api.chat9021.org;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 EOF
 ```
 
-Enable and restart:
+Test and restart Nginx:
 
 ```bash
-sudo systemctl enable caddy
-sudo systemctl restart caddy
-sudo systemctl status caddy --no-pager
+sudo nginx -t
+sudo systemctl enable nginx
+sudo systemctl restart nginx
+sudo systemctl status nginx --no-pager
 ```
 
-Caddy automatically obtains and renews Let’s Encrypt certs.
+Issue TLS cert and enable HTTPS redirect:
+
+```bash
+sudo certbot --nginx -d api.chat9021.org --non-interactive --agree-tos --register-unsafely-without-email --redirect
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+Remove Caddy if previously installed:
+
+```bash
+sudo systemctl stop snap.caddy.server.service || true
+sudo systemctl disable snap.caddy.server.service || true
+sudo snap remove caddy || true
+```
 
 ## 3.3 Verify API endpoint
 
@@ -154,7 +179,7 @@ Expected: `200 OK`.
 If not:
 
 ```bash
-sudo journalctl -u caddy -n 200 --no-pager
+sudo journalctl -u nginx -n 200 --no-pager
 ```
 
 ---
@@ -236,7 +261,7 @@ curl -i https://api.chat9021.org/health
 
 - Verify Cloudflare `api` record points to EC2 Elastic IP
 - Verify SG allows 80/443
-- Verify Caddy is running and proxying to `127.0.0.1:8000`
+- Verify Nginx is running and proxying to `127.0.0.1:8000`
 
 ## Problem: Google popup works but backend rejects token
 
