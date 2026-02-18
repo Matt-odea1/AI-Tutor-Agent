@@ -1,3 +1,79 @@
+# Documentation Index
+
+This folder contains only active, maintenance-focused documentation.
+
+## Core Docs
+
+- `QUICKSTART.md`
+  - Local development startup for backend + frontends.
+  - First document for new contributors.
+
+- `ARCHITECTURE.md`
+  - Current backend/frontend architecture and module boundaries.
+  - Canonical reference for where responsibilities live.
+
+- `DYNAMODB_SCHEMA.md`
+  - Active DynamoDB key patterns and access patterns used by assessment and auth features.
+
+- `AUTH_CURRENT_STATE_AND_PLAN.md`
+  - Current authentication model, required env vars, rollout/hardening checklist.
+
+- `DEPLOYMENT_PLAN.md`
+  - Practical deployment runbook and CI/CD expectations.
+
+## Scope Rule
+
+This docs folder should contain:
+
+- Current system behavior
+- Operational runbooks
+- Architecture references
+
+This docs folder should not contain:
+
+- Milestone completion reports
+- Historical migration/cutover notes after cutover is complete
+- Temporary refactor execution logs
+
+If a document no longer helps with current development or operations, delete it.
+# Documentation Index
+
+This folder contains only active, maintenance-focused documentation.
+
+## Core Docs
+
+- `QUICKSTART.md`
+  - Local development startup for backend + frontends.
+  - First document for new contributors.
+
+- `ARCHITECTURE.md`
+  - Current backend/frontend architecture and module boundaries.
+  - Canonical reference for where responsibilities live.
+
+- `DYNAMODB_SCHEMA.md`
+  - Active DynamoDB key patterns and access patterns used by assessment and auth features.
+
+- `AUTH_CURRENT_STATE_AND_PLAN.md`
+  - Current authentication model, required env vars, rollout/hardening checklist.
+
+- `DEPLOYMENT_PLAN.md`
+  - Practical deployment runbook and CI/CD expectations.
+
+## Scope Rule
+
+This docs folder should contain:
+
+- Current system behavior
+- Operational runbooks
+- Architecture references
+
+This docs folder should not contain:
+
+- Milestone completion reports
+- Historical migration/cutover notes after cutover is complete
+- Temporary refactor execution logs
+
+If a document no longer helps with current development or operations, delete it.
 # AI Tutor Agent
 
 ## Overview
@@ -15,13 +91,13 @@ An intelligent educational assessment and tutoring system for introductory progr
 ### 🔧 Technical Features
 - AWS Bedrock AgentCore integration (Amazon Nova Lite for chat, Titan Embed for vectors)
 - Neo4j graph database for vector storage and retrieval
+- **Workflow Modes**: 3 core user stories (General Chat, Code with AI, Question Generation)
+- **Conversation History**: Session-based chat with context retention
 - Async job processing for evaluations
 - Modular service/controller architecture
 - Comprehensive test suite
 
 ## Quick Start
-
-For active setup and architecture docs, start in [docs/README.md](docs/README.md).
 
 ### Prerequisites
 - Python 3.13+
@@ -177,11 +253,77 @@ curl -X POST "http://localhost:8000/internal/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "Explain how for loops work in Python",
-    "top_k": 5
+    "top_k": 5,
+    "pedagogy_mode": "explanatory"
   }'
 ```
+    3. **Workflow behavior defaults:**
 
-The system retrieves relevant context from uploaded materials and provides answers.
+    - **General Chat** defaults to explanatory tutor behavior.
+    - **Code with AI** assistant routes default to concise responses and edit-oriented guidance.
+    - **Question Generation** uses dedicated generation prompts and batch workflows.
+    "pedagogy_mode": "review"
+  }'
+
+    ## 🧭 Workflow Modes
+
+    The product now uses **workflow modes (user stories)** instead of a user-facing pedagogy selector.
+
+    ### 1) General Chat
+    - Purpose: broad learning Q&A and concept explanations
+    - Default response behavior: explanatory tutor style
+    - Typical endpoint flow: `/internal/history/views/{id}/message`
+
+    ### 2) Code with AI (Assistant)
+    - Purpose: code edits, debugging, and focused coding guidance
+    - Default response behavior: concise assistant style optimized for the IDE panel
+    - Typical endpoint flow: `/internal/history/threads/{id}/message` and `/internal/history/edit-proposal`
+
+    ### 3) Question Generation
+    - Purpose: generate oral-assessment questions from assignment/student artifacts
+    - Prompt source: `prompts/question_generation_prompt.md`
+
+    ### API Defaults
+
+    `pedagogy_mode` remains optional for compatibility, but if omitted the backend now applies defaults by workflow:
+
+    - General Chat routes → `explanatory`
+    - Code with AI assistant routes → `concise`
+
+    ### Prompt Files
+
+    Workflow prompt mapping is:
+    - General Chat → `prompts/explanatory_mode_prompt.md`
+    - Code with AI assistant → `prompts/concise_mode_prompt.md`
+    - Question Generation → `prompts/question_generation_prompt.md`
+
+    Additional prompts like `debugging_mode_prompt.md` and `practice_mode_prompt.md` remain available as optional internal strategies.
+- **Socratic**: Interactive class discussions
+- **Explanatory**: Lecture material, references
+- **Debugging**: Office hours, lab help
+- **Assessment**: Practice problem sets
+- **Review**: Exam review sessions
+
+**Mode Selection Tips**:
+- One concept, multiple modes: Learn (Explanatory) → Practice (Assessment) → Review
+- Struggling? Start Explanatory, then switch to Socratic for deeper understanding
+- Assignment work? Use Debugging mode to maintain academic integrity
+- Quick answer needed? Explanatory mode is fastest
+
+### Customizing Pedagogy Prompts
+
+All mode prompts are stored in `/prompts/`:
+- `socratic_mode_prompt.md`
+- `explanatory_mode_prompt.md`
+- `debugging_mode_prompt.md`
+- `assessment_mode_prompt.md`
+- `review_mode_prompt.md`
+
+You can customize these prompts to:
+- Adjust teaching style
+- Add domain-specific guidelines
+- Include institutional policies
+- Modify difficulty levels
 
 ---
 
@@ -253,11 +395,10 @@ AI-Tutor-Agent/
 │   ├── llm/
 │   └── agentcore_setup/
 │
-└── Prompt Files
-    └── prompts/
-        ├── question_generation_prompt.md  # Question generation instructions
-        ├── response_evaluation_prompt.md  # Evaluation criteria and rubric
-        └── vector_store_prompt.md         # Document preprocessing prompt
+└── Prompt Files (root)
+    ├── question_generation_prompt.md  # Question generation instructions
+    ├── response_evaluation_prompt.md  # Evaluation criteria and rubric
+    └── vector_store_prompt.md         # Document preprocessing prompt
 ```
 
 ## API Endpoints
@@ -326,7 +467,7 @@ AI-Tutor-Agent/
 ### Run Tests
 ```bash
 # All tests
-PYTHONPATH=. pytest tests -q
+PYTHONPATH=src pytest tests/ -v
 
 # Specific test suites
 pytest tests/service/ -v
@@ -533,9 +674,9 @@ For questions, issues, or contributions:
 - **Educational**: Designed for programming education contexts
 
 For detailed API documentation, see:
-- [docs/README.md](docs/README.md) - Documentation index and scope
-- [docs/QUICKSTART.md](docs/QUICKSTART.md) - Local setup and run commands
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Current architecture and module boundaries
-- [docs/AUTH_CURRENT_STATE_AND_PLAN.md](docs/AUTH_CURRENT_STATE_AND_PLAN.md) - Auth model and hardening checklist
-- [docs/DYNAMODB_SCHEMA.md](docs/DYNAMODB_SCHEMA.md) - Active DynamoDB key patterns
-- [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md) - Deployment runbook
+- `ARCHITECTURE.md` - Complete system architecture and data flows
+- `CHAT_FLOW_DOCUMENTATION.md` - Complete chat/RAG system documentation
+- `CHAT_FLOW_SUMMARY.md` - Quick reference for chat functionality
+- `EVALUATION_API.md` - Evaluation endpoints and workflows
+- `QUESTION_GENERATION_API.md` - Question generation endpoints
+- `DIRECTORY_STRUCTURE.md` - Directory organization guide
