@@ -54,7 +54,7 @@ jobs:
               "cd /home/ubuntu/AI-Tutor-Agent",
               "git fetch origin main",
               "git reset --hard origin/main",
-              "docker compose build api",
+              "docker compose build --pull --no-cache api",
               "docker compose up -d api",
               "curl -fsS http://localhost:8000/health"
             ]'
