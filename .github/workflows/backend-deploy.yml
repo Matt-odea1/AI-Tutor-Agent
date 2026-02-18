@@ -51,6 +51,7 @@ jobs:
             --comment "Deploy backend from GitHub Actions" \
             --parameters commands='[
               "set -e",
+              "export HOME=/home/ubuntu",
               "cd /home/ubuntu/AI-Tutor-Agent",
               "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
               "EXPECTED_SHA=${{ github.sha }}",
