@@ -26,6 +26,16 @@ jobs:
 
       - name: Configure frontend env
         run: |
+          if [ -z "${{ vars.FRONTEND_API_BASE_URL }}" ]; then
+            echo "FRONTEND_API_BASE_URL is required"
+            exit 1
+          fi
+
+          if [[ "${{ vars.FRONTEND_API_BASE_URL }}" != https://* ]]; then
+            echo "FRONTEND_API_BASE_URL must start with https://"
+            exit 1
+          fi
+
           echo "VITE_API_BASE_URL=${{ vars.FRONTEND_API_BASE_URL }}" > .env.production
           echo "VITE_GOOGLE_CLIENT_ID=${{ vars.VITE_GOOGLE_CLIENT_ID }}" >> .env.production
 

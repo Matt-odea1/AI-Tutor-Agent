@@ -2,8 +2,35 @@
  * API configuration
  */
 
+const DEFAULT_DEV_API_BASE_URL = 'http://localhost:8000'
+const DEFAULT_PROD_API_BASE_URL = 'https://api.chat9021.org'
+
+const resolveApiBaseUrl = (): string => {
+  const fallback = import.meta.env.PROD ? DEFAULT_PROD_API_BASE_URL : DEFAULT_DEV_API_BASE_URL
+  const configured = (import.meta.env.VITE_API_BASE_URL || fallback).trim()
+
+  if (typeof window === 'undefined') {
+    return configured
+  }
+
+  const isSecurePage = window.location.protocol === 'https:'
+  if (!isSecurePage || !configured.startsWith('http://')) {
+    return configured
+  }
+
+  try {
+    const parsed = new URL(configured)
+    if (parsed.hostname === '3.27.56.110') {
+      return DEFAULT_PROD_API_BASE_URL
+    }
+    return configured.replace(/^http:\/\//, 'https://')
+  } catch {
+    return DEFAULT_PROD_API_BASE_URL
+  }
+}
+
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: resolveApiBaseUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
