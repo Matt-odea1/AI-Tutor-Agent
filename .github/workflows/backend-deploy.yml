@@ -66,10 +66,13 @@ jobs:
               "[ \"$ACTUAL_SHA\" = \"$EXPECTED_SHA\" ] || { echo \"ERROR: EC2 repo HEAD does not match workflow commit\"; exit 1; }",
               "docker compose build --pull --no-cache api",
               "docker compose up -d --force-recreate --no-deps api",
-              "curl -fsS http://localhost:8000/health",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/login",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/signup",
-              "curl -fsS http://localhost:8000/openapi.json | grep -q /api/auth/google"
+              "for i in $(seq 1 45); do if curl -fsS http://localhost:8000/health >/dev/null; then echo health_ok; break; fi; echo waiting_for_health_$i; sleep 2; done",
+              "curl -fsS http://localhost:8000/health >/dev/null || { echo health_check_failed; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
+              "for i in $(seq 1 30); do if curl -fsS http://localhost:8000/openapi.json >/dev/null; then echo openapi_ok; break; fi; echo waiting_for_openapi_$i; sleep 2; done",
+              "curl -fsS http://localhost:8000/openapi.json >/tmp/openapi.json || { echo openapi_fetch_failed; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
+              "grep -q /api/auth/login /tmp/openapi.json || { echo missing_auth_login_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
+              "grep -q /api/auth/signup /tmp/openapi.json || { echo missing_auth_signup_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
+              "grep -q /api/auth/google /tmp/openapi.json || { echo missing_auth_google_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }"
             ]' \
             --query 'Command.CommandId' \
             --output text)
