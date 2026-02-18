@@ -54,3 +54,18 @@ jobs:
 
       - name: Deploy to S3
         run: aws s3 sync dist/ s3://${{ vars.S3_BUCKET }} --delete
+
+      - name: Invalidate CloudFront cache (fast paths)
+        run: |
+          DISTRIBUTION_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(join(',', Origins.Items[].DomainName), '${{ vars.S3_BUCKET }}')].Id | [0]" \
+            --output text)
+
+          if [ -z "$DISTRIBUTION_ID" ] || [ "$DISTRIBUTION_ID" = "None" ]; then
+            echo "Unable to resolve CloudFront distribution for S3 bucket: ${{ vars.S3_BUCKET }}"
+            exit 1
+          fi
+
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/" "/index.html"
