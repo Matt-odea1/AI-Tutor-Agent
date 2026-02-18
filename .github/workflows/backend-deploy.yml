@@ -52,6 +52,7 @@ jobs:
             --parameters commands='[
               "set -e",
               "cd /home/ubuntu/AI-Tutor-Agent",
+              "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
               "EXPECTED_SHA=${{ github.sha }}",
               "echo Expected SHA: $EXPECTED_SHA",
               "git remote set-url origin https://github.com/Matt-odea1/AI-Tutor-Agent.git",
