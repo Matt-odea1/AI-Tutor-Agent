@@ -13,6 +13,7 @@ export const API_CONFIG = {
 export const API_ENDPOINTS = {
   AUTH_LOGIN: '/api/auth/login',
   AUTH_SIGNUP: '/api/auth/signup',
+  AUTH_GOOGLE: '/api/auth/google',
   HISTORY_WORKSPACES: '/internal/history/workspaces',
   HISTORY_VIEWS: '/internal/history/views',
   HISTORY_VIEW_HISTORY: (viewSessionId: string) => `/internal/history/views/${viewSessionId}/history`,

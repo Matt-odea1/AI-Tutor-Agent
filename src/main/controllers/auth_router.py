@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends
 
 from src.main.auth.dependencies import get_auth_service
 from src.main.auth.service import AuthService
-from src.main.dtos.AuthDTOs import LoginRequest, LoginResponse, SignupRequest
+from src.main.dtos.AuthDTOs import GoogleLoginRequest, LoginRequest, LoginResponse, SignupRequest
 
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -26,5 +26,15 @@ def signup_with_email_password(
     auth_service: AuthService = Depends(get_auth_service),
 ):
     principal = auth_service.register_user(request.email, request.password)
+    token_payload = auth_service.issue_access_token(principal)
+    return LoginResponse(**token_payload)
+
+
+@auth_router.post("/google", response_model=LoginResponse)
+def login_with_google(
+    request: GoogleLoginRequest = Body(...),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    principal = auth_service.authenticate_google_id_token(request.id_token)
     token_payload = auth_service.issue_access_token(principal)
     return LoginResponse(**token_payload)

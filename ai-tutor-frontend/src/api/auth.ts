@@ -27,3 +27,11 @@ export const signupWithEmailPassword = async (email: string, password: string): 
 
   return response.data
 }
+
+export const loginWithGoogleIdToken = async (idToken: string): Promise<LoginApiResponse> => {
+  const response = await apiClient.post<LoginApiResponse>(API_ENDPOINTS.AUTH_GOOGLE, {
+    id_token: idToken,
+  })
+
+  return response.data
+}

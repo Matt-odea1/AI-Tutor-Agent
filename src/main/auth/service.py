@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import importlib
 from datetime import datetime, timedelta, timezone
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
@@ -20,6 +21,7 @@ class AuthService:
     def __init__(self):
         self.jwt_secret = os.getenv("AUTH_JWT_SECRET", "").strip()
         self.jwt_algorithm = os.getenv("AUTH_JWT_ALGORITHM", "HS256").strip() or "HS256"
+        self.google_oauth_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip()
         self.allow_header_fallback = os.getenv("AUTH_ALLOW_HEADER_FALLBACK", "false").lower() == "true"
         self.access_token_minutes = self._parse_positive_int(os.getenv("AUTH_ACCESS_TOKEN_MINUTES"), default=60)
         self.password_hash_iterations = self._parse_positive_int(os.getenv("AUTH_PASSWORD_HASH_ITERATIONS"), default=200_000)
@@ -292,6 +294,87 @@ class AuthService:
             email=normalized_email,
             roles=[role for role in normalized_roles if role],
             source="password",
+        )
+
+    def authenticate_google_id_token(self, id_token_value: str) -> AuthPrincipal:
+        if not self.google_oauth_client_id:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google OAuth is not configured",
+            )
+
+        token = id_token_value.strip()
+        if not token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Google ID token")
+
+        try:
+            google_requests_module = importlib.import_module("google.auth.transport.requests")
+            google_id_token_module = importlib.import_module("google.oauth2.id_token")
+            google_request = google_requests_module.Request()
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google auth dependency is not installed",
+            )
+
+        try:
+            payload = google_id_token_module.verify_oauth2_token(token, google_request, self.google_oauth_client_id)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google ID token")
+
+        email_value = payload.get("email")
+        normalized_email = self._normalize_email(str(email_value)) if email_value else ""
+        if not normalized_email:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google account email is required")
+
+        if not bool(payload.get("email_verified", False)):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google account email is not verified")
+
+        user_record = self._login_users.get(normalized_email)
+        if not user_record:
+            user_record = self._load_user_from_store(normalized_email)
+            if user_record:
+                self._login_users[normalized_email] = user_record
+
+        google_sub = str(payload.get("sub") or "").strip()
+        user_id = str((user_record or {}).get("user_id") or google_sub or normalized_email).strip()
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google account identity")
+
+        roles_value = (user_record or {}).get("roles")
+        roles = [str(role).strip() for role in roles_value] if isinstance(roles_value, list) else []
+        roles = [role for role in roles if role]
+        if not roles:
+            roles = list(self.signup_default_roles)
+
+        if not user_record:
+            generated_password = self._hash_password(secrets.token_urlsafe(32))
+            new_user = {
+                "email": normalized_email,
+                "password": generated_password,
+                "user_id": user_id,
+                "roles": roles,
+            }
+
+            if self.auth_users_table:
+                try:
+                    self._save_user_to_store(new_user)
+                except HTTPException as error:
+                    if error.status_code != status.HTTP_409_CONFLICT:
+                        raise
+                    stored_user = self._load_user_from_store(normalized_email)
+                    if stored_user:
+                        new_user = stored_user
+
+            self._login_users[normalized_email] = new_user
+            user_id = str(new_user.get("user_id") or user_id)
+            roles = [str(role).strip() for role in new_user.get("roles", []) if str(role).strip()]
+
+        return AuthPrincipal(
+            user_id=user_id,
+            email=normalized_email,
+            roles=roles,
+            source="google",
         )
 
     def issue_access_token(self, principal: AuthPrincipal) -> Dict[str, Any]:

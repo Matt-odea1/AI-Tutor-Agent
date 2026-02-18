@@ -16,7 +16,7 @@ import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
 import { LoginGate } from './shared/LoginGate'
 import { AUTH_SESSION_CHANGED_EVENT, getUserSession, setUserSessionWithToken, type UserSession } from './utils/userSession'
-import { loginWithEmailPassword, signupWithEmailPassword } from './api/auth'
+import { loginWithEmailPassword, loginWithGoogleIdToken, signupWithEmailPassword } from './api/auth'
 
 function App() {
   const isOnline = useOnlineStatus()
@@ -136,6 +136,19 @@ function App() {
             setUserSessionState(session)
           } catch (error: unknown) {
             throw normalizeAuthError(error, 'Unable to create your account. Please try again.')
+          }
+        }}
+        onGoogleLogin={async (idToken) => {
+          try {
+            const googleResult = await loginWithGoogleIdToken(idToken)
+            clearSession()
+            setWorkspaceId(null)
+            setSessions([])
+            setAppMode(null)
+            const session = setUserSessionWithToken(googleResult.access_token, googleResult.email)
+            setUserSessionState(session)
+          } catch (error: unknown) {
+            throw normalizeAuthError(error, 'Unable to sign in with Google. Please try again.')
           }
         }}
       />

@@ -90,6 +90,7 @@ src/
    VITE_API_BASE_URL=http://localhost:8000
    VITE_APP_NAME=AI Tutor
    VITE_APP_VERSION=1.0.0
+  VITE_GOOGLE_CLIENT_ID=your_google_oauth_web_client_id
    ```
 
 4. **Start the development server**
@@ -170,6 +171,7 @@ ai-tutor-frontend/
 | `VITE_API_BASE_URL` | Backend API URL | `http://localhost:8000` |
 | `VITE_APP_NAME` | Application name | `AI Tutor` |
 | `VITE_APP_VERSION` | Application version | `1.0.0` |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Web Client ID (optional) | - |
 
 ### Pedagogy Behavior
 
