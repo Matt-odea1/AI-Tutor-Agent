@@ -80,16 +80,12 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
               </div>
             </div>
             
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Hi! I'm your programming tutor.</h2>
-            <p className="text-lg text-gray-600">
-              What would you like to learn about today?
-            </p>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Which python concepts would you like to explore?</h2>
           </div>
 
           {/* Example Prompts */}
           <div className="bg-gradient-to-br from-primary-50 to-primary-100 rounded-2xl p-6 border border-primary-200">
             <p className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-              <span className="mr-2">💬</span>
               Try one of these:
             </p>
             <div className="space-y-2">
@@ -98,7 +94,6 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
                 "How do I print text in Python?",
                 "What's the difference between = and ==?",
                 "How do I get user input in my program?",
-                "Help me understand if statements",
               ].map((prompt, i) => (
                 <button
                   key={i}

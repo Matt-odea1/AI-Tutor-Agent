@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import logo9021 from '../assets/9021logo.png'
 
 interface LoginGateProps {
   onLogin: (email: string, password: string) => Promise<void>
@@ -123,10 +124,10 @@ export const LoginGate = ({ onLogin, onSignup, onGoogleLogin }: LoginGateProps) 
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-100 via-white to-primary-200 px-4">
       <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-4 text-center">
-          <h1 className="text-lg font-semibold text-gray-900">Welcome</h1>
+          <img src={logo9021} alt="9021 logo" className="mx-auto mb-3 h-8 w-auto" />
           <p className="text-sm text-gray-500">
             {mode === 'signup' ? 'Create your account to continue' : 'Sign in to continue'}
           </p>
