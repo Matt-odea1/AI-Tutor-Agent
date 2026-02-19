@@ -137,7 +137,7 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
           <div className="flex justify-start mb-6 animate-fade-in">
             <div className="flex space-x-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-md animate-pulse">
-                <span className="text-white text-sm font-semibold">AI</span>
+                <span className="text-white text-sm font-semibold">C9</span>
               </div>
               <div className="bg-white rounded-2xl px-5 py-4 shadow-message border border-gray-200">
                 <div className="flex items-center space-x-3">

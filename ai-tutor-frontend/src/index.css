@@ -104,7 +104,7 @@
   }
 
   .prose :not(pre) > code {
-    @apply bg-pink-50 text-pink-600 px-1.5 py-0.5 rounded text-sm font-medium;
+    @apply bg-pink-100 text-pink-800 px-1.5 py-0.5 rounded text-sm font-medium;
   }
 
   /* Markdown styling for AI messages */

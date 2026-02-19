@@ -61,7 +61,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
             className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-md"
             aria-hidden="true"
           >
-            <span className="text-white text-sm font-semibold">AI</span>
+            <span className="text-white text-sm font-semibold">C9</span>
           </div>
         )}
 
@@ -91,6 +91,9 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  h1: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed font-semibold">{children}</p>,
+                  h2: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed font-semibold">{children}</p>,
+                  h3: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed font-semibold">{children}</p>,
                   p: ({ children }) => {
                     const text = String(children).trim()
                     // If paragraph is just punctuation, don't wrap
@@ -112,7 +115,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
 
                     if (!isBlockCode) {
                       return (
-                        <code className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-sm font-medium" {...props}>
+                        <code className="bg-pink-100 text-pink-800 px-2 py-0.5 rounded text-sm font-medium" {...props}>
                           {children}
                         </code>
                       )
