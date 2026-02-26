@@ -86,8 +86,8 @@ jobs:
           expected_sha = shlex.quote(os.environ["EXPECTED_SHA"])
           repo_slug = shlex.quote(os.environ["REPO_SLUG"])
 
-          commands = [
-              "set -euo pipefail",
+            commands = [
+              "set -eu",
               "export HOME=/home/ubuntu",
               "cd /home/ubuntu/AI-Tutor-Agent",
               "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
