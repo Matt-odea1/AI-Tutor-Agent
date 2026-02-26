@@ -257,73 +257,43 @@ curl -X POST "http://localhost:8000/internal/chat" \
     "pedagogy_mode": "explanatory"
   }'
 ```
-    3. **Workflow behavior defaults:**
+3. **Workflow behavior defaults:**
 
-    - **General Chat** defaults to explanatory tutor behavior.
-    - **Code with AI** assistant routes default to concise responses and edit-oriented guidance.
-    - **Question Generation** uses dedicated generation prompts and batch workflows.
-    "pedagogy_mode": "review"
-  }'
+- **General Chat** defaults to explanatory tutor behavior.
+- **Code with AI** assistant routes default to concise responses and edit-oriented guidance.
+- **Question Generation** uses dedicated generation prompts and batch workflows.
 
-    ## 🧭 Workflow Modes
+## 🧭 Workflow Modes
 
-    The product now uses **workflow modes (user stories)** instead of a user-facing pedagogy selector.
+The product uses **workflow modes (user stories)** instead of a user-facing multi-mode pedagogy selector.
 
-    ### 1) General Chat
-    - Purpose: broad learning Q&A and concept explanations
-    - Default response behavior: explanatory tutor style
-    - Typical endpoint flow: `/internal/history/views/{id}/message`
+### 1) General Chat
+- Purpose: broad learning Q&A and concept explanations
+- Default response behavior: explanatory tutor style
+- Typical endpoint flow: `/internal/history/views/{id}/message`
 
-    ### 2) Code with AI (Assistant)
-    - Purpose: code edits, debugging, and focused coding guidance
-    - Default response behavior: concise assistant style optimized for the IDE panel
-    - Typical endpoint flow: `/internal/history/threads/{id}/message` and `/internal/history/edit-proposal`
+### 2) Code with AI (Assistant)
+- Purpose: code edits and focused coding guidance
+- Default response behavior: concise assistant style optimized for compact UI
+- Typical endpoint flow: `/internal/history/threads/{id}/message` and `/internal/history/edit-proposal`
 
-    ### 3) Question Generation
-    - Purpose: generate oral-assessment questions from assignment/student artifacts
-    - Prompt source: `prompts/question_generation_prompt.md`
+### 3) Question Generation
+- Purpose: generate oral-assessment questions from assignment/student artifacts
+- Prompt source: `prompts/question_generation_prompt.md`
 
-    ### API Defaults
+### API Defaults
 
-    `pedagogy_mode` remains optional for compatibility, but if omitted the backend now applies defaults by workflow:
+`pedagogy_mode` is optional. If omitted, the backend applies defaults by workflow:
 
-    - General Chat routes → `explanatory`
-    - Code with AI assistant routes → `concise`
+- General Chat routes → `explanatory`
+- Code with AI assistant routes → `concise`
 
-    ### Prompt Files
+### Prompt Files
 
-    Workflow prompt mapping is:
-    - General Chat → `prompts/explanatory_mode_prompt.md`
-    - Code with AI assistant → `prompts/concise_mode_prompt.md`
-    - Question Generation → `prompts/question_generation_prompt.md`
-
-    Additional prompts like `debugging_mode_prompt.md` and `practice_mode_prompt.md` remain available as optional internal strategies.
-- **Socratic**: Interactive class discussions
-- **Explanatory**: Lecture material, references
-- **Debugging**: Office hours, lab help
-- **Assessment**: Practice problem sets
-- **Review**: Exam review sessions
-
-**Mode Selection Tips**:
-- One concept, multiple modes: Learn (Explanatory) → Practice (Assessment) → Review
-- Struggling? Start Explanatory, then switch to Socratic for deeper understanding
-- Assignment work? Use Debugging mode to maintain academic integrity
-- Quick answer needed? Explanatory mode is fastest
-
-### Customizing Pedagogy Prompts
-
-All mode prompts are stored in `/prompts/`:
-- `socratic_mode_prompt.md`
-- `explanatory_mode_prompt.md`
-- `debugging_mode_prompt.md`
-- `assessment_mode_prompt.md`
-- `review_mode_prompt.md`
-
-You can customize these prompts to:
-- Adjust teaching style
-- Add domain-specific guidelines
-- Include institutional policies
-- Modify difficulty levels
+Current workflow prompt mapping:
+- General Chat → `prompts/general_chat_prompt.md`
+- Code with AI assistant → `prompts/code_assistant_prompt.md`
+- Question Generation → `prompts/question_generation_prompt.md`
 
 ---
 

@@ -13,3 +13,4 @@ class ChatRequest(BaseModel):
     last_stdout: Optional[str] = None
     last_error: Optional[str] = None
     language: Optional[str] = None
+    context_scope: Optional[str] = None

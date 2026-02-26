@@ -32,7 +32,12 @@ def upload_context(dto: UploadRequest = Body(...), svc: ContextVectorService = D
             document_name=dto.DocumentName,
             description=dto.Description,
             text=dto.Text,
-            scope=dto.Scope
+            scope=dto.Scope,
+            artifact_type=dto.ArtifactType,
+            source_path=dto.SourcePath,
+            course_code=dto.CourseCode,
+            course_term=dto.CourseTerm,
+            course_year=dto.CourseYear,
         )
         return {"ok": True, **result}
     except ApiError:
@@ -90,7 +95,9 @@ def upload_file_context(
             document_name=upload_dto.DocumentName,
             description=upload_dto.Description,
             text=upload_dto.Text,
-            scope=upload_dto.Scope
+            scope=upload_dto.Scope,
+            artifact_type="pdf",
+            source_path=File.filename,
         )
         return {"ok": True, **result}
     except ApiError:

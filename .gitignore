@@ -4,11 +4,15 @@
 
 # test-scripts
 test_scripts/
+test_scripts/upload_db_context_batch.py
 test_inputs/
 test_outputs/
 
 # Documentation
 .DS_Store
+
+# Local context corpus (Neo4j ingestion source)
+db_context/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,56 @@
+{
+  "course_code": "COMP9021",
+  "default_term": "T3",
+  "default_year": 2025,
+  "alignment_mode": "teaching_sequence_not_week",
+  "source": "UNSW handbook + local teaching assets",
+  "notes": "Lecture numbers do not necessarily map 1:1 to teaching weeks. Use learning blocks and module sequence for retrieval filtering.",
+  "content_families": {
+    "lectures": "lecture",
+    "labs": "lab",
+    "quizzes": "quiz",
+    "assignment 1": "assignment",
+    "assignment 2": "assignment",
+    "course overview": "course_overview"
+  },
+  "learning_blocks": [
+    {
+      "block_id": "foundations",
+      "label": "Python fundamentals and data types",
+      "match": {
+        "lecture": [1, 4],
+        "lab": [1, 2],
+        "quiz": [1, 2],
+        "assignment": [1, 1]
+      }
+    },
+    {
+      "block_id": "control_and_structures",
+      "label": "Control flow, core structures, decomposition",
+      "match": {
+        "lecture": [5, 8],
+        "lab": [3, 5],
+        "quiz": [3, 4]
+      }
+    },
+    {
+      "block_id": "abstractions_and_algorithms",
+      "label": "Functions, recursion, algorithmic thinking",
+      "match": {
+        "lecture": [9, 13],
+        "lab": [6, 7],
+        "quiz": [5, 6],
+        "assignment": [2, 2]
+      }
+    },
+    {
+      "block_id": "advanced_topics",
+      "label": "Advanced Python and applied tooling",
+      "match": {
+        "lecture": [14, 17],
+        "lab": [8, 8],
+        "quiz": [7, 8]
+      }
+    }
+  ]
+}

@@ -25,6 +25,7 @@ class AgentCoreClient:
         
         # Amazon Nova models use specific format
         if model_id == "amazon.nova-lite-v1:0":
+            messages = self._adapt_messages_for_nova(messages)
             # Validate messages structure
             if not messages or not isinstance(messages, list):
                 self.logger.error("Nova chat: 'messages' must be a non-empty list.")
@@ -107,6 +108,45 @@ class AgentCoreClient:
         else:
             self.logger.error(f"Unexpected chat response: {body}")
             raise ValueError(f"Unexpected chat response: {body}")
+
+    def _adapt_messages_for_nova(self, messages):
+        """
+        Nova requires the first message role to be 'user'.
+        If we receive leading system messages, fold them into the first user turn.
+        """
+        if not isinstance(messages, list) or not messages:
+            return messages
+
+        leading_system = []
+        index = 0
+        for msg in messages:
+            if msg.get("role") == "system":
+                text = msg.get("content", "")
+                leading_system.append(text if isinstance(text, str) else str(text))
+                index += 1
+                continue
+            break
+
+        if not leading_system:
+            return messages
+
+        remainder = messages[index:]
+        system_block = "\n\n".join(part for part in leading_system if part)
+
+        if remainder and remainder[0].get("role") == "user":
+            current = remainder[0].get("content", "")
+            current_text = current if isinstance(current, str) else str(current)
+            remainder[0] = {
+                **remainder[0],
+                "content": f"System instructions:\n{system_block}\n\n{current_text}".strip(),
+            }
+            return remainder
+
+        injected_user = {
+            "role": "user",
+            "content": f"System instructions:\n{system_block}".strip(),
+        }
+        return [injected_user, *remainder]
 
     def embed(self, texts, model_id):
         # Cohere embedding expects 'texts' key

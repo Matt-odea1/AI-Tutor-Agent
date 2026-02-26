@@ -44,12 +44,9 @@ class DummyAgentClient:
             if msg.get("role") == "user" and "fail" in _message_text(msg):
                 raise Exception("Agent call failed")
 
-        # Check if history is present by looking for "Previous conversation" in content
-        has_history = False
-        for msg in messages:
-            if msg.get("role") == "user" and "Previous conversation" in _message_text(msg):
-                has_history = True
-                break
+        # Check if history is present by looking for prior assistant/user turns
+        # before the final user question.
+        has_history = any(msg.get("role") == "assistant" for msg in messages)
         
         if has_history:
             response = "Based on our previous discussion, here's more information..."

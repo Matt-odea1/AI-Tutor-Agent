@@ -194,7 +194,7 @@ class ConversationMemory:
         
         Args:
             session_id: Session identifier
-            mode: Pedagogy mode (socratic, explanatory, debugging, assessment, review)
+            mode: Pedagogy mode (explanatory or concise)
         """
         if session_id not in self.sessions:
             self._create_session(session_id)

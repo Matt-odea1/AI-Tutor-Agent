@@ -183,6 +183,21 @@ curl -X POST "http://localhost:8000/internal/chat" \
 
 The system retrieves relevant context from uploaded materials and provides answers.
 
+3. **Batch-upload a local context corpus (db_context):**
+```bash
+# Dry run (no API calls)
+python test_scripts/upload_db_context_batch.py --dry-run --limit 20
+
+# Upload all supported files via /internal/context/upload
+python test_scripts/upload_db_context_batch.py --base-url http://localhost:8000 --scope-mode top-level
+```
+
+This script extracts text from `.py`, `.txt`, `.tex`, `.csv`, `.ipynb`, `.pdf`, and `.md` files, then calls `/internal/context/upload`.
+All centralized ingestion rules in `ContextVectorService` are applied by the endpoint.
+
+Course enrichment metadata is applied during endpoint ingestion using `src/main/config/comp9021_structure.json`.
+This uses learning blocks and module sequence (not strict lecture-to-week mapping), so metadata remains accurate when lecture numbering does not align to calendar weeks.
+
 ---
 
 ## Directory Structure

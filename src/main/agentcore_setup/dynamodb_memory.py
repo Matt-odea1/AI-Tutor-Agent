@@ -31,7 +31,7 @@ class DynamoDBConversationMemory:
         "created_at": "2025-11-20T10:00:00Z",
         "last_accessed": "2025-11-20T10:05:00Z",
         "total_tokens": 500,
-        "pedagogy_mode": "socratic",
+        "pedagogy_mode": "explanatory",
         "message_count": 10,
         "ttl": 1234567890  # Unix timestamp for auto-deletion
     }
@@ -354,7 +354,7 @@ class DynamoDBConversationMemory:
         
         Args:
             session_id: Session identifier
-            mode: Pedagogy mode (socratic, explanatory, debugging, assessment, review)
+            mode: Pedagogy mode (explanatory or concise)
         """
         try:
             # Create session if it doesn't exist

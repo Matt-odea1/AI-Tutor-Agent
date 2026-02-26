@@ -56,6 +56,7 @@ def chat_endpoint(request: ChatRequest = Body(...), svc: ChatService = Depends(g
             top_k=request.top_k or 5,
             session_id=request.session_id,
             include_history=request.include_history,
+            context_scope=request.context_scope,
             pedagogy_mode=_resolve_pedagogy_mode(request.pedagogy_mode, "explanatory"),
             editor_code=request.editor_code,
             editor_selection=request.editor_selection,
