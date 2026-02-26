@@ -65,33 +65,48 @@ jobs:
 
           echo "Using EC2 instance: ${INSTANCE_ID}"
 
-          COMMAND_ID=$(aws ssm send-command \
-            --region "${DEPLOY_REGION}" \
-            --instance-ids "${INSTANCE_ID}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy backend from GitHub Actions" \
-            --timeout-seconds 5400 \
-            --parameters commands='[
-              "set -e",
+          EXPECTED_SHA="${{ github.sha }}"
+          REPO_SLUG="${{ github.repository }}"
+
+          PARAMS_FILE=$(mktemp)
+          export PARAMS_FILE AUTH_JWT_SECRET AUTH_PASSWORD_RESET_BASE_URL AUTH_PASSWORD_RESET_FROM_EMAIL AUTH_PASSWORD_RESET_TOKEN_MINUTES AUTH_PASSWORD_RESET_SES_REGION EXPECTED_SHA REPO_SLUG
+
+          python - <<'PY'
+          import json
+          import os
+          import shlex
+
+          params_path = os.environ["PARAMS_FILE"]
+
+          auth_jwt_secret = shlex.quote(os.environ["AUTH_JWT_SECRET"])
+          reset_base_url = shlex.quote(os.environ["AUTH_PASSWORD_RESET_BASE_URL"])
+          reset_from_email = shlex.quote(os.environ["AUTH_PASSWORD_RESET_FROM_EMAIL"])
+          reset_token_minutes = shlex.quote(os.environ["AUTH_PASSWORD_RESET_TOKEN_MINUTES"])
+          reset_ses_region = shlex.quote(os.environ["AUTH_PASSWORD_RESET_SES_REGION"])
+          expected_sha = shlex.quote(os.environ["EXPECTED_SHA"])
+          repo_slug = shlex.quote(os.environ["REPO_SLUG"])
+
+          commands = [
+              "set -euo pipefail",
               "export HOME=/home/ubuntu",
               "cd /home/ubuntu/AI-Tutor-Agent",
               "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
               "test -f .env || { echo missing_env_file; exit 1; }",
-              "AUTH_JWT_SECRET='${{ secrets[format('AUTH_JWT_SECRET')] }}'",
-              "AUTH_PASSWORD_RESET_BASE_URL='${{ vars[format('AUTH_PASSWORD_RESET_BASE_URL')] }}'",
-              "AUTH_PASSWORD_RESET_FROM_EMAIL='${{ vars[format('AUTH_PASSWORD_RESET_FROM_EMAIL')] }}'",
-              "AUTH_PASSWORD_RESET_TOKEN_MINUTES='${{ vars[format('AUTH_PASSWORD_RESET_TOKEN_MINUTES')] || '30' }}'",
-              "AUTH_PASSWORD_RESET_SES_REGION='${{ vars[format('AUTH_PASSWORD_RESET_SES_REGION')] || env.DEPLOY_REGION }}'",
+              f"AUTH_JWT_SECRET={auth_jwt_secret}",
+              f"AUTH_PASSWORD_RESET_BASE_URL={reset_base_url}",
+              f"AUTH_PASSWORD_RESET_FROM_EMAIL={reset_from_email}",
+              f"AUTH_PASSWORD_RESET_TOKEN_MINUTES={reset_token_minutes}",
+              f"AUTH_PASSWORD_RESET_SES_REGION={reset_ses_region}",
               "if grep -q '^AUTH_JWT_SECRET=' .env; then sed -i \"s|^AUTH_JWT_SECRET=.*|AUTH_JWT_SECRET=$AUTH_JWT_SECRET|\" .env; else echo \"AUTH_JWT_SECRET=$AUTH_JWT_SECRET\" >> .env; fi",
               "if grep -q '^AUTH_PASSWORD_RESET_BASE_URL=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_BASE_URL=.*|AUTH_PASSWORD_RESET_BASE_URL=$AUTH_PASSWORD_RESET_BASE_URL|\" .env; else echo \"AUTH_PASSWORD_RESET_BASE_URL=$AUTH_PASSWORD_RESET_BASE_URL\" >> .env; fi",
               "if grep -q '^AUTH_PASSWORD_RESET_FROM_EMAIL=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_FROM_EMAIL=.*|AUTH_PASSWORD_RESET_FROM_EMAIL=$AUTH_PASSWORD_RESET_FROM_EMAIL|\" .env; else echo \"AUTH_PASSWORD_RESET_FROM_EMAIL=$AUTH_PASSWORD_RESET_FROM_EMAIL\" >> .env; fi",
               "if grep -q '^AUTH_PASSWORD_RESET_TOKEN_MINUTES=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_TOKEN_MINUTES=.*|AUTH_PASSWORD_RESET_TOKEN_MINUTES=$AUTH_PASSWORD_RESET_TOKEN_MINUTES|\" .env; else echo \"AUTH_PASSWORD_RESET_TOKEN_MINUTES=$AUTH_PASSWORD_RESET_TOKEN_MINUTES\" >> .env; fi",
               "if grep -q '^AUTH_PASSWORD_RESET_SES_REGION=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_SES_REGION=.*|AUTH_PASSWORD_RESET_SES_REGION=$AUTH_PASSWORD_RESET_SES_REGION|\" .env; else echo \"AUTH_PASSWORD_RESET_SES_REGION=$AUTH_PASSWORD_RESET_SES_REGION\" >> .env; fi",
-              "JWT_SECRET=$(grep -E '^AUTH_JWT_SECRET=' .env | sed 's/^AUTH_JWT_SECRET=//' | tr -d '\r')",
-              "RESET_BASE_URL=$(grep -E '^AUTH_PASSWORD_RESET_BASE_URL=' .env | sed 's/^AUTH_PASSWORD_RESET_BASE_URL=//' | tr -d '\r')",
-              "RESET_FROM_EMAIL=$(grep -E '^AUTH_PASSWORD_RESET_FROM_EMAIL=' .env | sed 's/^AUTH_PASSWORD_RESET_FROM_EMAIL=//' | tr -d '\r')",
-              "RESET_TOKEN_MINUTES=$(grep -E '^AUTH_PASSWORD_RESET_TOKEN_MINUTES=' .env | sed 's/^AUTH_PASSWORD_RESET_TOKEN_MINUTES=//' | tr -d '\r')",
-              "RESET_SES_REGION=$(grep -E '^AUTH_PASSWORD_RESET_SES_REGION=' .env | sed 's/^AUTH_PASSWORD_RESET_SES_REGION=//' | tr -d '\r')",
+              "JWT_SECRET=$(grep -E '^AUTH_JWT_SECRET=' .env | sed 's/^AUTH_JWT_SECRET=//' | tr -d '\\r')",
+              "RESET_BASE_URL=$(grep -E '^AUTH_PASSWORD_RESET_BASE_URL=' .env | sed 's/^AUTH_PASSWORD_RESET_BASE_URL=//' | tr -d '\\r')",
+              "RESET_FROM_EMAIL=$(grep -E '^AUTH_PASSWORD_RESET_FROM_EMAIL=' .env | sed 's/^AUTH_PASSWORD_RESET_FROM_EMAIL=//' | tr -d '\\r')",
+              "RESET_TOKEN_MINUTES=$(grep -E '^AUTH_PASSWORD_RESET_TOKEN_MINUTES=' .env | sed 's/^AUTH_PASSWORD_RESET_TOKEN_MINUTES=//' | tr -d '\\r')",
+              "RESET_SES_REGION=$(grep -E '^AUTH_PASSWORD_RESET_SES_REGION=' .env | sed 's/^AUTH_PASSWORD_RESET_SES_REGION=//' | tr -d '\\r')",
               "if [ -z \"$JWT_SECRET\" ] || [ \"$JWT_SECRET\" = \"replace_with_a_long_random_secret\" ]; then echo missing_or_placeholder_jwt_secret; exit 1; fi",
               "if [ ${#JWT_SECRET} -lt 32 ]; then echo jwt_secret_too_short; exit 1; fi",
               "if [ -z \"$RESET_BASE_URL\" ]; then echo missing_reset_base_url; exit 1; fi",
@@ -101,9 +116,10 @@ jobs:
               "echo \"$RESET_TOKEN_MINUTES\" | grep -Eq '^[0-9]+$' || { echo invalid_reset_token_minutes; exit 1; }",
               "if [ \"$RESET_TOKEN_MINUTES\" -lt 5 ] || [ \"$RESET_TOKEN_MINUTES\" -gt 180 ]; then echo reset_token_minutes_out_of_range; exit 1; fi",
               "if [ -z \"$RESET_SES_REGION\" ]; then echo missing_reset_ses_region; exit 1; fi",
-              "EXPECTED_SHA=${{ github.sha }}",
+              f"EXPECTED_SHA={expected_sha}",
               "echo Expected SHA: $EXPECTED_SHA",
-              "git remote set-url origin https://github.com/Matt-odea1/AI-Tutor-Agent.git",
+              f"REPO_SLUG={repo_slug}",
+              "git remote set-url origin https://github.com/$REPO_SLUG.git",
               "echo Git origin URL: $(git remote get-url origin)",
               "git fetch origin main",
               "git reset --hard origin/main",
@@ -118,10 +134,24 @@ jobs:
               "curl -fsS http://localhost:8000/openapi.json >/tmp/openapi.json || { echo openapi_fetch_failed; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
               "grep -q /api/auth/login /tmp/openapi.json || { echo missing_auth_login_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
               "grep -q /api/auth/signup /tmp/openapi.json || { echo missing_auth_signup_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
-              "grep -q /api/auth/google /tmp/openapi.json || { echo missing_auth_google_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }"
-            ]' \
+              "grep -q /api/auth/google /tmp/openapi.json || { echo missing_auth_google_route; docker compose ps; docker logs --tail 200 ai-tutor-api || true; exit 1; }",
+          ]
+
+          with open(params_path, "w", encoding="utf-8") as handle:
+              json.dump({"commands": commands}, handle)
+          PY
+
+          COMMAND_ID=$(aws ssm send-command \
+            --region "${DEPLOY_REGION}" \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy backend from GitHub Actions" \
+            --timeout-seconds 5400 \
+            --parameters "file://${PARAMS_FILE}" \
             --query 'Command.CommandId' \
             --output text)
+
+          rm -f "${PARAMS_FILE}"
 
           echo "SSM command id: ${COMMAND_ID}"
 
