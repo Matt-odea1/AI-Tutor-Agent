@@ -86,7 +86,7 @@ jobs:
           expected_sha = shlex.quote(os.environ["EXPECTED_SHA"])
           repo_slug = shlex.quote(os.environ["REPO_SLUG"])
 
-            commands = [
+          commands = [
               "set -eu",
               "export HOME=/home/ubuntu",
               "cd /home/ubuntu/AI-Tutor-Agent",
