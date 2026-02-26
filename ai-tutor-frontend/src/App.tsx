@@ -16,7 +16,14 @@ import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
 import { LoginGate } from './shared/LoginGate'
 import { AUTH_SESSION_CHANGED_EVENT, getUserSession, setUserSessionWithToken, type UserSession } from './utils/userSession'
-import { loginWithEmailPassword, loginWithGoogleIdToken, signupWithEmailPassword } from './api/auth'
+import {
+  loginWithEmailPassword,
+  loginWithGoogleIdToken,
+  requestPasswordReset,
+  resetPassword,
+  signupWithEmailPassword,
+  validatePasswordResetToken,
+} from './api/auth'
 
 function App() {
   const isOnline = useOnlineStatus()
@@ -149,6 +156,29 @@ function App() {
             setUserSessionState(session)
           } catch (error: unknown) {
             throw normalizeAuthError(error, 'Unable to sign in with Google. Please try again.')
+          }
+        }}
+        onForgotPassword={async (email) => {
+          try {
+            const response = await requestPasswordReset(email)
+            return response.message
+          } catch (error: unknown) {
+            throw normalizeAuthError(error, 'Unable to request a password reset right now. Please try again.')
+          }
+        }}
+        onValidateResetToken={async (token) => {
+          try {
+            return await validatePasswordResetToken(token)
+          } catch {
+            return false
+          }
+        }}
+        onResetPassword={async (token, newPassword) => {
+          try {
+            const response = await resetPassword(token, newPassword)
+            return response.message
+          } catch (error: unknown) {
+            throw normalizeAuthError(error, 'Unable to reset password. Please request a new reset link.')
           }
         }}
       />

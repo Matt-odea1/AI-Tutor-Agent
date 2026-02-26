@@ -4,10 +4,12 @@ import json
 import os
 import secrets
 import importlib
+import logging
 from datetime import datetime, timedelta, timezone
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import boto3
 import jwt
@@ -15,6 +17,9 @@ from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
 from .models import AuthPrincipal
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -25,6 +30,17 @@ class AuthService:
         self.allow_header_fallback = os.getenv("AUTH_ALLOW_HEADER_FALLBACK", "false").lower() == "true"
         self.access_token_minutes = self._parse_positive_int(os.getenv("AUTH_ACCESS_TOKEN_MINUTES"), default=60)
         self.password_hash_iterations = self._parse_positive_int(os.getenv("AUTH_PASSWORD_HASH_ITERATIONS"), default=200_000)
+        self.password_reset_token_minutes = self._parse_positive_int(
+            os.getenv("AUTH_PASSWORD_RESET_TOKEN_MINUTES"),
+            default=30,
+        )
+        self.password_reset_base_url = os.getenv("AUTH_PASSWORD_RESET_BASE_URL", "").strip()
+        self.password_reset_from_email = os.getenv("AUTH_PASSWORD_RESET_FROM_EMAIL", "").strip()
+        self.password_reset_ses_region = (
+            os.getenv("AUTH_PASSWORD_RESET_SES_REGION", "").strip()
+            or os.getenv("AWS_DEFAULT_REGION", "us-east-1").strip()
+            or "us-east-1"
+        )
         self.signup_default_roles = [
             role.strip()
             for role in os.getenv("AUTH_SIGNUP_DEFAULT_ROLES", "instructor").split(",")
@@ -34,6 +50,7 @@ class AuthService:
         self.auth_users_table_name = os.getenv("DYNAMODB_AUTH_USERS_TABLE", "auth_users")
         self.auth_users_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
         self.auth_users_table = self._init_auth_users_table() if self.persist_users else None
+        self.ses_client = self._init_ses_client()
         self._login_users = self._load_login_users()
 
     def _init_auth_users_table(self):
@@ -44,6 +61,12 @@ class AuthService:
             return table
         except Exception:
             self.persist_users = False
+            return None
+
+    def _init_ses_client(self):
+        try:
+            return boto3.client("ses", region_name=self.password_reset_ses_region)
+        except Exception:
             return None
 
     @staticmethod
@@ -59,6 +82,22 @@ class AuthService:
     @staticmethod
     def _normalize_email(email: str) -> str:
         return email.strip().lower()
+
+    @staticmethod
+    def _format_datetime(value: datetime) -> str:
+        return value.astimezone(timezone.utc).isoformat()
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            return None
 
     @staticmethod
     def _is_hashed_password(value: str) -> bool:
@@ -218,9 +257,183 @@ class AuthService:
                 "password": str(item.get("password") or ""),
                 "user_id": str(item.get("user_id") or normalized_email),
                 "roles": [role for role in normalized_roles if role],
+                "password_reset_jti": str(item.get("password_reset_jti") or "").strip(),
+                "password_reset_expires_at": str(item.get("password_reset_expires_at") or "").strip(),
             }
         except Exception:
             return None
+
+    def _update_user_reset_state(self, normalized_email: str, reset_jti: str, expires_at: datetime) -> None:
+        if self.auth_users_table:
+            now_raw = self._format_datetime(datetime.now(timezone.utc))
+            try:
+                self.auth_users_table.update_item(
+                    Key={"email": normalized_email},
+                    UpdateExpression=(
+                        "SET password_reset_jti = :reset_jti, "
+                        "password_reset_expires_at = :reset_expires_at, "
+                        "password_reset_requested_at = :requested_at, "
+                        "updated_at = :updated_at"
+                    ),
+                    ExpressionAttributeValues={
+                        ":reset_jti": reset_jti,
+                        ":reset_expires_at": self._format_datetime(expires_at),
+                        ":requested_at": now_raw,
+                        ":updated_at": now_raw,
+                    },
+                )
+            except Exception:
+                logger.exception("Failed to persist password reset state for %s", normalized_email)
+
+        user_record = self._login_users.get(normalized_email)
+        if user_record is not None:
+            user_record["password_reset_jti"] = reset_jti
+            user_record["password_reset_expires_at"] = self._format_datetime(expires_at)
+
+    def _clear_user_reset_state(self, normalized_email: str) -> None:
+        if self.auth_users_table:
+            now_raw = self._format_datetime(datetime.now(timezone.utc))
+            try:
+                self.auth_users_table.update_item(
+                    Key={"email": normalized_email},
+                    UpdateExpression=(
+                        "REMOVE password_reset_jti, password_reset_expires_at "
+                        "SET password_reset_used_at = :used_at, updated_at = :updated_at"
+                    ),
+                    ExpressionAttributeValues={
+                        ":used_at": now_raw,
+                        ":updated_at": now_raw,
+                    },
+                )
+            except Exception:
+                logger.exception("Failed to clear password reset state for %s", normalized_email)
+
+        user_record = self._login_users.get(normalized_email)
+        if user_record is not None:
+            user_record.pop("password_reset_jti", None)
+            user_record.pop("password_reset_expires_at", None)
+
+    def _set_user_password(self, normalized_email: str, hashed_password: str) -> None:
+        if self.auth_users_table:
+            now_raw = self._format_datetime(datetime.now(timezone.utc))
+            try:
+                self.auth_users_table.update_item(
+                    Key={"email": normalized_email},
+                    UpdateExpression="SET password = :password, updated_at = :updated_at",
+                    ExpressionAttributeValues={
+                        ":password": hashed_password,
+                        ":updated_at": now_raw,
+                    },
+                )
+            except Exception:
+                logger.exception("Failed to update password for %s", normalized_email)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Unable to update password",
+                )
+
+        user_record = self._login_users.get(normalized_email)
+        if user_record is not None:
+            user_record["password"] = hashed_password
+
+    def _build_password_reset_link(self, token: str) -> str:
+        if not self.password_reset_base_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Password reset is not configured",
+            )
+
+        split_result = urlsplit(self.password_reset_base_url)
+        query_items = dict(parse_qsl(split_result.query, keep_blank_values=True))
+        query_items["token"] = token
+        new_query = urlencode(query_items)
+        return urlunsplit((split_result.scheme, split_result.netloc, split_result.path, new_query, split_result.fragment))
+
+    def _send_password_reset_email(self, recipient_email: str, reset_link: str) -> None:
+        if not self.password_reset_from_email:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Password reset email sender is not configured",
+            )
+
+        if self.ses_client is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Password reset email service is unavailable",
+            )
+
+        subject = "Reset your Chat9021 password"
+        text_body = (
+            "We received a request to reset your password.\n\n"
+            f"Reset your password: {reset_link}\n\n"
+            f"This link expires in {self.password_reset_token_minutes} minutes."
+        )
+        html_body = (
+            "<p>We received a request to reset your password.</p>"
+            f"<p><a href=\"{reset_link}\">Reset your password</a></p>"
+            f"<p>This link expires in {self.password_reset_token_minutes} minutes.</p>"
+        )
+
+        self.ses_client.send_email(
+            Source=self.password_reset_from_email,
+            Destination={"ToAddresses": [recipient_email]},
+            Message={
+                "Subject": {"Data": subject},
+                "Body": {
+                    "Text": {"Data": text_body},
+                    "Html": {"Data": html_body},
+                },
+            },
+        )
+
+    def _issue_password_reset_token(self, normalized_email: str) -> tuple[str, str, datetime]:
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=self.password_reset_token_minutes)
+        reset_jti = secrets.token_urlsafe(16)
+        payload: Dict[str, Any] = {
+            "sub": normalized_email,
+            "purpose": "password_reset",
+            "jti": reset_jti,
+            "iat": int(now.timestamp()),
+            "exp": int(expires_at.timestamp()),
+        }
+        token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        return token, reset_jti, expires_at
+
+    def _validate_reset_token_payload(self, token: str) -> Dict[str, Any]:
+        try:
+            payload = jwt.decode(
+                token,
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False},
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset token has expired")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+        if payload.get("purpose") != "password_reset":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+        return payload
+
+    def _load_existing_user(self, normalized_email: str) -> Optional[Dict[str, Any]]:
+        user_record = self._login_users.get(normalized_email)
+        if user_record:
+            return user_record
+
+        user_record = self._load_user_from_store(normalized_email)
+        if user_record:
+            self._login_users[normalized_email] = user_record
+        return user_record
 
     def _save_user_to_store(self, user_record: Dict[str, Any]) -> None:
         if not self.auth_users_table:
@@ -273,11 +486,7 @@ class AuthService:
 
     def authenticate_credentials(self, email: str, password: str) -> AuthPrincipal:
         normalized_email = self._normalize_email(email)
-        user_record = self._login_users.get(normalized_email)
-        if not user_record:
-            user_record = self._load_user_from_store(normalized_email)
-            if user_record:
-                self._login_users[normalized_email] = user_record
+        user_record = self._load_existing_user(normalized_email)
 
         if not user_record or not self._password_matches(password, user_record):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
@@ -332,9 +541,7 @@ class AuthService:
 
         user_record = self._login_users.get(normalized_email)
         if not user_record:
-            user_record = self._load_user_from_store(normalized_email)
-            if user_record:
-                self._login_users[normalized_email] = user_record
+            user_record = self._load_existing_user(normalized_email)
 
         google_sub = str(payload.get("sub") or "").strip()
         user_id = str((user_record or {}).get("user_id") or google_sub or normalized_email).strip()
@@ -376,6 +583,91 @@ class AuthService:
             roles=roles,
             source="google",
         )
+
+    def request_password_reset(self, email: str) -> str:
+        normalized_email = self._normalize_email(email)
+        if not normalized_email or "@" not in normalized_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email address")
+
+        user_record = self._load_existing_user(normalized_email)
+        if not user_record:
+            return "If an account exists for this email, a reset link has been sent."
+
+        token, reset_jti, expires_at = self._issue_password_reset_token(normalized_email)
+        self._update_user_reset_state(normalized_email, reset_jti, expires_at)
+
+        try:
+            reset_link = self._build_password_reset_link(token)
+            self._send_password_reset_email(normalized_email, reset_link)
+        except HTTPException:
+            logger.exception("Password reset email configuration issue")
+        except Exception:
+            logger.exception("Failed sending password reset email")
+
+        return "If an account exists for this email, a reset link has been sent."
+
+    def validate_password_reset_token(self, token: str) -> bool:
+        if not self.jwt_secret:
+            return False
+
+        try:
+            payload = self._validate_reset_token_payload(token.strip())
+        except HTTPException:
+            return False
+
+        normalized_email = self._normalize_email(str(payload.get("sub") or ""))
+        reset_jti = str(payload.get("jti") or "").strip()
+        if not normalized_email or not reset_jti:
+            return False
+
+        user_record = self._load_existing_user(normalized_email)
+        if not user_record:
+            return False
+
+        stored_jti = str(user_record.get("password_reset_jti") or "").strip()
+        if not stored_jti or not compare_digest(stored_jti, reset_jti):
+            return False
+
+        expires_at = self._parse_datetime(user_record.get("password_reset_expires_at"))
+        if not expires_at or expires_at <= datetime.now(timezone.utc):
+            return False
+
+        return True
+
+    def reset_password(self, token: str, new_password: str) -> str:
+        trimmed_password = new_password.strip()
+        if len(trimmed_password) < 8:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+
+        payload = self._validate_reset_token_payload(token.strip())
+        normalized_email = self._normalize_email(str(payload.get("sub") or ""))
+        reset_jti = str(payload.get("jti") or "").strip()
+        if not normalized_email or not reset_jti:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+
+        user_record = self._load_existing_user(normalized_email)
+        if not user_record:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+
+        stored_jti = str(user_record.get("password_reset_jti") or "").strip()
+        if not stored_jti or not compare_digest(stored_jti, reset_jti):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+
+        expires_at = self._parse_datetime(user_record.get("password_reset_expires_at"))
+        if not expires_at or expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset token has expired")
+
+        hashed_password = self._hash_password(trimmed_password)
+        self._set_user_password(normalized_email, hashed_password)
+        self._clear_user_reset_state(normalized_email)
+
+        return "Password has been reset successfully."
 
     def issue_access_token(self, principal: AuthPrincipal) -> Dict[str, Any]:
         if not self.jwt_secret:

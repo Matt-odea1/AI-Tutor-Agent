@@ -28,9 +28,23 @@ jobs:
         run: |
           set -euo pipefail
           AUTH_JWT_SECRET="${{ secrets[format('AUTH_JWT_SECRET')] }}"
+          AUTH_PASSWORD_RESET_BASE_URL="${{ vars[format('AUTH_PASSWORD_RESET_BASE_URL')] }}"
+          AUTH_PASSWORD_RESET_FROM_EMAIL="${{ vars[format('AUTH_PASSWORD_RESET_FROM_EMAIL')] }}"
+          AUTH_PASSWORD_RESET_TOKEN_MINUTES="${{ vars[format('AUTH_PASSWORD_RESET_TOKEN_MINUTES')] || '30' }}"
+          AUTH_PASSWORD_RESET_SES_REGION="${{ vars[format('AUTH_PASSWORD_RESET_SES_REGION')] || env.DEPLOY_REGION }}"
 
           if [[ -z "${AUTH_JWT_SECRET}" ]]; then
             echo "Missing required GitHub secret: AUTH_JWT_SECRET"
+            exit 1
+          fi
+
+          if [[ -z "${AUTH_PASSWORD_RESET_BASE_URL}" ]]; then
+            echo "Missing required GitHub variable: AUTH_PASSWORD_RESET_BASE_URL"
+            exit 1
+          fi
+
+          if [[ -z "${AUTH_PASSWORD_RESET_FROM_EMAIL}" ]]; then
+            echo "Missing required GitHub variable: AUTH_PASSWORD_RESET_FROM_EMAIL"
             exit 1
           fi
 
@@ -64,10 +78,29 @@ jobs:
               "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
               "test -f .env || { echo missing_env_file; exit 1; }",
               "AUTH_JWT_SECRET='${{ secrets[format('AUTH_JWT_SECRET')] }}'",
+              "AUTH_PASSWORD_RESET_BASE_URL='${{ vars[format('AUTH_PASSWORD_RESET_BASE_URL')] }}'",
+              "AUTH_PASSWORD_RESET_FROM_EMAIL='${{ vars[format('AUTH_PASSWORD_RESET_FROM_EMAIL')] }}'",
+              "AUTH_PASSWORD_RESET_TOKEN_MINUTES='${{ vars[format('AUTH_PASSWORD_RESET_TOKEN_MINUTES')] || '30' }}'",
+              "AUTH_PASSWORD_RESET_SES_REGION='${{ vars[format('AUTH_PASSWORD_RESET_SES_REGION')] || env.DEPLOY_REGION }}'",
               "if grep -q '^AUTH_JWT_SECRET=' .env; then sed -i \"s|^AUTH_JWT_SECRET=.*|AUTH_JWT_SECRET=$AUTH_JWT_SECRET|\" .env; else echo \"AUTH_JWT_SECRET=$AUTH_JWT_SECRET\" >> .env; fi",
+              "if grep -q '^AUTH_PASSWORD_RESET_BASE_URL=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_BASE_URL=.*|AUTH_PASSWORD_RESET_BASE_URL=$AUTH_PASSWORD_RESET_BASE_URL|\" .env; else echo \"AUTH_PASSWORD_RESET_BASE_URL=$AUTH_PASSWORD_RESET_BASE_URL\" >> .env; fi",
+              "if grep -q '^AUTH_PASSWORD_RESET_FROM_EMAIL=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_FROM_EMAIL=.*|AUTH_PASSWORD_RESET_FROM_EMAIL=$AUTH_PASSWORD_RESET_FROM_EMAIL|\" .env; else echo \"AUTH_PASSWORD_RESET_FROM_EMAIL=$AUTH_PASSWORD_RESET_FROM_EMAIL\" >> .env; fi",
+              "if grep -q '^AUTH_PASSWORD_RESET_TOKEN_MINUTES=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_TOKEN_MINUTES=.*|AUTH_PASSWORD_RESET_TOKEN_MINUTES=$AUTH_PASSWORD_RESET_TOKEN_MINUTES|\" .env; else echo \"AUTH_PASSWORD_RESET_TOKEN_MINUTES=$AUTH_PASSWORD_RESET_TOKEN_MINUTES\" >> .env; fi",
+              "if grep -q '^AUTH_PASSWORD_RESET_SES_REGION=' .env; then sed -i \"s|^AUTH_PASSWORD_RESET_SES_REGION=.*|AUTH_PASSWORD_RESET_SES_REGION=$AUTH_PASSWORD_RESET_SES_REGION|\" .env; else echo \"AUTH_PASSWORD_RESET_SES_REGION=$AUTH_PASSWORD_RESET_SES_REGION\" >> .env; fi",
               "JWT_SECRET=$(grep -E '^AUTH_JWT_SECRET=' .env | sed 's/^AUTH_JWT_SECRET=//' | tr -d '\r')",
+              "RESET_BASE_URL=$(grep -E '^AUTH_PASSWORD_RESET_BASE_URL=' .env | sed 's/^AUTH_PASSWORD_RESET_BASE_URL=//' | tr -d '\r')",
+              "RESET_FROM_EMAIL=$(grep -E '^AUTH_PASSWORD_RESET_FROM_EMAIL=' .env | sed 's/^AUTH_PASSWORD_RESET_FROM_EMAIL=//' | tr -d '\r')",
+              "RESET_TOKEN_MINUTES=$(grep -E '^AUTH_PASSWORD_RESET_TOKEN_MINUTES=' .env | sed 's/^AUTH_PASSWORD_RESET_TOKEN_MINUTES=//' | tr -d '\r')",
+              "RESET_SES_REGION=$(grep -E '^AUTH_PASSWORD_RESET_SES_REGION=' .env | sed 's/^AUTH_PASSWORD_RESET_SES_REGION=//' | tr -d '\r')",
               "if [ -z \"$JWT_SECRET\" ] || [ \"$JWT_SECRET\" = \"replace_with_a_long_random_secret\" ]; then echo missing_or_placeholder_jwt_secret; exit 1; fi",
               "if [ ${#JWT_SECRET} -lt 32 ]; then echo jwt_secret_too_short; exit 1; fi",
+              "if [ -z \"$RESET_BASE_URL\" ]; then echo missing_reset_base_url; exit 1; fi",
+              "case \"$RESET_BASE_URL\" in http://*|https://*) ;; *) echo invalid_reset_base_url; exit 1 ;; esac",
+              "if [ -z \"$RESET_FROM_EMAIL\" ]; then echo missing_reset_from_email; exit 1; fi",
+              "echo \"$RESET_FROM_EMAIL\" | grep -Eq '^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$' || { echo invalid_reset_from_email; exit 1; }",
+              "echo \"$RESET_TOKEN_MINUTES\" | grep -Eq '^[0-9]+$' || { echo invalid_reset_token_minutes; exit 1; }",
+              "if [ \"$RESET_TOKEN_MINUTES\" -lt 5 ] || [ \"$RESET_TOKEN_MINUTES\" -gt 180 ]; then echo reset_token_minutes_out_of_range; exit 1; fi",
+              "if [ -z \"$RESET_SES_REGION\" ]; then echo missing_reset_ses_region; exit 1; fi",
               "EXPECTED_SHA=${{ github.sha }}",
               "echo Expected SHA: $EXPECTED_SHA",
               "git remote set-url origin https://github.com/Matt-odea1/AI-Tutor-Agent.git",

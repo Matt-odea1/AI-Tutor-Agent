@@ -24,3 +24,24 @@ class LoginResponse(BaseModel):
     user_id: str
     email: str
     roles: list[str] = Field(default_factory=list)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+
+class ResetPasswordValidateRequest(BaseModel):
+    token: str = Field(..., min_length=20)
+
+
+class ResetPasswordValidateResponse(BaseModel):
+    valid: bool
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=20)
+    new_password: str = Field(..., min_length=8)
