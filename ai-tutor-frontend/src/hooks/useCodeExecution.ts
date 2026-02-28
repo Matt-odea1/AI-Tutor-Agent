@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getPyodide } from '../utils/pyodideLoader';
+import { formatStudentFriendlyPythonError } from '../utils/pythonErrorFormatter';
 import type { CodeExecutionResult } from '../types';
 
 /**
@@ -76,11 +77,12 @@ else:
 
         const stderr = await pyodide.runPythonAsync('sys.stderr.getvalue()');
         const fullError = [formattedError, stderr].filter(Boolean).join('\n');
+        const conciseError = formatStudentFriendlyPythonError(fullError || pythonErrorMessage || 'Python error');
 
         const executionTime = performance.now() - startTime;
         const executionResult: CodeExecutionResult = {
           output: '',
-          error: fullError || pythonErrorMessage || 'Unknown Python error',
+          error: conciseError,
           executionTime,
         };
         
@@ -106,7 +108,7 @@ else:
       // JavaScript/Pyodide loading errors
       const executionTime = performance.now() - startTime;
       
-      // Build detailed error message
+      // Build concise error message
       let errorMessage = '';
       
       if (error instanceof Error && error.name) {
@@ -118,10 +120,9 @@ else:
       } else {
         errorMessage = 'Unknown error occurred';
       }
-      
-      // Add stack trace if available
-      if (error instanceof Error && error.stack) {
-        errorMessage += '\n\nStack Trace:\n' + error.stack;
+
+      if (errorMessage.includes('Pyodide version does not match')) {
+        errorMessage = 'Python runtime failed to load due to a version mismatch. Please refresh and try again.';
       }
 
       const executionResult: CodeExecutionResult = {
