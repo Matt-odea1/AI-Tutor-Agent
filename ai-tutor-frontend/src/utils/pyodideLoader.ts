@@ -23,10 +23,12 @@ export async function getPyodide(): Promise<PyodideInterface> {
     indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/',
   });
 
-  pyodideInstance = await loadingPromise;
-  loadingPromise = null;
-
-  return pyodideInstance;
+  try {
+    pyodideInstance = await loadingPromise;
+    return pyodideInstance;
+  } finally {
+    loadingPromise = null;
+  }
 }
 
 /**
