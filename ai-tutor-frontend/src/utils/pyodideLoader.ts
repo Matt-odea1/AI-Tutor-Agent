@@ -20,7 +20,7 @@ export async function getPyodide(): Promise<PyodideInterface> {
 
   // Start loading
   loadingPromise = loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/',
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/',
   });
 
   try {
