@@ -68,10 +68,25 @@ const classifyEditIntent = (query: string): EditIntent => {
     'teach me',
     'example of',
   ]
+  const assignmentSignals = [
+    'problem statement',
+    'question:',
+    'write a function',
+    'implement a function',
+    'given an integer',
+    'given a list',
+    'given an array',
+    'input:',
+    'output:',
+    'constraints',
+    'sample input',
+    'sample output',
+  ]
 
   const hasStrongVerb = strongVerbs.some((verb) => lowered.includes(`${verb} `))
   const hasConstructVerb = constructVerbs.some((verb) => lowered.includes(`${verb} `))
   const hasCodeTarget = codeTargets.some((target) => lowered.includes(target))
+  const hasAssignmentSignal = assignmentSignals.some((signal) => lowered.includes(signal))
   const hasFileHint =
     lowered.includes('this file') ||
     lowered.includes('the file') ||
@@ -81,7 +96,9 @@ const classifyEditIntent = (query: string): EditIntent => {
     /\b[\w./-]+\.(py|ts|tsx|js|jsx|json|md|txt|css|html|yml|yaml)\b/i.test(query)
   const hasInfoPhrase = infoPhrases.some((phrase) => lowered.includes(phrase))
 
-  if (hasStrongVerb || hasFileHint) return 'strong'
+  const looksLikeProblemPaste = hasAssignmentSignal || (/\n/.test(query) && query.length > 180 && hasCodeTarget)
+
+  if (hasStrongVerb || hasFileHint || looksLikeProblemPaste) return 'strong'
   if (hasConstructVerb && hasCodeTarget) return 'strong'
   if (hasConstructVerb) return hasInfoPhrase ? 'none' : 'weak'
   if (hasInfoPhrase) return 'none'

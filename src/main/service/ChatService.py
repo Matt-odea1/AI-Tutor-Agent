@@ -454,10 +454,25 @@ class ChatService:
             "teach me",
             "example of",
         ]
+        assignment_signals = [
+            "problem statement",
+            "question:",
+            "write a function",
+            "implement a function",
+            "given an integer",
+            "given a list",
+            "given an array",
+            "input:",
+            "output:",
+            "constraints",
+            "sample input",
+            "sample output",
+        ]
 
         has_strong_verb = any(f"{verb} " in lowered for verb in strong_verbs)
         has_construct_verb = any(f"{verb} " in lowered for verb in construct_verbs)
         has_code_target = any(target in lowered for target in code_targets)
+        has_assignment_signal = any(signal in lowered for signal in assignment_signals)
         has_file_hint = (
             "this file" in lowered
             or "the file" in lowered
@@ -468,8 +483,9 @@ class ChatService:
             is not None
         )
         has_info_phrase = any(phrase in lowered for phrase in info_phrases)
+        looks_like_problem_paste = has_assignment_signal or ("\n" in query and len(query) > 180 and has_code_target)
 
-        if has_strong_verb or has_file_hint:
+        if has_strong_verb or has_file_hint or looks_like_problem_paste:
             return "strong"
         if has_construct_verb and has_code_target:
             return "strong"
