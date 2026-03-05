@@ -1,5 +1,4 @@
 import React from 'react';
-import edLogo from '../../assets/edLogo.png';
 import logo9021 from '../../assets/logo-concepts/chat9021_logo_concept_b.svg';
 import type { AppMode } from '../../types';
 
@@ -26,27 +25,10 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
           isCollapsed ? 'opacity-0 pointer-events-none w-0 flex-none' : 'flex-1'
         }`}
       >
-        <a
-          href="https://edstem.org/au/courses/28065/discussion"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-8 h-8 rounded-lg overflow-hidden shadow-lg flex-shrink-0"
-          title="Open Ed discussion"
-        >
-          <div className="w-full h-full rounded-lg bg-gradient-to-br from-primary-600 to-primary-500 p-[2px]">
-            <div className="w-full h-full rounded-md bg-white flex items-center justify-center">
-              <img
-                src={edLogo}
-                alt="Ed discussion"
-                className="w-full h-full object-contain scale-110"
-              />
-            </div>
-          </div>
-        </a>
         <div className="flex-1 min-w-0">
           <button
             onClick={() => setAppMode(null)}
-            className="w-full h-8 rounded-lg flex items-center justify-center"
+            className="w-full h-10 rounded-lg flex items-center justify-center bg-white/95 border border-primary-100 shadow-sm hover:bg-primary-50 transition-colors px-2"
             title="Home"
             aria-label="Go to home"
           >
