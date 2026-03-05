@@ -136,6 +136,10 @@ export const Sidebar = () => {
       navigate('/privacypolicy')
     }
 
+    const handleOpenTermsOfService = () => {
+      navigate('/termsofservice')
+    }
+
     const handleCreateNewFile = async () => {
       try {
         if (activeProgramId) {
@@ -214,6 +218,7 @@ export const Sidebar = () => {
             userMenuRef={userMenuRef}
             showDetails={!isCollapsed}
             onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
+            onOpenTermsOfService={handleOpenTermsOfService}
             onLogout={handleLogout}
           />
         </div>

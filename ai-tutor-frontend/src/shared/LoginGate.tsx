@@ -387,6 +387,10 @@ export const LoginGate = ({
             Privacy Policy
           </a>
           <span className="mx-2 text-gray-300">|</span>
+          <a href="/termsofservice" className="text-primary-700 hover:text-primary-800 font-medium">
+            Terms of Service
+          </a>
+          <span className="mx-2 text-gray-300">|</span>
           <a href="/data-usage" className="text-primary-700 hover:text-primary-800 font-medium">
             Data Usage
           </a>
