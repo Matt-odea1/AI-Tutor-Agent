@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import logo9021 from '../assets/9021logo.png'
+import logo9021 from '../assets/logo-concepts/chat9021_logo_concept_b.svg'
 
 interface LoginGateProps {
   onLogin: (email: string, password: string) => Promise<void>
@@ -224,49 +224,91 @@ export const LoginGate = ({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-100 via-white to-primary-200 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 text-center">
-          <img src={logo9021} alt="9021 logo" className="mx-auto mb-3 h-8 w-auto" />
-          <p className="text-sm text-gray-500">
-            {mode === 'signup'
-              ? 'Create your account to continue'
-              : mode === 'forgot'
-                ? 'Enter your email to get a reset link'
-                : mode === 'reset'
-                  ? 'Set your new password'
-                  : 'Sign in to continue'}
-          </p>
-        </div>
-        <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
-          <button
-            type="button"
-            onClick={() => {
-              setMode('login')
-              setError(null)
-              setInfo(null)
-            }}
-            className={`rounded-md py-2 text-sm font-medium transition-colors ${
-              mode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
-            }`}
-          >
-            Log in
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('signup')
-              setError(null)
-              setInfo(null)
-            }}
-            className={`rounded-md py-2 text-sm font-medium transition-colors ${
-              mode === 'signup' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
-            }`}
-          >
-            Sign up
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="h-screen w-full bg-gradient-to-br from-slate-50 via-white to-primary-50">
+      <div className="grid h-full w-full overflow-hidden bg-white lg:grid-cols-[1.1fr_1fr]">
+        <section className="hidden bg-gradient-to-br from-primary-50 via-white to-primary-100 text-slate-700 lg:flex lg:flex-col p-12 border-r border-primary-100/80">
+          <div>
+            <div className="h-1.5 w-24 rounded-full bg-gradient-to-r from-primary-500 to-primary-300" />
+            <div className="mt-8 inline-flex items-center rounded-2xl border border-primary-200 bg-white/95 px-4 py-3 shadow-sm">
+              <img src={logo9021} alt="Chat9021 logo" className="h-20 w-auto" />
+            </div>
+          </div>
+          <div className="mt-auto">
+            <div className="text-xs text-primary-800/80">
+              <a href="/privacypolicy" className="font-medium hover:text-primary-900">
+                Privacy Policy
+              </a>
+              <span className="mx-2 text-primary-300">|</span>
+              <a href="/termsofservice" className="font-medium hover:text-primary-900">
+                Terms of Service
+              </a>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3 max-w-xs">
+              <div className="h-2 rounded-full bg-primary-200" />
+              <div className="h-2 rounded-full bg-primary-300" />
+              <div className="h-2 rounded-full bg-primary-400" />
+            </div>
+          </div>
+        </section>
+
+        <section className="p-6 sm:p-8 lg:p-10 self-center">
+          <div className="mb-6 text-center lg:text-left">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {mode === 'signup'
+                ? 'Create your account'
+                : mode === 'forgot'
+                  ? 'Reset your password'
+                  : mode === 'reset'
+                    ? 'Set a new password'
+                    : 'Sign in'}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {mode === 'signup'
+                ? 'Use your email or Google account to continue.'
+                : mode === 'forgot'
+                  ? 'Enter the email address linked to your account.'
+                  : mode === 'reset'
+                    ? 'Choose a password with at least 8 characters.'
+                    : 'Use your existing account credentials.'}
+            </p>
+          </div>
+
+          <div className="mb-6 w-full max-w-md mx-auto">
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-primary-50 p-1 border border-primary-100">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login')
+                setError(null)
+                setInfo(null)
+              }}
+              className={`rounded-md py-2 text-sm font-medium transition-colors ${
+                mode === 'login'
+                  ? 'bg-white text-primary-800 shadow-sm border border-primary-200 ring-1 ring-primary-100'
+                  : 'text-primary-700/80 hover:text-primary-800 hover:bg-primary-100/60'
+              }`}
+            >
+              Log in
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signup')
+                setError(null)
+                setInfo(null)
+              }}
+              className={`rounded-md py-2 text-sm font-medium transition-colors ${
+                mode === 'signup'
+                  ? 'bg-white text-primary-800 shadow-sm border border-primary-200 ring-1 ring-primary-100'
+                  : 'text-primary-700/80 hover:text-primary-800 hover:bg-primary-100/60'
+              }`}
+            >
+              Sign up
+            </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
           {isGoogleEnabled && (mode === 'login' || mode === 'signup') && (
             <div className="space-y-3">
               <div ref={googleButtonRef} className="flex justify-center" />
@@ -286,7 +328,7 @@ export const LoginGate = ({
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50/30 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
               placeholder="you@example.com"
               autoComplete="email"
               required
@@ -302,7 +344,7 @@ export const LoginGate = ({
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50/30 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
                 placeholder="••••••••"
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
@@ -316,7 +358,7 @@ export const LoginGate = ({
                 type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50/30 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
                 placeholder="••••••••"
                 autoComplete="new-password"
                 required
@@ -354,15 +396,15 @@ export const LoginGate = ({
               </button>
             </div>
           )}
-          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-          {info && <p className="mt-2 text-xs text-emerald-700">{info}</p>}
+          {error && <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+          {info && <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{info}</p>}
           {mode === 'reset' && isResetTokenChecking && (
             <p className="mt-2 text-xs text-gray-500">Checking reset link…</p>
           )}
           <button
             type="submit"
             disabled={isSubmitting || (mode === 'reset' && (!resetToken || !isResetTokenValid || isResetTokenChecking))}
-            className="w-full rounded-lg bg-primary-600 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting
               ? mode === 'signup'
@@ -380,17 +422,12 @@ export const LoginGate = ({
                     ? 'Reset password'
                     : 'Continue'}
           </button>
-        </form>
+          <p className="text-[11px] text-gray-500 text-center">
+            Your sign-in session is encrypted and used only for account access.
+          </p>
+          </form>
 
-        <div className="mt-4 border-t border-gray-100 pt-3 text-center text-xs text-gray-500">
-          <a href="/privacypolicy" className="text-primary-700 hover:text-primary-800 font-medium">
-            Privacy Policy
-          </a>
-          <span className="mx-2 text-gray-300">|</span>
-          <a href="/termsofservice" className="text-primary-700 hover:text-primary-800 font-medium">
-            Terms of Service
-          </a>
-        </div>
+        </section>
       </div>
     </div>
   )

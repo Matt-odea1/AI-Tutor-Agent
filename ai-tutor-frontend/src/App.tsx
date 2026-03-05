@@ -25,6 +25,75 @@ import {
   validatePasswordResetToken,
 } from './api/auth'
 
+type ApiErrorPayload = {
+  detail?: unknown
+  message?: unknown
+  code?: unknown
+}
+
+const normalizeAuthError = (error: unknown, fallback: string) => {
+  const payload =
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { data?: ApiErrorPayload } }).response?.data === 'object'
+      ? (error as { response?: { data?: ApiErrorPayload } }).response?.data
+      : undefined
+
+  const status =
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { status?: number } }).response?.status === 'number'
+      ? (error as { response?: { status?: number } }).response?.status
+      : undefined
+
+  const code = typeof payload?.code === 'string' ? payload.code.toLowerCase() : ''
+
+  let message = ''
+  if (typeof payload?.detail === 'string' && payload.detail.trim()) {
+    message = payload.detail.trim()
+  } else if (Array.isArray(payload?.detail)) {
+    const firstIssue = payload.detail.find((item) => item && typeof item === 'object') as { msg?: string } | undefined
+    if (firstIssue?.msg) {
+      message = firstIssue.msg
+    }
+  } else if (payload?.detail && typeof payload.detail === 'object') {
+    const detailObj = payload.detail as { message?: string; error?: string }
+    message = detailObj.message || detailObj.error || ''
+  }
+
+  if (!message && typeof payload?.message === 'string' && payload.message.trim()) {
+    message = payload.message.trim()
+  }
+
+  if (status === 409 || code.includes('exists') || /already exists?/i.test(message)) {
+    return new Error('An account with this email already exists. Try logging in instead.')
+  }
+
+  if (status === 401 && /invalid email or password/i.test(message)) {
+    return new Error('Incorrect email or password. Please try again.')
+  }
+
+  if (status === 401 && /invalid google id token/i.test(message)) {
+    return new Error('Google sign-in token was invalid or expired. Please try again.')
+  }
+
+  if (status === 503 && /not configured|unavailable/i.test(message)) {
+    return new Error('This authentication feature is temporarily unavailable. Please try again later.')
+  }
+
+  if (status === 400 && /password must be at least 8 characters/i.test(message)) {
+    return new Error('Password must be at least 8 characters long.')
+  }
+
+  if (message) {
+    return new Error(message)
+  }
+
+  return new Error(fallback)
+}
+
 function App() {
   const isOnline = useOnlineStatus()
   const { addToast } = useToastStore()
@@ -106,17 +175,6 @@ function App() {
   }
 
   if (!userSession) {
-    const normalizeAuthError = (error: unknown, fallback: string) => {
-      const message =
-        typeof error === 'object' &&
-        error !== null &&
-        'response' in error &&
-        typeof (error as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
-          ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
-          : fallback
-      return new Error(message)
-    }
-
     return (
       <LoginGate
         onLogin={async (email, password) => {

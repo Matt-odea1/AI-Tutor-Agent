@@ -1,0 +1,9 @@
+<svg width="320" height="96" viewBox="0 0 320 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="10" width="76" height="76" rx="18" fill="#47255C"/>
+  <path d="M48 24l19 8v11c0 13-8.1 22.9-19 27-10.9-4.1-19-14-19-27V32l19-8z" fill="#AA7FD1"/>
+  <path d="M48 35l8 4v7c0 6-3.6 10.7-8 12.6-4.4-1.9-8-6.6-8-12.6v-7l8-4z" fill="#8947AE"/>
+  <path d="M44 45h8" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <path d="M48 41v8" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <text x="102" y="52" fill="#47255C" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="34" font-weight="700">Chat9021</text>
+  <text x="103" y="74" fill="#7A3F9B" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="15" font-weight="500">AI Tutor</text>
+</svg>

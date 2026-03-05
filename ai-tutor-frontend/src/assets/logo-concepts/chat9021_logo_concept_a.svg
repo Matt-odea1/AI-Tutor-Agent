@@ -1,0 +1,14 @@
+<svg width="320" height="96" viewBox="0 0 320 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradA" x1="10" y1="10" x2="86" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#AA7FD1"/>
+      <stop offset="1" stop-color="#7A3F9B"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="76" height="76" rx="18" fill="url(#gradA)"/>
+  <path d="M36 58c-8 0-14-6-14-14s6-14 14-14c5 0 9 2 12 6" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <path d="M61 34v24" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <path d="M53 58h8" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <text x="102" y="52" fill="#47255C" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="34" font-weight="700">Chat9021</text>
+  <text x="103" y="74" fill="#7A3F9B" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="15" font-weight="500">AI Tutor</text>
+</svg>

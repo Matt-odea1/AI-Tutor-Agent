@@ -1,6 +1,6 @@
 import React from 'react';
 import edLogo from '../../assets/edLogo.png';
-import logo9021 from '../../assets/9021logo.png';
+import logo9021 from '../../assets/logo-concepts/chat9021_logo_concept_b.svg';
 import type { AppMode } from '../../types';
 
 interface SidebarHeaderProps {
@@ -52,7 +52,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
           >
             <img
               src={logo9021}
-              alt="9021"
+              alt="Chat9021"
               className="h-8 w-auto object-contain"
             />
           </button>
