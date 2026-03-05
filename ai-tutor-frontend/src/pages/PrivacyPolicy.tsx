@@ -64,6 +64,19 @@ const PrivacyPolicy = () => {
             </section>
 
             <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-3">Research and Educational Use</h2>
+              <p className="mb-2">
+                Chat9021 may be used in an educational research context to evaluate how AI tutoring tools
+                support learning outcomes in programming courses.
+              </p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Participation in research analysis is managed according to course and institutional processes.</li>
+                <li>Research reporting uses de-identified or aggregated information where required.</li>
+                <li>You can use core tutoring features even if you do not participate in optional research components.</li>
+              </ul>
+            </section>
+
+            <section>
               <h2 className="text-xl font-semibold text-gray-900 mb-3">Data Sharing</h2>
               <p className="mb-2">We may share data only with trusted service providers that help operate the platform (for example, hosting, storage, and authentication providers), under contractual confidentiality and security obligations.</p>
               <p>We do not sell personal information to third parties.</p>
@@ -84,6 +97,7 @@ const PrivacyPolicy = () => {
                 <li>You can sign out at any time.</li>
                 <li>You can delete chat/program history items from the interface when available.</li>
                 <li>You can contact us to request access, correction, or deletion of your data.</li>
+                <li>You can request that your data is excluded from future research analysis where applicable.</li>
               </ul>
             </section>
 

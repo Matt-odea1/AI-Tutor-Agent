@@ -98,8 +98,12 @@ export const breadcrumbSchema = (path: string) => {
     { name: 'Home', url: 'https://ai-tutor.example.com' },
   ]
 
-  if (path === '/data-usage') {
-    items.push({ name: 'Data Usage', url: 'https://ai-tutor.example.com/data-usage' })
+  if (path === '/privacypolicy') {
+    items.push({ name: 'Privacy Policy', url: 'https://app.chat9021.org/privacypolicy' })
+  }
+
+  if (path === '/termsofservice') {
+    items.push({ name: 'Terms of Service', url: 'https://app.chat9021.org/termsofservice' })
   }
 
   return {

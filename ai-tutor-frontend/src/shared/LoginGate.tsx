@@ -390,10 +390,6 @@ export const LoginGate = ({
           <a href="/termsofservice" className="text-primary-700 hover:text-primary-800 font-medium">
             Terms of Service
           </a>
-          <span className="mx-2 text-gray-300">|</span>
-          <a href="/data-usage" className="text-primary-700 hover:text-primary-800 font-medium">
-            Data Usage
-          </a>
         </div>
       </div>
     </div>
