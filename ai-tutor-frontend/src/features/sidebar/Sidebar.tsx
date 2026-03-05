@@ -14,8 +14,10 @@ import { SidebarUserMenu } from './SidebarUserMenu';
 import { clearUserSession, getUserSession } from '../../utils/userSession';
 import type { AppMode } from '../../types';
 import { EDITOR_TEMPLATE } from '../../config/editorDefaults';
+import { useNavigate } from 'react-router-dom';
 
 export const Sidebar = () => {
+  const navigate = useNavigate()
   const { sessionId, appMode, setAppMode, codeEditor } = useChatStore()
   const {
     sessions,
@@ -130,6 +132,10 @@ export const Sidebar = () => {
       clearUserSession()
     }
 
+    const handleOpenPrivacyPolicy = () => {
+      navigate('/privacypolicy')
+    }
+
     const handleCreateNewFile = async () => {
       try {
         if (activeProgramId) {
@@ -207,6 +213,7 @@ export const Sidebar = () => {
             setIsUserMenuOpen={setIsUserMenuOpen}
             userMenuRef={userMenuRef}
             showDetails={!isCollapsed}
+            onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
             onLogout={handleLogout}
           />
         </div>

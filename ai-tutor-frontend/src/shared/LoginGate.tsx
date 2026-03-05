@@ -381,6 +381,16 @@ export const LoginGate = ({
                     : 'Continue'}
           </button>
         </form>
+
+        <div className="mt-4 border-t border-gray-100 pt-3 text-center text-xs text-gray-500">
+          <a href="/privacypolicy" className="text-primary-700 hover:text-primary-800 font-medium">
+            Privacy Policy
+          </a>
+          <span className="mx-2 text-gray-300">|</span>
+          <a href="/data-usage" className="text-primary-700 hover:text-primary-800 font-medium">
+            Data Usage
+          </a>
+        </div>
       </div>
     </div>
   )

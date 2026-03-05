@@ -18,6 +18,7 @@ initPerformanceTracking()
 // Lazy load routes for code splitting
 const App = lazy(() => import('./App.tsx'))
 const DataUsage = lazy(() => import('./pages/DataUsage.tsx'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.tsx'))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -29,6 +30,7 @@ createRoot(document.getElementById('root')!).render(
               <Routes>
                 <Route path="/" element={<App />} />
                 <Route path="/data-usage" element={<DataUsage />} />
+                <Route path="/privacypolicy" element={<PrivacyPolicy />} />
               </Routes>
             </Suspense>
           </AnalyticsWrapper>
