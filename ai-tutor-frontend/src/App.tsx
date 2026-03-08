@@ -16,6 +16,7 @@ import { useChatStore } from './store/chatStore'
 import { webApplicationSchema, organizationSchema, injectStructuredData } from './utils/structuredData'
 import { LoginGate } from './shared/LoginGate'
 import { AUTH_SESSION_CHANGED_EVENT, getUserSession, setUserSessionWithToken, type UserSession } from './utils/userSession'
+import { STORAGE_KEYS } from './config/constants'
 import {
   loginWithEmailPassword,
   loginWithGoogleIdToken,
@@ -102,6 +103,21 @@ function App() {
   const [userSession, setUserSessionState] = useState<UserSession | null>(() => getUserSession())
   const [isReady] = useState(true)
 
+  const handleAuthSuccess = (accessToken: string, email: string) => {
+    const session = setUserSessionWithToken(accessToken, email)
+    const previousUserId = localStorage.getItem(STORAGE_KEYS.LAST_AUTH_USER_ID)
+
+    if (previousUserId && previousUserId !== session.user_id) {
+      clearSession()
+      setWorkspaceId(null)
+      setSessions([])
+      setAppMode(null)
+    }
+
+    localStorage.setItem(STORAGE_KEYS.LAST_AUTH_USER_ID, session.user_id)
+    setUserSessionState(session)
+  }
+
   useEffect(() => {
     const syncSession = () => {
       setUserSessionState(getUserSession())
@@ -180,12 +196,7 @@ function App() {
         onLogin={async (email, password) => {
           try {
             const loginResult = await loginWithEmailPassword(email, password)
-            clearSession()
-            setWorkspaceId(null)
-            setSessions([])
-            setAppMode(null)
-            const session = setUserSessionWithToken(loginResult.access_token, loginResult.email || email)
-            setUserSessionState(session)
+            handleAuthSuccess(loginResult.access_token, loginResult.email || email)
           } catch (error: unknown) {
             throw normalizeAuthError(error, 'Unable to sign in. Please check your email and password.')
           }
@@ -193,12 +204,7 @@ function App() {
         onSignup={async (email, password) => {
           try {
             const signupResult = await signupWithEmailPassword(email, password)
-            clearSession()
-            setWorkspaceId(null)
-            setSessions([])
-            setAppMode(null)
-            const session = setUserSessionWithToken(signupResult.access_token, signupResult.email || email)
-            setUserSessionState(session)
+            handleAuthSuccess(signupResult.access_token, signupResult.email || email)
           } catch (error: unknown) {
             throw normalizeAuthError(error, 'Unable to create your account. Please try again.')
           }
@@ -206,12 +212,7 @@ function App() {
         onGoogleLogin={async (idToken) => {
           try {
             const googleResult = await loginWithGoogleIdToken(idToken)
-            clearSession()
-            setWorkspaceId(null)
-            setSessions([])
-            setAppMode(null)
-            const session = setUserSessionWithToken(googleResult.access_token, googleResult.email)
-            setUserSessionState(session)
+            handleAuthSuccess(googleResult.access_token, googleResult.email)
           } catch (error: unknown) {
             throw normalizeAuthError(error, 'Unable to sign in with Google. Please try again.')
           }

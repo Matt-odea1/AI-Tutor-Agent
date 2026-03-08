@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   SESSION_ID: 'ai-tutor-session-id',
   WORKSPACE_ID: 'ai-tutor-workspace-id',
   APP_MODE: 'ai-tutor-app-mode',
+  LAST_AUTH_USER_ID: 'ai-tutor-last-auth-user-id',
   THEME: 'ai-tutor-theme',
   ASSISTANT_THREAD_MAP: 'ai-tutor-assistant-thread-map',
   USER_SESSION: 'ai-tutor-user-session',

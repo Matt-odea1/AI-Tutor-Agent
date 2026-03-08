@@ -1,5 +1,5 @@
 import React from 'react';
-import logo9021 from '../../assets/logo-concepts/chat9021_logo_concept_b.svg';
+import logo9021 from '../../assets/logo-concepts/chat9021_logo_concept_b_light.svg';
 import type { AppMode } from '../../types';
 
 interface SidebarHeaderProps {
@@ -28,7 +28,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
         <div className="flex-1 min-w-0">
           <button
             onClick={() => setAppMode(null)}
-            className="w-full h-10 rounded-lg flex items-center justify-center bg-white/95 border border-primary-100 shadow-sm hover:bg-primary-50 transition-colors px-2"
+            className="w-full h-10 rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors px-2"
             title="Home"
             aria-label="Go to home"
           >
