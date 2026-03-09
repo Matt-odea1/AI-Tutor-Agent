@@ -13,7 +13,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => (
-  <div className={`border-b border-gray-800 ${isCollapsed ? 'py-4 px-0' : 'p-4'}`}>
+  <div className={`border-b border-gray-800 ${isCollapsed ? 'py-4 px-0' : 'py-2 pl-1 pr-3'}`}>
     <div
       className={`flex items-center gap-2 w-full ${
         isCollapsed ? 'justify-center' : 'justify-between'
@@ -28,14 +28,14 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
         <div className="flex-1 min-w-0">
           <button
             onClick={() => setAppMode(null)}
-            className="w-full h-10 rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors px-2"
+            className="w-full h-12 rounded-lg flex items-center justify-start hover:bg-gray-800 transition-colors px-1"
             title="Home"
             aria-label="Go to home"
           >
             <img
               src={logo9021}
               alt="Chat9021"
-              className="h-8 w-auto object-contain"
+              className="h-10 w-auto object-contain"
             />
           </button>
         </div>
