@@ -56,13 +56,15 @@ const getAnonymousSessionId = () => {
   return generated
 }
 
-const getAuthHeaders = () => {
+const getAuthHeaders = (): Record<string, string> => {
   const session = getUserSession()
-  if (!session?.access_token) return { 'Content-Type': 'application/json' }
-  return {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${session.access_token}`,
   }
+  if (session?.access_token) {
+    headers.Authorization = `Bearer ${session.access_token}`
+  }
+  return headers
 }
 
 const flushQueue = async (useBeacon = false) => {
@@ -169,7 +171,11 @@ export const trackPageView = (properties: PageViewProperties) => {
     console.log('[Analytics] Page view:', properties)
   }
 
-  trackEvent('page_view', properties)
+  trackEvent('page_view', {
+    path: properties.path,
+    title: properties.title,
+    referrer: properties.referrer,
+  })
 }
 
 /**

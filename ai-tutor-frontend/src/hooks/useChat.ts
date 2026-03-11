@@ -32,6 +32,7 @@ export const useChat = () => {
     messages,
     sessionId,
     workspaceId,
+    appMode,
     isLoading,
     error,
     addMessage,
@@ -93,7 +94,11 @@ export const useChat = () => {
           context_ids: response.context_ids,
         }
         addMessage(assistantMessage)
-        trackChatResponse(performance.now() - messageStart, false, response.tokens_output)
+        trackChatResponse(
+          performance.now() - messageStart,
+          false,
+          response.tokens_output ?? undefined,
+        )
       } catch (err) {
         console.error('Failed to send message:', err)
         
