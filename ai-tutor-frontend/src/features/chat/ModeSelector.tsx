@@ -2,6 +2,7 @@ import { useChatStore } from '../../store/chatStore'
 import chatIcon from '../../assets/person.png'
 import ideIcon from '../../assets/code.png'
 import questionIcon from '../../assets/exam.png'
+import { trackModeChanged } from '../../utils/analytics'
 
 export const ModeSelector = () => {
   const { setAppMode } = useChatStore()
@@ -24,7 +25,10 @@ export const ModeSelector = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
-            onClick={() => setAppMode('chat')}
+            onClick={() => {
+              trackModeChanged('none', 'chat')
+              setAppMode('chat')
+            }}
             className="group rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm hover:shadow-lg transition-all"
           >
             <div className="flex items-center justify-between">
@@ -38,7 +42,10 @@ export const ModeSelector = () => {
           </button>
 
           <button
-            onClick={() => setAppMode('ide')}
+            onClick={() => {
+              trackModeChanged('none', 'ide')
+              setAppMode('ide')
+            }}
             className="group rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm hover:shadow-lg transition-all"
           >
             <div className="flex items-center justify-between">

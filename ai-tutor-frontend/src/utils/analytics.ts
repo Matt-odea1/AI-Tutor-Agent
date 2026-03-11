@@ -1,25 +1,26 @@
 /**
  * Analytics Service
- * 
- * Provides privacy-conscious analytics tracking for user interactions.
- * Designed to work with Google Analytics, Plausible, or similar services.
- * 
+ *
  * Privacy principles:
- * - No PII (personally identifiable information) tracking
- * - Anonymized session IDs only
+ * - No message body content
+ * - No email addresses
  * - Respect Do Not Track settings
- * - Only enabled in production
- * 
- * @example
- * ```tsx
- * import { trackEvent } from './utils/analytics'
- * 
- * trackEvent('message_sent', { mode: 'explanatory' })
- * ```
  */
+
+import { API_CONFIG, API_ENDPOINTS } from '../config/api.config'
+import { STORAGE_KEYS } from '../config/constants'
+import { getUserSession } from './userSession'
 
 interface EventProperties {
   [key: string]: string | number | boolean | undefined
+}
+
+type QueuedEvent = {
+  event_name: string
+  occurred_at: string
+  session_id?: string
+  app_mode?: string
+  properties: EventProperties
 }
 
 interface PageViewProperties {
@@ -35,9 +36,78 @@ interface PageViewProperties {
  * Analytics configuration
  */
 const config = {
-  enabled: import.meta.env.PROD && !navigator.doNotTrack, // Respect DNT
-  measurementId: import.meta.env.VITE_GA_MEASUREMENT_ID,
+  enabled:
+    (import.meta.env.VITE_ANALYTICS_ENABLED
+      ? String(import.meta.env.VITE_ANALYTICS_ENABLED).toLowerCase() === 'true'
+      : import.meta.env.PROD) && !navigator.doNotTrack,
   debug: import.meta.env.DEV,
+  batchSize: Number(import.meta.env.VITE_ANALYTICS_BATCH_SIZE || 20),
+  flushIntervalMs: Number(import.meta.env.VITE_ANALYTICS_FLUSH_MS || 10000),
+}
+
+const queue: QueuedEvent[] = []
+let flushTimer: number | null = null
+
+const getAnonymousSessionId = () => {
+  const existing = localStorage.getItem(STORAGE_KEYS.SESSION_ID)
+  if (existing) return existing
+  const generated = crypto.randomUUID()
+  localStorage.setItem(STORAGE_KEYS.SESSION_ID, generated)
+  return generated
+}
+
+const getAuthHeaders = () => {
+  const session = getUserSession()
+  if (!session?.access_token) return { 'Content-Type': 'application/json' }
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.access_token}`,
+  }
+}
+
+const flushQueue = async (useBeacon = false) => {
+  if (!config.enabled || queue.length === 0) return
+  const events = queue.splice(0, queue.length)
+  const payload = JSON.stringify({
+    sent_at: new Date().toISOString(),
+    events,
+  })
+
+  if (useBeacon && navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: 'application/json' })
+    const ok = navigator.sendBeacon(`${API_CONFIG.baseURL}${API_ENDPOINTS.ANALYTICS_BATCH}`, blob)
+    if (!ok) {
+      queue.unshift(...events)
+    }
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.ANALYTICS_BATCH}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: payload,
+      keepalive: true,
+    })
+    if (!response.ok) {
+      queue.unshift(...events)
+    }
+  } catch {
+    queue.unshift(...events)
+  }
+}
+
+const scheduleFlush = () => {
+  if (!config.enabled) return
+  if (queue.length >= config.batchSize) {
+    void flushQueue()
+    return
+  }
+  if (flushTimer !== null) return
+  flushTimer = window.setTimeout(() => {
+    flushTimer = null
+    void flushQueue()
+  }, config.flushIntervalMs)
 }
 
 /**
@@ -50,12 +120,16 @@ export const initAnalytics = () => {
     return
   }
 
-  // In production, initialize Google Analytics or other service:
-  // gtag('js', new Date())
-  // gtag('config', config.measurementId, {
-  //   anonymize_ip: true,
-  //   cookie_flags: 'SameSite=None;Secure',
-  // })
+  const handleVisibilityOrUnload = () => {
+    void flushQueue(true)
+  }
+
+  window.addEventListener('beforeunload', handleVisibilityOrUnload)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      void flushQueue(true)
+    }
+  })
 
   console.log('[Analytics] Initialized')
 }
@@ -73,11 +147,16 @@ export const trackEvent = (eventName: string, properties?: EventProperties) => {
 
   if (!config.enabled) return
 
-  // Send to analytics service
-  // gtag('event', eventName, properties)
-
-  // Or for Plausible:
-  // plausible(eventName, { props: properties })
+  const appMode = localStorage.getItem(STORAGE_KEYS.APP_MODE) || undefined
+  const sessionId = getAnonymousSessionId()
+  queue.push({
+    event_name: eventName,
+    occurred_at: new Date().toISOString(),
+    session_id: sessionId,
+    app_mode: appMode,
+    properties: properties || {},
+  })
+  scheduleFlush()
 }
 
 /**
@@ -90,12 +169,7 @@ export const trackPageView = (properties: PageViewProperties) => {
     console.log('[Analytics] Page view:', properties)
   }
 
-  if (!config.enabled) return
-
-  // gtag('config', config.measurementId, {
-  //   page_path: properties.path,
-  //   page_title: properties.title,
-  // })
+  trackEvent('page_view', properties)
 }
 
 /**
@@ -108,9 +182,7 @@ export const setUserProperties = (properties: EventProperties) => {
     console.log('[Analytics] User properties:', properties)
   }
 
-  if (!config.enabled) return
-
-  // gtag('set', 'user_properties', properties)
+  trackEvent('user_properties_updated', properties)
 }
 
 // Predefined event tracking functions for common actions
@@ -118,18 +190,24 @@ export const setUserProperties = (properties: EventProperties) => {
 /**
  * Track when a message is sent
  */
-export const trackMessageSent = (experienceMode: string) => {
+export const trackMessageSent = (experienceMode: string, messageLength: number, hasEditorContext = false) => {
+  const lengthBucket =
+    messageLength < 40 ? 'short' : messageLength < 200 ? 'medium' : messageLength < 600 ? 'long' : 'very_long'
   trackEvent('message_sent', {
     experience_mode: experienceMode,
+    message_length_bucket: lengthBucket,
+    has_editor_context: hasEditorContext,
   })
 }
 
 /**
  * Track when code is executed
  */
-export const trackCodeExecuted = (hasError: boolean) => {
+export const trackCodeExecuted = (hasError: boolean, executionTimeMs?: number, errorType?: string) => {
   trackEvent('code_executed', {
     has_error: hasError,
+    execution_time_ms: executionTimeMs ? Math.round(executionTimeMs) : undefined,
+    error_type: errorType,
   })
 }
 
@@ -140,6 +218,10 @@ export const trackSessionCreated = () => {
   trackEvent('session_created')
 }
 
+export const trackSessionResumed = () => {
+  trackEvent('session_resumed')
+}
+
 /**
  * Track when pedagogy mode is changed
  */
@@ -147,6 +229,31 @@ export const trackModeChanged = (fromMode: string, toMode: string) => {
   trackEvent('mode_changed', {
     from_mode: fromMode,
     to_mode: toMode,
+  })
+}
+
+export const trackAuthEvent = (action: 'login_success' | 'login_failed' | 'logout', provider?: 'password' | 'google', reason?: string) => {
+  trackEvent('auth_event', {
+    action,
+    provider,
+    reason,
+  })
+}
+
+export const trackChatResponse = (latencyMs: number, isError: boolean, tokensOutput?: number) => {
+  const tokenBucket =
+    !tokensOutput ? 'none' : tokensOutput < 100 ? 'low' : tokensOutput < 400 ? 'medium' : 'high'
+  trackEvent('chat_response_received', {
+    latency_ms: Math.round(latencyMs),
+    is_error: isError,
+    token_bucket: tokenBucket,
+  })
+}
+
+export const trackUIEvent = (action: string, value?: string | boolean | number) => {
+  trackEvent('ui_event', {
+    action,
+    value,
   })
 }
 

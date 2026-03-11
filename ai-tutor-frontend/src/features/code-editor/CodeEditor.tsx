@@ -131,7 +131,11 @@ export const CodeEditor = ({ onSendMessage, showAskAI = true }: CodeEditorProps)
       // Add to history after execution
       addToHistory(codeEditor.code, result.output, result.error);
       // Track code execution
-      trackCodeExecuted(!!result.error);
+      trackCodeExecuted(
+        !!result.error,
+        result.executionTime,
+        result.error ? result.error.split(':')[0].slice(0, 40) : undefined,
+      );
       if (programToSave) {
         await saveProgram(programToSave, {
           current_code: codeEditor.code,

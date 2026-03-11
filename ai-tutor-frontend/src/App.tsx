@@ -17,6 +17,7 @@ import { webApplicationSchema, organizationSchema, injectStructuredData } from '
 import { LoginGate } from './shared/LoginGate'
 import { AUTH_SESSION_CHANGED_EVENT, getUserSession, setUserSessionWithToken, type UserSession } from './utils/userSession'
 import { STORAGE_KEYS } from './config/constants'
+import { trackAuthEvent, trackSessionResumed } from './utils/analytics'
 import {
   loginWithEmailPassword,
   loginWithGoogleIdToken,
@@ -119,6 +120,11 @@ function App() {
   }
 
   useEffect(() => {
+    const initialSession = getUserSession()
+    if (initialSession) {
+      trackSessionResumed()
+    }
+
     const syncSession = () => {
       setUserSessionState(getUserSession())
     }
@@ -197,7 +203,9 @@ function App() {
           try {
             const loginResult = await loginWithEmailPassword(email, password)
             handleAuthSuccess(loginResult.access_token, loginResult.email || email)
+            trackAuthEvent('login_success', 'password')
           } catch (error: unknown) {
+            trackAuthEvent('login_failed', 'password')
             throw normalizeAuthError(error, 'Unable to sign in. Please check your email and password.')
           }
         }}
@@ -205,7 +213,9 @@ function App() {
           try {
             const signupResult = await signupWithEmailPassword(email, password)
             handleAuthSuccess(signupResult.access_token, signupResult.email || email)
+            trackAuthEvent('login_success', 'password')
           } catch (error: unknown) {
+            trackAuthEvent('login_failed', 'password')
             throw normalizeAuthError(error, 'Unable to create your account. Please try again.')
           }
         }}
@@ -213,7 +223,9 @@ function App() {
           try {
             const googleResult = await loginWithGoogleIdToken(idToken)
             handleAuthSuccess(googleResult.access_token, googleResult.email)
+            trackAuthEvent('login_success', 'google')
           } catch (error: unknown) {
+            trackAuthEvent('login_failed', 'google')
             throw normalizeAuthError(error, 'Unable to sign in with Google. Please try again.')
           }
         }}

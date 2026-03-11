@@ -13,6 +13,7 @@ from src.main.config import get_settings
 from src.main.controllers.api_errors import register_exception_handlers
 from src.main.controllers.InternalEndpoints import router as context_router, s3_router
 from src.main.controllers.chat_router import chat_router
+from src.main.controllers.analytics_router import analytics_router
 from src.main.controllers.auth_router import auth_router
 from src.main.controllers.history_router import history_router
 from src.main.controllers.questions_router import questions_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
 
     app.include_router(context_router)
     app.include_router(chat_router)
+    app.include_router(analytics_router)
     app.include_router(history_router)
     app.include_router(questions_router)
     app.include_router(evaluations_router)

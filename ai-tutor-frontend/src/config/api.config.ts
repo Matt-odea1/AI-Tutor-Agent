@@ -44,6 +44,8 @@ export const API_ENDPOINTS = {
   AUTH_FORGOT_PASSWORD: '/api/auth/forgot-password',
   AUTH_RESET_PASSWORD_VALIDATE: '/api/auth/reset-password/validate',
   AUTH_RESET_PASSWORD: '/api/auth/reset-password',
+  ANALYTICS_BATCH: '/internal/analytics/events/batch',
+  ANALYTICS_SUMMARY: '/internal/analytics/summary',
   HISTORY_WORKSPACES: '/internal/history/workspaces',
   HISTORY_VIEWS: '/internal/history/views',
   HISTORY_VIEW_HISTORY: (viewSessionId: string) => `/internal/history/views/${viewSessionId}/history`,

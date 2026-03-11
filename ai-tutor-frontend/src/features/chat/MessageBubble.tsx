@@ -54,7 +54,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
       role="article"
       aria-label={`${isUser ? 'Your' : 'AI'} message`}
     >
-      <div className={`flex ${showAvatars ? 'space-x-3' : 'space-x-0'} ${isUser ? 'max-w-2xl ml-auto' : 'max-w-4xl w-full'}`}>
+      <div className={`flex ${showAvatars ? 'space-x-3' : 'space-x-0'} ${isUser ? 'max-w-2xl ml-auto' : 'max-w-5xl w-full'}`}>
         {/* Avatar for assistant */}
         {!isUser && showAvatars && (
           <div 
@@ -78,7 +78,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
           aria-live={isError ? 'assertive' : 'polite'}
         >
           {isUser ? (
-            <p className="text-gray-800 text-sm leading-relaxed m-0 whitespace-pre-wrap">{message.content}</p>
+            <p className="text-gray-800 text-sm leading-relaxed m-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</p>
           ) : isError ? (
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0 text-2xl">⚠️</div>
@@ -87,7 +87,7 @@ export const MessageBubble = ({ message, showAvatars = true }: MessageBubbleProp
               </div>
             </div>
           ) : (
-            <div className="markdown-content prose prose-sm max-w-none">
+            <div className="markdown-content prose prose-sm max-w-none break-words [overflow-wrap:anywhere]">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{

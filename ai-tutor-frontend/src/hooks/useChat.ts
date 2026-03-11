@@ -25,6 +25,7 @@ import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { createWorkspace, createViewSession, postViewMessage } from '../api/history'
 import type { Message, ChatEditorContext } from '../types'
+import { trackChatResponse, trackMessageSent, trackSessionCreated } from '../utils/analytics'
 
 export const useChat = () => {
   const {
@@ -50,11 +51,15 @@ export const useChat = () => {
   const sendMessage = useCallback(
     async (content: string, editorContext?: ChatEditorContext) => {
       if (!content.trim() || isLoading) return
+      const messageStart = performance.now()
+      const normalized = content.trim()
+
+      trackMessageSent(appMode || 'chat', normalized.length, Boolean(editorContext))
 
       // Add user message immediately
       const userMessage: Message = {
         role: 'user',
-        content: content.trim(),
+        content: normalized,
         timestamp: new Date().toISOString(),
       }
       addMessage(userMessage)
@@ -68,10 +73,11 @@ export const useChat = () => {
           const view = await createViewSession(activeWorkspaceId, 'chat')
           viewSessionId = view.view_session_id
           setSessionId(viewSessionId)
+          trackSessionCreated()
         }
 
         const response = await postViewMessage(viewSessionId, {
-          query: content.trim(),
+          query: normalized,
           session_id: viewSessionId,
           include_history: true,
           top_k: 5,
@@ -87,6 +93,7 @@ export const useChat = () => {
           context_ids: response.context_ids,
         }
         addMessage(assistantMessage)
+        trackChatResponse(performance.now() - messageStart, false, response.tokens_output)
       } catch (err) {
         console.error('Failed to send message:', err)
         
@@ -116,11 +123,12 @@ export const useChat = () => {
           isError: true,
         }
         addMessage(errorMsg)
+        trackChatResponse(performance.now() - messageStart, true)
       } finally {
         setLoading(false)
       }
     },
-    [sessionId, isLoading, addMessage, setSessionId, setLoading, setError, ensureWorkspace]
+    [sessionId, isLoading, addMessage, setSessionId, setLoading, setError, ensureWorkspace, appMode]
   )
 
   return {

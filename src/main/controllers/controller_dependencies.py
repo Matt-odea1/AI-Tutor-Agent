@@ -11,6 +11,7 @@ from src.main.config import get_settings
 from src.main.llm.AgentCoreProvider import AgentCoreProvider
 from src.main.service.ChatService import ChatService
 from src.main.service.ContextVectorService import ContextVectorService
+from src.main.service.AnalyticsService import AnalyticsService
 from src.main.service.InstructorAssessmentService import InstructorAssessmentService
 from src.main.service.OralAssessmentService import OralAssessmentService
 from src.main.service.QuestionGenerationService import QuestionGenerationService
@@ -67,6 +68,20 @@ def _history_singleton():
 
 def get_history_store():
     return _history_singleton()
+
+
+@lru_cache(maxsize=1)
+def _analytics_service_singleton() -> AnalyticsService:
+    settings = get_settings()
+    return AnalyticsService(
+        use_dynamodb=settings.use_dynamodb,
+        table_name=settings.dynamodb_table_name,
+        region=settings.dynamodb_region,
+    )
+
+
+def get_analytics_service() -> AnalyticsService:
+    return _analytics_service_singleton()
 
 
 @lru_cache(maxsize=1)

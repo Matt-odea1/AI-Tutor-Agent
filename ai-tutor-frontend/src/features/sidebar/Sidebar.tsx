@@ -15,6 +15,7 @@ import { clearUserSession, getUserSession } from '../../utils/userSession';
 import type { AppMode } from '../../types';
 import { EDITOR_TEMPLATE } from '../../config/editorDefaults';
 import { useNavigate } from 'react-router-dom';
+import { trackAuthEvent, trackUIEvent } from '../../utils/analytics';
 
 export const Sidebar = () => {
   const navigate = useNavigate()
@@ -129,6 +130,7 @@ export const Sidebar = () => {
     };
 
     const handleLogout = () => {
+      trackAuthEvent('logout', undefined, 'manual')
       clearUserSession()
     }
 
@@ -169,7 +171,11 @@ export const Sidebar = () => {
         <SidebarHeader
           setAppMode={setAppMode as (mode: AppMode | null) => void}
           isCollapsed={isCollapsed}
-          onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+          onToggleCollapse={() => {
+            const nextState = !isCollapsed
+            setIsCollapsed(nextState)
+            trackUIEvent('sidebar_collapse_toggled', nextState)
+          }}
         />
         <SidebarModeSwitcher
           appMode={appMode as 'chat' | 'ide' | 'questions' | null}

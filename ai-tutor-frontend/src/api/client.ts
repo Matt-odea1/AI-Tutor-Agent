@@ -5,7 +5,7 @@ import axios from 'axios'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { API_CONFIG } from '../config/api.config'
 import { API_CONFIG as RETRY_CONFIG } from '../config/theme'
-import { trackAPIError } from '../utils/analytics'
+import { trackAPIError, trackAuthEvent } from '../utils/analytics'
 import { trackAPITiming } from '../utils/performance'
 import { trackError } from '../utils/errorTracking'
 import { clearUserSession, getUserSession } from '../utils/userSession'
@@ -109,6 +109,7 @@ apiClient.interceptors.response.use(
       })
 
       if (error.response.status === 401) {
+        trackAuthEvent('logout', undefined, '401')
         clearUserSession()
       }
     }

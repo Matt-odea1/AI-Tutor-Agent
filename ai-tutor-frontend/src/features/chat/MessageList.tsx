@@ -111,8 +111,8 @@ export const MessageList = ({ messages, isLoading, onSendMessage, hideSplitEdito
   }
 
   return (
-    <div className="h-full overflow-y-auto px-8 pt-8 pb-[20vh] bg-white">
-      <div className="max-w-4xl mx-auto">
+    <div className="h-full overflow-y-auto px-6 md:px-8 pt-8 pb-[20vh] bg-white">
+      <div className="max-w-5xl mx-auto">
         {messages.map((message, index) => {
           const isLastMessage = index === messages.length - 1
           return (

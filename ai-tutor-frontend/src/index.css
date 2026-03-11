@@ -132,6 +132,7 @@
 
   .markdown-content p {
     @apply mb-3 last:mb-0;
+    overflow-wrap: anywhere;
   }
 
   .markdown-content ul,
@@ -141,6 +142,7 @@
 
   .markdown-content li {
     @apply leading-relaxed;
+    overflow-wrap: anywhere;
   }
 
   .markdown-content a {
