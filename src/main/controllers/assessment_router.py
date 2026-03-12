@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from src.main.auth.dependencies import require_auth_principal
+from src.main.auth.dependencies import get_auth_service, require_auth_principal
 from src.main.auth.models import AuthPrincipal
+from src.main.auth.service import AuthService
 from src.main.controllers.api_errors import ApiError
 from src.main.controllers.controller_dependencies import (
     get_evaluation_service,
@@ -187,6 +189,51 @@ async def get_assessment_students(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in get_assessment_students: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.post("/{id}/students/{student_id}/invite")
+async def generate_student_invite(
+    id: str,
+    student_id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    auth_service: AuthService = Depends(get_auth_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Generate a single-use invitation link for a specific student."""
+    try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+
+        students = svc.get_assessment_students(id)
+        if not any(s["studentId"] == student_id for s in students):
+            raise ApiError(
+                status_code=404,
+                code="student_not_enrolled",
+                message=f"Student {student_id} is not enrolled in assessment {id}",
+            )
+
+        token = auth_service.generate_student_invite_token(student_id, id)
+        base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
+        invite_link = f"{base_url}/invite?token={token}"
+
+        return {
+            "ok": True,
+            "studentId": student_id,
+            "assessmentId": id,
+            "inviteToken": token,
+            "inviteLink": invite_link,
+        }
+
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in generate_student_invite: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

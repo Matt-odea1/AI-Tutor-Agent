@@ -1,20 +1,44 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+import os
+from typing import Optional
+
+from fastapi import APIRouter, Body, Cookie, Depends, Response
 
 from src.main.auth.dependencies import get_auth_service
 from src.main.auth.service import AuthService
+from src.main.controllers.api_errors import ApiError
 from src.main.dtos.AuthDTOs import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     GoogleLoginRequest,
     LoginRequest,
     LoginResponse,
+    RefreshTokenResponse,
     ResetPasswordRequest,
     ResetPasswordValidateRequest,
     ResetPasswordValidateResponse,
     SignupRequest,
+    StudentInviteExchangeRequest,
+    StudentInviteExchangeResponse,
 )
+
+_REFRESH_COOKIE = "refresh_token"
+_REFRESH_MAX_AGE = 7 * 24 * 3600  # 7 days in seconds
+# Use secure=True in production (HTTPS). Controlled by env so local dev works over HTTP.
+_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite="lax",
+        max_age=_REFRESH_MAX_AGE,
+        path="/api/auth",
+    )
 
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -23,31 +47,69 @@ auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 @auth_router.post("/login", response_model=LoginResponse)
 def login_with_email_password(
     request: LoginRequest = Body(...),
+    response: Response = None,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     principal = auth_service.authenticate_credentials(request.email, request.password)
     token_payload = auth_service.issue_access_token(principal)
+    _set_refresh_cookie(response, auth_service.issue_refresh_token(principal))
     return LoginResponse(**token_payload)
 
 
 @auth_router.post("/signup", response_model=LoginResponse, status_code=201)
 def signup_with_email_password(
     request: SignupRequest = Body(...),
+    response: Response = None,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     principal = auth_service.register_user(request.email, request.password)
     token_payload = auth_service.issue_access_token(principal)
+    _set_refresh_cookie(response, auth_service.issue_refresh_token(principal))
     return LoginResponse(**token_payload)
 
 
 @auth_router.post("/google", response_model=LoginResponse)
 def login_with_google(
     request: GoogleLoginRequest = Body(...),
+    response: Response = None,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     principal = auth_service.authenticate_google_id_token(request.id_token)
     token_payload = auth_service.issue_access_token(principal)
+    _set_refresh_cookie(response, auth_service.issue_refresh_token(principal))
     return LoginResponse(**token_payload)
+
+
+@auth_router.post("/refresh", response_model=RefreshTokenResponse)
+def refresh_access_token(
+    refresh_token: Optional[str] = Cookie(None, alias=_REFRESH_COOKIE),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """Exchange the HTTP-only refresh cookie for a new access token."""
+    if not refresh_token:
+        raise ApiError(status_code=401, code="no_refresh_token", message="No refresh token cookie present")
+    token_payload = auth_service.exchange_refresh_token(refresh_token)
+    return RefreshTokenResponse(**token_payload)
+
+
+@auth_router.post("/logout")
+def logout(response: Response):
+    """Clear the refresh token cookie."""
+    response.delete_cookie(key=_REFRESH_COOKIE, path="/api/auth")
+    return {"ok": True}
+
+
+@auth_router.post("/student/exchange", response_model=StudentInviteExchangeResponse)
+def exchange_student_invite(
+    request: StudentInviteExchangeRequest = Body(...),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """
+    Exchange a single-use student invite token for a 12-hour session JWT.
+    The invite token is invalidated after use (jti marked used in DynamoDB).
+    """
+    result = auth_service.exchange_student_invite_token(request.invite_token)
+    return StudentInviteExchangeResponse(**result)
 
 
 @auth_router.post("/forgot-password", response_model=ForgotPasswordResponse)

@@ -705,3 +705,217 @@ class AuthService:
             return AuthPrincipal(user_id=x_user_id.strip(), source="x-user-id")
 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    # ------------------------------------------------------------------
+    # Refresh tokens (EPIC-1-1)
+    # ------------------------------------------------------------------
+
+    def issue_refresh_token(self, principal: AuthPrincipal) -> str:
+        """Issue a long-lived refresh JWT (7 days). Set as HTTP-only cookie by callers."""
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(days=7)
+        payload: Dict[str, Any] = {
+            "sub": principal.user_id,
+            "email": principal.email,
+            "purpose": "refresh",
+            "iat": int(now.timestamp()),
+            "exp": int(expires_at.timestamp()),
+        }
+        return jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+
+    def exchange_refresh_token(self, token: str) -> Dict[str, Any]:
+        """Validate a refresh token and issue a new access token."""
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+        try:
+            payload = jwt.decode(
+                token.strip(),
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False},
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token has expired")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+        if payload.get("purpose") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+        user_id = str(payload.get("sub") or "").strip()
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token claims")
+
+        email_raw = payload.get("email")
+        email = str(email_raw).strip().lower() if isinstance(email_raw, str) else None
+
+        # Load fresh roles from the user store so role changes take effect on refresh.
+        user_record = self._load_existing_user(email) if email else None
+        roles = user_record.get("roles", []) if user_record else []
+
+        principal = AuthPrincipal(user_id=user_id, email=email, roles=roles, source="jwt")
+        return self.issue_access_token(principal)
+
+    # ------------------------------------------------------------------
+    # Student invite tokens (EPIC-7-4)
+    # ------------------------------------------------------------------
+
+    def _get_assessment_table(self):
+        """Lazy-load the assessment DynamoDB table for invite token storage."""
+        if not hasattr(self, "_assessment_table_cache"):
+            try:
+                import boto3
+                region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+                table_name = os.getenv("DYNAMODB_ASSESSMENT_TABLE", "oral_assessments")
+                dynamodb = boto3.resource("dynamodb", region_name=region)
+                table = dynamodb.Table(table_name)
+                table.load()
+                self._assessment_table_cache = table
+            except Exception:
+                logger.warning("Assessment table unavailable — invite token jti tracking disabled")
+                self._assessment_table_cache = None
+        return self._assessment_table_cache
+
+    def generate_student_invite_token(self, student_id: str, assessment_id: str) -> str:
+        """
+        Generate a signed, single-use invite token for a student.
+        The jti is stored in DynamoDB so the token can only be exchanged once.
+        """
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(days=7)
+        jti = secrets.token_urlsafe(16)
+
+        payload: Dict[str, Any] = {
+            "sub": student_id,
+            "student_id": student_id,
+            "assessment_id": assessment_id,
+            "purpose": "student_invite",
+            "jti": jti,
+            "iat": int(now.timestamp()),
+            "exp": int(expires_at.timestamp()),
+        }
+        token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+
+        table = self._get_assessment_table()
+        if table:
+            try:
+                table.put_item(Item={
+                    "PK": f"INVITE#{jti}",
+                    "SK": "METADATA",
+                    "student_id": student_id,
+                    "assessment_id": assessment_id,
+                    "used": False,
+                    "created_at": now.isoformat(),
+                    # TTL slightly beyond token expiry so the check still works at edge
+                    "TTL": int((expires_at + timedelta(hours=1)).timestamp()),
+                })
+            except Exception:
+                logger.exception("Failed to store invite jti for student %s", student_id)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create invite token",
+                )
+
+        return token
+
+    def exchange_student_invite_token(self, token: str) -> Dict[str, Any]:
+        """
+        Exchange a single-use invite token for a short-lived student session token.
+        Marks the jti as used in DynamoDB to prevent replay.
+        """
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+        try:
+            payload = jwt.decode(
+                token.strip(),
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False},
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invite token has expired")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid invite token")
+
+        if payload.get("purpose") != "student_invite":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid invite token")
+
+        student_id = str(payload.get("student_id") or payload.get("sub") or "").strip()
+        assessment_id = str(payload.get("assessment_id") or "").strip()
+        jti = str(payload.get("jti") or "").strip()
+
+        if not student_id or not assessment_id or not jti:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid invite token claims")
+
+        # Conditionally mark jti used — fails if already used or not found.
+        table = self._get_assessment_table()
+        if table:
+            try:
+                table.update_item(
+                    Key={"PK": f"INVITE#{jti}", "SK": "METADATA"},
+                    UpdateExpression="SET #u = :true",
+                    ConditionExpression="attribute_exists(PK) AND #u = :false",
+                    ExpressionAttributeNames={"#u": "used"},
+                    ExpressionAttributeValues={":true": True, ":false": False},
+                )
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code", "")
+                if code == "ConditionalCheckFailedException":
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invite token has already been used",
+                    )
+                logger.exception("DynamoDB error checking invite jti %s", jti)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to validate invite token",
+                )
+
+        return self.issue_student_session_token(student_id, assessment_id)
+
+    def issue_student_session_token(self, student_id: str, assessment_id: str) -> Dict[str, Any]:
+        """
+        Issue a short-lived (12-hour) session JWT for a student.
+        The JWT has sub=student_id and roles=["student"] so the existing
+        _assert_student_access() check in student_router.py works unchanged.
+        """
+        if not self.jwt_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="JWT authentication is not configured",
+            )
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(hours=12)
+        payload: Dict[str, Any] = {
+            "sub": student_id,
+            "student_id": student_id,
+            "assessment_id": assessment_id,
+            "roles": ["student"],
+            "purpose": "student_session",
+            "iat": int(now.timestamp()),
+            "exp": int(expires_at.timestamp()),
+        }
+        token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_in": 12 * 3600,
+            "student_id": student_id,
+            "assessment_id": assessment_id,
+        }

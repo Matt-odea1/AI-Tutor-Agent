@@ -34,7 +34,7 @@ export const LoginGate = ({
   const googleInitializedRef = useRef(false)
 
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() || ''
-  const isGoogleEnabled = googleClientId.length > 0
+  const isGoogleEnabled = false
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -264,7 +264,7 @@ export const LoginGate = ({
             </h2>
             <p className="mt-1 text-sm text-gray-500">
               {mode === 'signup'
-                ? 'Use your email or Google account to continue.'
+                ? 'Use your email to continue.'
                 : mode === 'forgot'
                   ? 'Enter the email address linked to your account.'
                   : mode === 'reset'

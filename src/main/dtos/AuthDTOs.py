@@ -45,3 +45,28 @@ class ResetPasswordValidateResponse(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=20)
     new_password: str = Field(..., min_length=8)
+
+
+# --- Student invite auth ---
+
+class StudentInviteExchangeRequest(BaseModel):
+    invite_token: str = Field(..., min_length=20)
+
+
+class StudentInviteExchangeResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    student_id: str
+    assessment_id: str
+
+
+# --- Instructor refresh tokens ---
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user_id: str
+    email: str | None = None
+    roles: list[str] = Field(default_factory=list)
