@@ -17,7 +17,7 @@ import os
 import json
 import boto3
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 from src.main.service.OralAssessmentProgressTracker import OralAssessmentProgressTracker
@@ -87,9 +87,54 @@ class OralAssessmentService:
         except Exception as e:
             logger.warning(f"Failed to update progress: {e}")
     
+    def _check_assessment_window(self, assessment_id: str) -> None:
+        """
+        Raise OralAssessmentServiceError if the assessment is in scheduled mode
+        and the current time is outside the configured window.
+        """
+        try:
+            response = self.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+            )
+            item = response.get("Item")
+            if not item:
+                raise OralAssessmentServiceError(f"Assessment {assessment_id} not found")
+
+            if item.get("accessMode", "open") != "scheduled":
+                return  # open access — no check needed
+
+            window_start = item.get("scheduledWindowStart")
+            window_end = item.get("scheduledWindowEnd")
+
+            if not window_start or not window_end:
+                return  # scheduled mode but no window set — fail open
+
+            now = datetime.now(timezone.utc)
+
+            def _parse(dt_str):
+                parsed = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+            start = _parse(window_start)
+            end = _parse(window_end)
+
+            if now < start:
+                raise OralAssessmentServiceError(
+                    f"Assessment has not started yet. Opens at {window_start}"
+                )
+            if now > end:
+                raise OralAssessmentServiceError(
+                    f"Assessment window has closed at {window_end}"
+                )
+        except OralAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.warning(f"Window check failed for assessment {assessment_id}: {e}")
+            # Fail open — don't block students if the check itself errors
+
     def get_student_questions(
-        self, 
-        student_id: str, 
+        self,
+        student_id: str,
         assessment_id: str
     ) -> List[Dict[str, Any]]:
         """
@@ -109,6 +154,7 @@ class OralAssessmentService:
         """
         try:
             self.question_access.ensure_student_enrollment(student_id, assessment_id)
+            self._check_assessment_window(assessment_id)
             items = self.question_access.get_assessment_questions(assessment_id)
             
             if not items:
@@ -157,6 +203,8 @@ class OralAssessmentService:
             OralAssessmentServiceError: If question not found
         """
         try:
+            if assessment_id:
+                self._check_assessment_window(assessment_id)
             result = self.answer_submission.submit_answer(
                 student_id=student_id,
                 question_id=question_id,

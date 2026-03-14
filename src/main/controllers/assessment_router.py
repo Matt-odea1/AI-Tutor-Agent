@@ -34,6 +34,7 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     StudentProgressItem,
     StudentResponse,
     StudentResultItem,
+    UpdateScheduleRequest,
     UploadStudentsRequest,
 )
 from src.main.service.BatchJobManager import JobType, get_batch_job_manager
@@ -64,6 +65,9 @@ async def create_assessment(
             total_questions=request.totalQuestions,
             time_limit=request.timeLimit,
             owner_user_id=_principal.user_id,
+            access_mode=request.accessMode,
+            scheduled_window_start=request.scheduledWindowStart,
+            scheduled_window_end=request.scheduledWindowEnd,
         )
         return AssessmentResponse(**result)
 
@@ -189,6 +193,117 @@ async def get_assessment_students(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in get_assessment_students: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.delete("/{id}", status_code=204)
+async def delete_assessment(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Delete a draft assessment and all its data. Only works for status='draft'."""
+    try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+        svc.delete_assessment(id)
+        return None  # 204 No Content
+
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="delete_assessment_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in delete_assessment: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.put("/{id}/schedule", response_model=AssessmentResponse)
+async def update_assessment_schedule(
+    id: str,
+    request: UpdateScheduleRequest = Body(...),
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Set or update the assessment access mode and scheduling window."""
+    try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+        result = svc.update_schedule(
+            assessment_id=id,
+            access_mode=request.accessMode,
+            scheduled_window_start=request.scheduledWindowStart,
+            scheduled_window_end=request.scheduledWindowEnd,
+        )
+        return AssessmentResponse(**result)
+
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="update_schedule_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in update_assessment_schedule: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.get("/{id}/window-status")
+async def get_window_status(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+):
+    """
+    Public endpoint — no auth required.
+    Returns the current window state so the student frontend can show
+    a countdown before directing the student to exchange their invite token.
+    """
+    try:
+        assessment = svc.get_assessment(id)
+        access_mode = assessment.get("accessMode", "open")
+
+        if access_mode == "open":
+            return {"assessmentId": id, "accessMode": "open", "state": "open"}
+
+        from datetime import datetime, timezone
+        window_start = assessment.get("scheduledWindowStart")
+        window_end = assessment.get("scheduledWindowEnd")
+
+        if not window_start or not window_end:
+            return {"assessmentId": id, "accessMode": "scheduled", "state": "open"}
+
+        now = datetime.now(timezone.utc)
+
+        def _parse(dt_str):
+            parsed = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+        start = _parse(window_start)
+        end = _parse(window_end)
+
+        if now < start:
+            state = "upcoming"
+        elif now > end:
+            state = "closed"
+        else:
+            state = "open"
+
+        return {
+            "assessmentId": id,
+            "accessMode": "scheduled",
+            "state": state,
+            "scheduledWindowStart": window_start,
+            "scheduledWindowEnd": window_end,
+        }
+
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except Exception as error:
+        logger.error(f"Unexpected error in get_window_status: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

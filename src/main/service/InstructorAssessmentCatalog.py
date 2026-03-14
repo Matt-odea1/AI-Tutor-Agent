@@ -23,6 +23,9 @@ class InstructorAssessmentCatalog:
             "status": item.get("status", "draft"),
             "createdAt": item["createdAt"],
             "updatedAt": item.get("updatedAt", item["createdAt"]),
+            "accessMode": item.get("accessMode", "open"),
+            "scheduledWindowStart": item.get("scheduledWindowStart"),
+            "scheduledWindowEnd": item.get("scheduledWindowEnd"),
         }
 
     def list_assessments(self, owner_user_id: Optional[str] = None) -> List[Dict[str, Any]]:

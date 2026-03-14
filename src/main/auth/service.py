@@ -46,7 +46,7 @@ class AuthService:
             for role in os.getenv("AUTH_SIGNUP_DEFAULT_ROLES", "instructor").split(",")
             if role.strip()
         ]
-        self.persist_users = os.getenv("AUTH_PERSIST_USERS", os.getenv("USE_DYNAMODB", "false")).lower() == "true"
+        self.persist_users = os.getenv("USE_DYNAMODB", "false").lower() == "true"
         self.auth_users_table_name = os.getenv("DYNAMODB_AUTH_USERS_TABLE", "auth_users")
         self.auth_users_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
         self.auth_users_table = self._init_auth_users_table() if self.persist_users else None

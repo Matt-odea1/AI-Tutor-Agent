@@ -21,6 +21,7 @@ import boto3
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from decimal import Decimal
+from boto3.dynamodb.conditions import Key
 from src.main.service.InstructorAssessmentCatalog import InstructorAssessmentCatalog
 from src.main.service.InstructorAssessmentEnrollment import InstructorAssessmentEnrollment
 from src.main.service.InstructorAssessmentProgressAggregator import InstructorAssessmentProgressAggregator
@@ -91,6 +92,9 @@ class InstructorAssessmentService:
         total_questions: int,
         time_limit: Optional[int] = None,
         owner_user_id: Optional[str] = None,
+        access_mode: str = "open",
+        scheduled_window_start: Optional[str] = None,
+        scheduled_window_end: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new assessment.
@@ -123,6 +127,9 @@ class InstructorAssessmentService:
                 'dueDate': due_date,
                 'totalQuestions': total_questions,
                 'timeLimit': time_limit,
+                'accessMode': access_mode,
+                'scheduledWindowStart': scheduled_window_start,
+                'scheduledWindowEnd': scheduled_window_end,
                 'status': 'draft',
                 'createdAt': created_at,
                 'updatedAt': created_at
@@ -204,6 +211,87 @@ class InstructorAssessmentService:
             logger.error(f"Failed to upload students: {e}")
             raise InstructorAssessmentServiceError(f"Failed to upload students: {e}")
     
+    def update_schedule(
+        self,
+        assessment_id: str,
+        access_mode: str,
+        scheduled_window_start: Optional[str] = None,
+        scheduled_window_end: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update assessment access mode and scheduling window."""
+        try:
+            # Validate
+            if access_mode not in ("open", "scheduled"):
+                raise InstructorAssessmentServiceError("accessMode must be 'open' or 'scheduled'")
+            if access_mode == "scheduled" and (not scheduled_window_start or not scheduled_window_end):
+                raise InstructorAssessmentServiceError("scheduledWindowStart and scheduledWindowEnd are required for scheduled mode")
+
+            updated_at = datetime.utcnow().isoformat()
+            self.table.update_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
+                UpdateExpression="SET accessMode = :am, scheduledWindowStart = :ws, scheduledWindowEnd = :we, updatedAt = :ua",
+                ExpressionAttributeValues={
+                    ":am": access_mode,
+                    ":ws": scheduled_window_start,
+                    ":we": scheduled_window_end,
+                    ":ua": updated_at,
+                },
+            )
+            logger.info(f"Updated schedule for assessment {assessment_id}: mode={access_mode}")
+            return self.get_assessment(assessment_id)
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update schedule: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to update schedule: {e}")
+
+    def delete_assessment(self, assessment_id: str) -> None:
+        """
+        Delete a draft assessment and all its associated data.
+        Only assessments with status='draft' can be deleted.
+        """
+        try:
+            assessment = self.get_assessment(assessment_id)
+            if assessment["status"] != "draft":
+                raise InstructorAssessmentServiceError(
+                    f"Only draft assessments can be deleted (current status: {assessment['status']})"
+                )
+
+            # Get enrolled students before deleting anything
+            students = self.enrollment.get_assessment_students(assessment_id)
+            student_ids = [s["studentId"] for s in students]
+
+            # Delete all ASSESSMENT#{id} partition items (metadata + enrollment records)
+            assessment_items = self.table.query(
+                KeyConditionExpression=Key("PK").eq(f"ASSESSMENT#{assessment_id}")
+            )
+            with self.table.batch_writer() as batch:
+                for item in assessment_items.get("Items", []):
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+
+            # For each student: delete reverse lookup + any student-specific items (questions, answers, progress)
+            for student_id in student_ids:
+                # Delete reverse lookup: STUDENT#{id}, SK: ASSESSMENT#{assessment_id}
+                self.table.delete_item(
+                    Key={"PK": f"STUDENT#{student_id}", "SK": f"ASSESSMENT#{assessment_id}"}
+                )
+                # Delete all STUDENT#{id}#ASSESSMENT#{id} items
+                pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+                student_items = self.table.query(
+                    KeyConditionExpression=Key("PK").eq(pk)
+                )
+                with self.table.batch_writer() as batch:
+                    for item in student_items.get("Items", []):
+                        batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+
+            logger.info(f"Deleted assessment {assessment_id} with {len(student_ids)} student records")
+
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete assessment: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to delete assessment: {e}")
+
     def get_assessment_students(self, assessment_id: str) -> List[Dict[str, Any]]:
         """
         Get all students enrolled in an assessment.

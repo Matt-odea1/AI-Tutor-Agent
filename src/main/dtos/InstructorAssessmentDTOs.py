@@ -17,6 +17,9 @@ class CreateAssessmentRequest(BaseModel):
     dueDate: str = Field(..., description="Due date (ISO format)")
     totalQuestions: int = Field(..., description="Number of questions to generate", ge=1, le=20)
     timeLimit: Optional[int] = Field(None, description="Time limit per question in minutes", ge=1, le=30)
+    accessMode: str = Field("open", description="'open' or 'scheduled'")
+    scheduledWindowStart: Optional[str] = Field(None, description="ISO datetime for window start (scheduled mode)")
+    scheduledWindowEnd: Optional[str] = Field(None, description="ISO datetime for window end (scheduled mode)")
 
 
 class UploadedStudent(BaseModel):
@@ -43,6 +46,13 @@ class EvaluateBatchRequest(BaseModel):
     studentIds: Optional[List[str]] = Field(None, description="Specific student IDs (or all if empty)")
 
 
+class UpdateScheduleRequest(BaseModel):
+    """Request to update assessment scheduling"""
+    accessMode: str = Field(..., description="'open' or 'scheduled'")
+    scheduledWindowStart: Optional[str] = Field(None, description="ISO datetime for window start")
+    scheduledWindowEnd: Optional[str] = Field(None, description="ISO datetime for window end")
+
+
 # --- Response Models ---
 
 class AssessmentResponse(BaseModel):
@@ -55,6 +65,9 @@ class AssessmentResponse(BaseModel):
     dueDate: str
     totalQuestions: int
     timeLimit: Optional[int] = None
+    accessMode: str = "open"
+    scheduledWindowStart: Optional[str] = None
+    scheduledWindowEnd: Optional[str] = None
     status: str
     createdAt: str
     updatedAt: str
