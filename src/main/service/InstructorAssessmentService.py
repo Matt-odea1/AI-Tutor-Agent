@@ -95,10 +95,12 @@ class InstructorAssessmentService:
         access_mode: str = "open",
         scheduled_window_start: Optional[str] = None,
         scheduled_window_end: Optional[str] = None,
+        auto_evaluate: bool = False,
+        rubric: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new assessment.
-        
+
         Args:
             title: Assessment title
             course: Course name/code
@@ -106,14 +108,16 @@ class InstructorAssessmentService:
             due_date: Due date (ISO format)
             total_questions: Number of questions to generate
             time_limit: Time limit per question in minutes (optional)
-        
+            auto_evaluate: Trigger evaluation automatically when all students submit
+            rubric: Custom grading rubric injected into the evaluation prompt
+
         Returns:
             Created assessment data
         """
         try:
             assessment_id = str(uuid.uuid4())
             created_at = datetime.utcnow().isoformat()
-            
+
             assessment = {
                 'PK': f"ASSESSMENT#{assessment_id}",
                 'SK': 'METADATA',
@@ -130,6 +134,8 @@ class InstructorAssessmentService:
                 'accessMode': access_mode,
                 'scheduledWindowStart': scheduled_window_start,
                 'scheduledWindowEnd': scheduled_window_end,
+                'autoEvaluate': auto_evaluate,
+                'rubric': rubric,
                 'status': 'draft',
                 'createdAt': created_at,
                 'updatedAt': created_at
@@ -211,6 +217,33 @@ class InstructorAssessmentService:
             logger.error(f"Failed to upload students: {e}")
             raise InstructorAssessmentServiceError(f"Failed to upload students: {e}")
     
+    def update_brief(self, assessment_id: str, brief: str) -> Dict[str, Any]:
+        """
+        Update the assignment brief for an assessment.
+        The brief must be at least 50 characters and cannot be changed once
+        question generation has started (status != 'draft').
+        """
+        if len(brief.strip()) < 50:
+            raise InstructorAssessmentServiceError(
+                "Assignment brief must be at least 50 characters"
+            )
+        assessment = self.get_assessment(assessment_id)
+        if assessment.get("status") not in ("draft", "scheduled"):
+            raise InstructorAssessmentServiceError(
+                "Brief can only be edited while assessment is in draft or scheduled status"
+            )
+        updated_at = datetime.utcnow().isoformat()
+        self.table.update_item(
+            Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
+            UpdateExpression="SET assignmentBrief = :brief, updatedAt = :ua",
+            ExpressionAttributeValues={
+                ":brief": brief,
+                ":ua": updated_at,
+            },
+        )
+        logger.info(f"Updated brief for assessment {assessment_id} ({len(brief)} chars)")
+        return self.get_assessment(assessment_id)
+
     def update_schedule(
         self,
         assessment_id: str,
@@ -349,3 +382,287 @@ class InstructorAssessmentService:
         except Exception as e:
             logger.error(f"Failed to get assessment results: {e}")
             raise InstructorAssessmentServiceError(f"Failed to get assessment results: {e}")
+
+    def get_student_detail(self, assessment_id: str, student_id: str) -> Dict[str, Any]:
+        """Return per-question detailed results for one student (instructor view)."""
+        try:
+            return self.results_aggregator.get_student_detail(assessment_id, student_id)
+        except Exception as e:
+            logger.error(f"Failed to get student detail: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to get student detail: {e}")
+
+    def override_question_score(
+        self,
+        assessment_id: str,
+        student_id: str,
+        question_id: str,
+        score: int,
+        comment: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Write instructor score override to the EVALUATION# item."""
+        try:
+            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+            sk = f"EVALUATION#{question_id}"
+            update_expr = "SET instructorScore = :s, updatedAt = :ua"
+            expr_vals: Dict[str, Any] = {":s": score, ":ua": datetime.utcnow().isoformat()}
+            if comment is not None:
+                update_expr += ", instructorComment = :c"
+                expr_vals[":c"] = comment
+            self.table.update_item(
+                Key={"PK": pk, "SK": sk},
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=expr_vals,
+            )
+            logger.info("Score override: %s/%s/Q%s → %d", assessment_id, student_id, question_id, score)
+            return {
+                "assessmentId": assessment_id,
+                "studentId": student_id,
+                "questionId": question_id,
+                "instructorScore": score,
+                "comment": comment,
+            }
+        except Exception as e:
+            logger.error(f"Failed to override score: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to override score: {e}")
+
+    def release_results(self, assessment_id: str) -> Dict[str, Any]:
+        """Set resultsReleased=True on the assessment metadata item."""
+        try:
+            self.table.update_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
+                UpdateExpression="SET resultsReleased = :r, updatedAt = :ua",
+                ExpressionAttributeValues={
+                    ":r": True,
+                    ":ua": datetime.utcnow().isoformat(),
+                },
+            )
+            logger.info("Released results for assessment %s", assessment_id)
+            return {"assessmentId": assessment_id, "resultsReleased": True}
+        except Exception as e:
+            logger.error(f"Failed to release results: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to release results: {e}")
+
+    def send_reminder_email(self, assessment_id: str, student_id: str) -> str:
+        """Send a reminder email to a student via SES. Returns a status message."""
+        try:
+            # Fetch student enrollment for email/name
+            resp = self.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
+            )
+            enrollment = resp.get("Item")
+            if not enrollment:
+                raise InstructorAssessmentServiceError(
+                    f"Student {student_id} not enrolled in assessment {assessment_id}"
+                )
+            student_email = enrollment.get("email", "")
+            student_name = enrollment.get("name", student_id)
+
+            # Fetch assessment title
+            a_resp = self.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+            )
+            assessment = a_resp.get("Item", {})
+            title = assessment.get("title", "your assessment")
+
+            from_email = (
+                os.getenv("INVITE_FROM_EMAIL")
+                or os.getenv("AUTH_PASSWORD_RESET_FROM_EMAIL", "")
+            )
+            ses_region = os.getenv("AUTH_PASSWORD_RESET_SES_REGION", "") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+            if not from_email or not student_email:
+                logger.warning(
+                    "Reminder skipped for %s: from_email=%r student_email=%r",
+                    student_id, from_email, student_email,
+                )
+                return f"Reminder not sent (email not configured or student has no email)"
+
+            import boto3 as _boto3
+            ses = _boto3.client("ses", region_name=ses_region)
+            ses.send_email(
+                Source=from_email,
+                Destination={"ToAddresses": [student_email]},
+                Message={
+                    "Subject": {"Data": f"Reminder: Please complete {title}"},
+                    "Body": {
+                        "Text": {
+                            "Data": (
+                                f"Hi {student_name},\n\n"
+                                f"This is a reminder that you have an outstanding assessment: {title}.\n\n"
+                                "Please log in and complete it as soon as possible.\n\n"
+                                "Best regards,\nYour Instructor"
+                            )
+                        }
+                    },
+                },
+            )
+            logger.info("Sent reminder to %s (%s)", student_id, student_email)
+            return f"Reminder sent to {student_email}"
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to send reminder: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to send reminder: {e}")
+
+    # ── EPIC-3-3: Question Preview and Editing ────────────────────────
+
+    def list_student_questions(self, assessment_id: str, student_id: str) -> List[Dict[str, Any]]:
+        """Return all generated questions for a student, sorted by questionNumber."""
+        try:
+            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+            resp = self.table.query(
+                KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("QUESTION#")
+            )
+            items = self._convert_decimals(resp.get("Items", []))
+            items.sort(key=lambda x: x.get("questionNumber", 0))
+            return items
+        except Exception as e:
+            logger.error("Failed to list questions for %s/%s: %s", assessment_id, student_id, e)
+            raise InstructorAssessmentServiceError(f"Failed to list questions: {e}")
+
+    def update_student_question(
+        self,
+        assessment_id: str,
+        student_id: str,
+        question_id: str,
+        text: str,
+        time_limit: Optional[int],
+    ) -> Dict[str, Any]:
+        """Edit the text (and optionally time limit) of a student question. Locked once assessment is open."""
+        try:
+            assessment = self.catalog.get_assessment(assessment_id)
+            if not assessment:
+                raise InstructorAssessmentServiceError(f"Assessment {assessment_id} not found")
+            if assessment.get("status") not in ("draft", "scheduled"):
+                raise InstructorAssessmentServiceError(
+                    "Questions can only be edited while the assessment is in draft or scheduled status"
+                )
+            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+            sk = f"QUESTION#{question_id}"
+            existing = self.table.get_item(Key={"PK": pk, "SK": sk}).get("Item")
+            if not existing:
+                raise InstructorAssessmentServiceError(f"Question {question_id} not found")
+
+            update_expr = "SET #t = :t, updatedAt = :ua"
+            expr_names = {"#t": "text"}
+            expr_vals: Dict[str, Any] = {":t": text, ":ua": datetime.utcnow().isoformat()}
+            if time_limit is not None:
+                update_expr += ", timeLimit = :tl"
+                expr_vals[":tl"] = time_limit
+            else:
+                update_expr += " REMOVE timeLimit"
+
+            self.table.update_item(
+                Key={"PK": pk, "SK": sk},
+                UpdateExpression=update_expr,
+                ExpressionAttributeNames=expr_names,
+                ExpressionAttributeValues=expr_vals,
+            )
+            updated = self.table.get_item(Key={"PK": pk, "SK": sk}).get("Item", {})
+            logger.info("Updated question %s for %s/%s", question_id, assessment_id, student_id)
+            return self._convert_decimals(updated)
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error("Failed to update question %s: %s", question_id, e)
+            raise InstructorAssessmentServiceError(f"Failed to update question: {e}")
+
+    def delete_student_question(
+        self,
+        assessment_id: str,
+        student_id: str,
+        question_id: str,
+    ) -> str:
+        """Delete a student question. At least one question must remain. Locked once assessment is open."""
+        try:
+            assessment = self.catalog.get_assessment(assessment_id)
+            if not assessment:
+                raise InstructorAssessmentServiceError(f"Assessment {assessment_id} not found")
+            if assessment.get("status") not in ("draft", "scheduled"):
+                raise InstructorAssessmentServiceError(
+                    "Questions can only be deleted while the assessment is in draft or scheduled status"
+                )
+            existing_questions = self.list_student_questions(assessment_id, student_id)
+            if len(existing_questions) <= 1:
+                raise InstructorAssessmentServiceError("Cannot delete the last question for a student")
+
+            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+            sk = f"QUESTION#{question_id}"
+            item = self.table.get_item(Key={"PK": pk, "SK": sk}).get("Item")
+            if not item:
+                raise InstructorAssessmentServiceError(f"Question {question_id} not found")
+
+            self.table.delete_item(Key={"PK": pk, "SK": sk})
+            logger.info("Deleted question %s for %s/%s", question_id, assessment_id, student_id)
+            return question_id
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error("Failed to delete question %s: %s", question_id, e)
+            raise InstructorAssessmentServiceError(f"Failed to delete question: {e}")
+
+    def add_student_question(
+        self,
+        assessment_id: str,
+        student_id: str,
+        text: str,
+        question_type: str = "manual",
+        difficulty: str = "medium",
+        topic: str = "general",
+        time_limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Manually add a question for a specific student. Locked once assessment is open."""
+        try:
+            assessment = self.catalog.get_assessment(assessment_id)
+            if not assessment:
+                raise InstructorAssessmentServiceError(f"Assessment {assessment_id} not found")
+            if assessment.get("status") not in ("draft", "scheduled"):
+                raise InstructorAssessmentServiceError(
+                    "Questions can only be added while the assessment is in draft or scheduled status"
+                )
+            existing = self.list_student_questions(assessment_id, student_id)
+            next_number = max((q.get("questionNumber", 0) for q in existing), default=0) + 1
+
+            qid = str(uuid.uuid4())
+            now = datetime.utcnow().isoformat()
+            item: Dict[str, Any] = {
+                "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+                "SK": f"QUESTION#{qid}",
+                "id": qid,
+                "assessmentId": assessment_id,
+                "studentId": student_id,
+                "text": text,
+                "questionNumber": next_number,
+                "questionType": question_type,
+                "difficulty": difficulty,
+                "topic": topic,
+                "createdAt": now,
+            }
+            if time_limit is not None:
+                item["timeLimit"] = time_limit
+            self.table.put_item(Item=item)
+            logger.info("Added question %s for %s/%s", qid, assessment_id, student_id)
+            return self._convert_decimals(item)
+        except InstructorAssessmentServiceError:
+            raise
+        except Exception as e:
+            logger.error("Failed to add question: %s", e)
+            raise InstructorAssessmentServiceError(f"Failed to add question: {e}")
+
+    def count_submitted_students(self, assessment_id: str) -> tuple:
+        """
+        Return (submitted_count, total_enrolled_count) for an assessment.
+        Queries ASSESSMENT#{id} / STUDENT#* items and counts those with status='submitted'.
+        """
+        from boto3.dynamodb.conditions import Key
+        try:
+            response = self.table.query(
+                KeyConditionExpression=Key("PK").eq(f"ASSESSMENT#{assessment_id}") & Key("SK").begins_with("STUDENT#"),
+            )
+            items = response.get("Items", [])
+            total = len(items)
+            submitted = sum(1 for item in items if item.get("status") == "submitted")
+            return submitted, total
+        except Exception as e:
+            logger.error(f"Failed to count submitted students for {assessment_id}: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to count submitted students: {e}")
