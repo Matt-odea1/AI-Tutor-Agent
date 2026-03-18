@@ -1,6 +1,8 @@
 # src/app.py
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from typing import List
 
 from fastapi import FastAPI
@@ -8,6 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv(filename=".env", usecwd=True), override=False)
+
+from src.main.utils.structured_logger import configure_logging
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 from src.main.config import get_settings
 from src.main.controllers.api_errors import register_exception_handlers
@@ -20,6 +27,33 @@ from src.main.controllers.questions_router import questions_router
 from src.main.controllers.evaluations_router import evaluations_router
 from src.main.controllers.student_router import student_router
 from src.main.controllers.assessment_router import assessment_router
+from src.main.controllers.controller_dependencies import get_evaluation_service, get_sqs_job_dispatcher, get_question_service
+from src.main.middleware.logging_middleware import RequestLoggingMiddleware
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Start background workers on startup; stop them on shutdown."""
+    try:
+        dispatcher = get_sqs_job_dispatcher()
+        if dispatcher.queue_url:
+            question_svc = get_question_service()
+            evaluation_runner = get_evaluation_service().workflow_runner
+            dispatcher.start_consumer(question_svc, evaluation_workflow_runner=evaluation_runner)
+            logger.info("SQS job consumer started")
+        else:
+            logger.warning("SQS consumer not started — no queue URL available (set SQS_JOBS_QUEUE_URL)")
+    except Exception as e:
+        logger.error("Failed to start SQS consumer: %s", e)
+
+    yield  # app runs here
+
+    try:
+        dispatcher = get_sqs_job_dispatcher()
+        dispatcher.stop_consumer()
+        logger.info("SQS job consumer stopped")
+    except Exception:
+        pass
 
 
 def create_app() -> FastAPI:
@@ -30,6 +64,7 @@ def create_app() -> FastAPI:
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
         openapi_url=settings.openapi_url,
+        lifespan=_lifespan,
     )
 
     # CORS Configuration
@@ -59,7 +94,16 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["meta"])
     def health():
-        return {"status": "ok"}
+        try:
+            dispatcher = get_sqs_job_dispatcher()
+            sqs_consumer = "running" if dispatcher.is_running() else (
+                "idle" if not dispatcher.queue_url else "stopped"
+            )
+        except Exception:
+            sqs_consumer = "unknown"
+        return {"status": "ok", "sqsConsumer": sqs_consumer}
+
+    app.add_middleware(RequestLoggingMiddleware)
 
     register_exception_handlers(app)
 
