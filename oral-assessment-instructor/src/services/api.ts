@@ -193,6 +193,94 @@ class ApiService {
     );
     return response.data;
   }
+
+  // Sprint 8: Results Dashboards
+
+  async getStudentDetail(assessmentId: string, studentId: string): Promise<any> {
+    const response = await this.client.get(
+      `/api/assessment/${assessmentId}/student/${studentId}/results`
+    );
+    return response.data;
+  }
+
+  async overrideScore(
+    assessmentId: string,
+    studentId: string,
+    questionId: string,
+    score: number,
+    comment?: string
+  ): Promise<any> {
+    const response = await this.client.put(
+      `/api/assessment/${assessmentId}/student/${studentId}/question/${questionId}/override`,
+      { score, comment }
+    );
+    return response.data;
+  }
+
+  async releaseResults(assessmentId: string): Promise<any> {
+    const response = await this.client.put(
+      `/api/assessment/${assessmentId}/release-results`
+    );
+    return response.data;
+  }
+
+  async sendReminder(assessmentId: string, studentId: string): Promise<any> {
+    const response = await this.client.post(
+      `/api/assessment/${assessmentId}/student/${studentId}/remind`
+    );
+    return response.data;
+  }
+
+  openEvaluationStatusStream(assessmentId: string, jobId: string): EventSource {
+    const token = localStorage.getItem('authToken');
+    const url = `${API_BASE_URL}/api/assessment/${assessmentId}/evaluation-status-stream/${jobId}${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
+  }
+
+  // EPIC-3-3: Question preview and editing
+  async listStudentQuestions(assessmentId: string, studentId: string): Promise<any> {
+    const response = await this.client.get(
+      `/api/assessment/${assessmentId}/students/${studentId}/questions`
+    );
+    return response.data;
+  }
+
+  async updateStudentQuestion(
+    assessmentId: string,
+    studentId: string,
+    questionId: string,
+    text: string,
+    timeLimit?: number | null
+  ): Promise<any> {
+    const response = await this.client.put(
+      `/api/assessment/${assessmentId}/students/${studentId}/questions/${questionId}`,
+      { text, timeLimit }
+    );
+    return response.data;
+  }
+
+  async deleteStudentQuestion(
+    assessmentId: string,
+    studentId: string,
+    questionId: string
+  ): Promise<any> {
+    const response = await this.client.delete(
+      `/api/assessment/${assessmentId}/students/${studentId}/questions/${questionId}`
+    );
+    return response.data;
+  }
+
+  async addStudentQuestion(
+    assessmentId: string,
+    studentId: string,
+    data: { text: string; questionType?: string; difficulty?: string; topic?: string; timeLimit?: number | null }
+  ): Promise<any> {
+    const response = await this.client.post(
+      `/api/assessment/${assessmentId}/students/${studentId}/questions`,
+      data
+    );
+    return response.data;
+  }
 }
 
 export const apiService = new ApiService();
