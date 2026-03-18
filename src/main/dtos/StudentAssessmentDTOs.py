@@ -10,10 +10,17 @@ from datetime import datetime
 # --- Request Models ---
 
 class SubmitAnswerRequest(BaseModel):
-    """Request to submit an audio answer for a question"""
+    """Request to submit an answer (audio, text, or video) for a question"""
     question_id: str = Field(..., description="Question identifier")
-    audio_url: str = Field(..., description="S3 URL of uploaded audio file")
-    duration: int = Field(..., description="Recording duration in seconds", ge=0)
+    assessment_id: str = Field(..., description="Assessment identifier")
+    answer_type: str = Field("audio", description="'audio', 'text', or 'video'")
+    # Audio answer fields
+    audio_url: Optional[str] = Field(None, description="S3 URL of uploaded audio file (audio answers)")
+    duration: Optional[int] = Field(None, description="Recording duration in seconds", ge=0)
+    # Text answer fields
+    text_content: Optional[str] = Field(None, description="Written answer text (text answers)", min_length=1)
+    # Video answer fields
+    video_url: Optional[str] = Field(None, description="S3 URL of uploaded video file (video answers)")
 
 
 class SubmitAssessmentRequest(BaseModel):
@@ -32,6 +39,7 @@ class QuestionResponse(BaseModel):
     studentId: str
     difficulty: Optional[str] = None
     topic: Optional[str] = None
+    timeLimit: Optional[int] = None
     createdAt: str
 
 
@@ -49,10 +57,29 @@ class SubmitAnswerResponse(BaseModel):
     ok: bool = True
     studentId: str
     questionId: str
-    audioUrl: str
-    duration: int
+    answerType: str = "audio"
+    audioUrl: Optional[str] = None
+    duration: Optional[int] = None
+    textContent: Optional[str] = None
+    videoUrl: Optional[str] = None
     submittedAt: str
     assessmentId: str
+
+
+class SubmitProctorChunkRequest(BaseModel):
+    """Request to log a proctoring chunk manifest entry"""
+    assessment_id: str = Field(..., description="Assessment identifier")
+    chunk_url: str = Field(..., description="S3 URL of the proctoring chunk")
+    chunk_index: int = Field(..., description="Zero-based chunk sequence number", ge=0)
+    timestamp: Optional[str] = Field(None, description="ISO timestamp when the chunk was captured")
+
+
+class SubmitProctorChunkResponse(BaseModel):
+    """Response after storing a proctoring chunk manifest entry"""
+    ok: bool = True
+    studentId: str
+    assessmentId: str
+    chunkIndex: int
 
 
 class SubmitAssessmentResponse(BaseModel):

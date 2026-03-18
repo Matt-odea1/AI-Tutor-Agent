@@ -1,34 +1,67 @@
 from __future__ import annotations
 
 import csv
+import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationWorkflowRunner:
-    def __init__(self, *, engine, repository, report_writer, job_store, base_output_dir: Path):
+    def __init__(
+        self,
+        *,
+        engine,
+        repository,
+        report_writer,
+        job_store,
+        base_output_dir: Path,
+        transcription_service: Optional[Any] = None,
+    ):
         self.engine = engine
         self.repository = repository
         self.report_writer = report_writer
         self.job_store = job_store
         self.base_output_dir = base_output_dir
+        self.transcription_service = transcription_service
 
     def evaluate_from_dynamodb(self, job_id: str, student_id: str, assessment_id: str) -> None:
         try:
-            print(f"[Job {job_id}] Starting DynamoDB evaluation for student {student_id}")
+            logger.info("[Job %s] Starting DynamoDB evaluation for student %s", job_id, student_id)
+
+            # Pre-pass: transcribe audio/video answers that don't yet have a transcript
+            if self.transcription_service is not None:
+                try:
+                    n = self.transcription_service.transcribe_pending_answers(student_id, assessment_id)
+                    if n:
+                        logger.info("[Job %s] Transcribed %d answer(s) for student %s", job_id, n, student_id)
+                except Exception as e:
+                    logger.warning(
+                        "[Job %s] Transcription pre-pass failed for student %s (continuing): %s",
+                        job_id, student_id, e,
+                    )
 
             questions_data = self.repository.read_questions(student_id, assessment_id)
             answers_data = self.repository.read_answers(student_id, assessment_id)
+            # For text answers, populate 'transcript' from 'textContent' so the
+            # engine doesn't receive an empty transcript.
+            for ans in answers_data:
+                if ans.get("answerType") == "text" and not ans.get("transcript"):
+                    ans["transcript"] = ans.get("textContent", "")
             qa_pairs = self.match_questions_and_answers(questions_data, answers_data)
             total_questions = len(qa_pairs)
+
+            # Read assessment rubric if available
+            rubric = self._read_assessment_rubric(assessment_id)
 
             evaluations = []
             total_score = 0.0
 
             for index, qa_pair in enumerate(qa_pairs):
                 try:
-                    print(f"[Job {job_id}] Evaluating question {index + 1}/{total_questions}")
-                    evaluation = self.engine.evaluate_qa_pair(qa_pair)
+                    logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
+                    evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric)
                     evaluations.append(evaluation)
                     total_score += evaluation["total_score"]
 
@@ -41,7 +74,7 @@ class EvaluationWorkflowRunner:
 
                     self.job_store.set_progress(job_id, index + 1, total_questions)
                 except Exception as error:
-                    print(f"[Job {job_id}] Error evaluating question {index + 1}: {error}")
+                    logger.error("[Job %s] Error evaluating question %d: %s", job_id, index + 1, error)
                     evaluations.append(
                         {
                             "question_id": qa_pair["question"]["id"],
@@ -72,14 +105,17 @@ class EvaluationWorkflowRunner:
                 },
             )
 
-            print(f"[Job {job_id}] DynamoDB evaluation completed. Score: {total_score}/{max_score} ({percentage:.1f}%)")
+            logger.info(
+                "[Job %s] DynamoDB evaluation completed. Score: %.1f/%d (%.1f%%)",
+                job_id, total_score, max_score, percentage,
+            )
         except Exception as error:
-            print(f"[Job {job_id}] DynamoDB evaluation failed: {error}")
+            logger.error("[Job %s] DynamoDB evaluation failed: %s", job_id, error)
             self.job_store.mark_failed(job_id, str(error))
 
     def evaluate_from_csv(self, job_id: str, student_name: str, responses_file_path: str) -> None:
         try:
-            print(f"[Job {job_id}] Starting evaluation for {student_name}")
+            logger.info("[Job %s] Starting CSV evaluation for %s", job_id, student_name)
 
             responses = self.read_responses_csv(responses_file_path)
             total_questions = len(responses)
@@ -91,7 +127,7 @@ class EvaluationWorkflowRunner:
 
             for index, response in enumerate(responses):
                 try:
-                    print(f"[Job {job_id}] Evaluating question {index + 1}/{total_questions}")
+                    logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
                     evaluation = self.engine.evaluate_single_question(response)
                     evaluations.append(evaluation)
 
@@ -101,7 +137,7 @@ class EvaluationWorkflowRunner:
 
                     self.job_store.set_progress(job_id, index + 1, total_questions)
                 except Exception as error:
-                    print(f"[Job {job_id}] Error evaluating question {index + 1}: {error}")
+                    logger.error("[Job %s] Error evaluating question %d: %s", job_id, index + 1, error)
                     evaluations.append(
                         {
                             "question_number": response.get("question_number", index + 1),
@@ -158,9 +194,12 @@ class EvaluationWorkflowRunner:
                 },
             )
 
-            print(f"[Job {job_id}] Evaluation completed. Score: {total_score}/{max_score} ({percentage:.1f}%)")
+            logger.info(
+                "[Job %s] CSV evaluation completed. Score: %.1f/%d (%.1f%%)",
+                job_id, total_score, max_score, percentage,
+            )
         except Exception as error:
-            print(f"[Job {job_id}] Evaluation failed: {error}")
+            logger.error("[Job %s] CSV evaluation failed: %s", job_id, error)
             self.job_store.mark_failed(job_id, str(error))
 
     @staticmethod
@@ -176,6 +215,18 @@ class EvaluationWorkflowRunner:
             if answer:
                 qa_pairs.append({"question": question, "answer": answer})
         return qa_pairs
+
+    def _read_assessment_rubric(self, assessment_id: str) -> str:
+        """Read the custom rubric from the assessment metadata item. Returns '' if not set."""
+        try:
+            resp = self.repository.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+            )
+            item = resp.get("Item") or {}
+            return item.get("rubric") or ""
+        except Exception as e:
+            logger.warning("Could not read rubric for assessment %s: %s", assessment_id, e)
+            return ""
 
     @staticmethod
     def read_responses_csv(file_path: str) -> List[Dict[str, str]]:

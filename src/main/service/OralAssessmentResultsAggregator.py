@@ -52,6 +52,9 @@ class OralAssessmentResultsAggregator:
             item["SK"].replace("EVALUATION#", ""): item for item in evaluations_response.get("Items", [])
         }
 
+        if not assessment.get("resultsReleased"):
+            raise ValueError(f"Results not released yet for student {student_id}")
+
         if not evaluations_map:
             raise ValueError(f"Results not available yet for student {student_id}")
 

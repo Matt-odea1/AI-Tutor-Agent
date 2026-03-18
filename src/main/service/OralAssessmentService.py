@@ -155,16 +155,28 @@ class OralAssessmentService:
         try:
             self.question_access.ensure_student_enrollment(student_id, assessment_id)
             self._check_assessment_window(assessment_id)
-            items = self.question_access.get_assessment_questions(assessment_id)
-            
-            if not items:
+
+            # Fetch assessment metadata to get time limit for question view
+            meta_resp = self.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+            )
+            assessment_meta = meta_resp.get("Item", {})
+            assessment_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
+
+            student_items = self.question_access.get_student_questions(student_id, assessment_id)
+            bank_items = self.question_access.get_bank_questions(assessment_id)
+
+            if not student_items and not bank_items:
                 # No questions generated yet
                 logger.warning(f"No questions found for assessment {assessment_id}")
                 return []
+
             questions = self.question_access.to_student_question_view(
-                items,
+                student_items,
+                bank_items,
                 student_id=student_id,
                 assessment_id=assessment_id,
+                assessment_time_limit=assessment_time_limit,
             )
             
             logger.info(f"Retrieved {len(questions)} questions for student {student_id}")
@@ -182,35 +194,43 @@ class OralAssessmentService:
         self,
         student_id: str,
         question_id: str,
-        audio_url: str,
-        duration: int,
-        assessment_id: Optional[str] = None
+        assessment_id: str,
+        answer_type: str = "audio",
+        audio_url: Optional[str] = None,
+        duration: Optional[int] = None,
+        text_content: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Record a student's audio answer submission.
-        
+        Record a student's answer submission (audio, text, or video).
+
         Args:
             student_id: Student identifier
             question_id: Question identifier
-            audio_url: S3 URL of uploaded audio file
-            duration: Recording duration in seconds
-            assessment_id: Optional assessment ID for validation
-        
+            assessment_id: Assessment identifier (used for window check and DynamoDB key)
+            answer_type: 'audio', 'text', or 'video'
+            audio_url: S3 URL of audio file (audio answers)
+            duration: Recording duration in seconds (audio/video answers)
+            text_content: Written answer text (text answers)
+            video_url: S3 URL of video file (video answers)
+
         Returns:
             Confirmation with answer details
-        
+
         Raises:
-            OralAssessmentServiceError: If question not found
+            OralAssessmentServiceError: If assessment window is closed or DB error
         """
         try:
-            if assessment_id:
-                self._check_assessment_window(assessment_id)
+            self._check_assessment_window(assessment_id)
             result = self.answer_submission.submit_answer(
                 student_id=student_id,
                 question_id=question_id,
+                assessment_id=assessment_id,
+                answer_type=answer_type,
                 audio_url=audio_url,
                 duration=duration,
-                assessment_id=assessment_id,
+                text_content=text_content,
+                video_url=video_url,
             )
             logger.info(f"Recorded answer for question {question_id} from student {student_id}")
             return result
@@ -220,6 +240,28 @@ class OralAssessmentService:
             raise
         except Exception as e:
             logger.error(f"Failed to submit answer: {e}")
+            raise OralAssessmentServiceError(f"Database error: {e}")
+
+    def submit_proctor_chunk(
+        self,
+        student_id: str,
+        assessment_id: str,
+        chunk_url: str,
+        chunk_index: int,
+        timestamp: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Store a proctoring chunk manifest entry in DynamoDB."""
+        try:
+            result = self.answer_submission.submit_proctor_chunk(
+                student_id=student_id,
+                assessment_id=assessment_id,
+                chunk_url=chunk_url,
+                chunk_index=chunk_index,
+                timestamp=timestamp,
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Failed to store proctor chunk: {e}")
             raise OralAssessmentServiceError(f"Database error: {e}")
     
     def submit_assessment(

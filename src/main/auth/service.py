@@ -831,6 +831,59 @@ class AuthService:
 
         return token
 
+    def send_student_invite_email(
+        self,
+        *,
+        student_email: str,
+        student_name: str,
+        assessment_title: str,
+        invite_link: str,
+    ) -> None:
+        """
+        Send an invite email to a student.
+        Silently returns (logs warning) if SES or from-email is not configured,
+        so the invite endpoint never fails due to email delivery.
+        """
+        if not self.password_reset_from_email:
+            logger.warning("Student invite email skipped — AUTH_PASSWORD_RESET_FROM_EMAIL not configured")
+            return
+
+        if self.ses_client is None:
+            logger.warning("Student invite email skipped — SES client unavailable")
+            return
+
+        subject = f"Your assessment invitation: {assessment_title}"
+        text_body = (
+            f"Hi {student_name},\n\n"
+            f"You have been invited to complete an assessment: {assessment_title}.\n\n"
+            f"Click the link below to start:\n{invite_link}\n\n"
+            "This link is single-use and expires in 7 days.\n\n"
+            "Good luck!"
+        )
+        html_body = (
+            f"<p>Hi {student_name},</p>"
+            f"<p>You have been invited to complete an assessment: <strong>{assessment_title}</strong>.</p>"
+            f'<p><a href="{invite_link}">Click here to start your assessment</a></p>'
+            "<p>This link is single-use and expires in 7 days.</p>"
+            "<p>Good luck!</p>"
+        )
+
+        try:
+            self.ses_client.send_email(
+                Source=self.password_reset_from_email,
+                Destination={"ToAddresses": [student_email]},
+                Message={
+                    "Subject": {"Data": subject},
+                    "Body": {
+                        "Text": {"Data": text_body},
+                        "Html": {"Data": html_body},
+                    },
+                },
+            )
+            logger.info("Invite email sent to %s for assessment %s", student_email, assessment_title)
+        except Exception as exc:
+            logger.warning("Failed to send invite email to %s: %s", student_email, exc)
+
     def exchange_student_invite_token(self, token: str) -> Dict[str, Any]:
         """
         Exchange a single-use invite token for a short-lived student session token.

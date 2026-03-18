@@ -13,10 +13,14 @@ from src.main.service.ChatService import ChatService
 from src.main.service.ContextVectorService import ContextVectorService
 from src.main.service.AnalyticsService import AnalyticsService
 from src.main.service.InstructorAssessmentService import InstructorAssessmentService
+from src.main.service.InstructorQuestionBankService import InstructorQuestionBankService
+from src.main.service.InstructorSubmissionService import InstructorSubmissionService
 from src.main.service.OralAssessmentService import OralAssessmentService
+from src.main.service.SQSJobDispatcher import SQSJobDispatcher, resolve_queue_url
 from src.main.service.QuestionGenerationService import QuestionGenerationService
 from src.main.service.ResponseEvaluationService import ResponseEvaluationService
 from src.main.service.S3UploadService import S3UploadService
+from src.main.service.TranscriptionService import TranscriptionService
 
 
 logger = logging.getLogger(__name__)
@@ -106,8 +110,24 @@ def get_question_service() -> QuestionGenerationService:
 
 
 @lru_cache(maxsize=1)
+def _transcription_service_singleton() -> TranscriptionService:
+    settings = get_settings()
+    oral_svc = _oral_assessment_service_singleton()
+    return TranscriptionService(
+        table=oral_svc.table,
+        region=settings.aws_default_region,
+    )
+
+
+def get_transcription_service() -> TranscriptionService:
+    return _transcription_service_singleton()
+
+
+@lru_cache(maxsize=1)
 def _evaluation_service_singleton() -> ResponseEvaluationService:
-    return ResponseEvaluationService()
+    return ResponseEvaluationService(
+        transcription_service=_transcription_service_singleton(),
+    )
 
 
 def get_evaluation_service() -> ResponseEvaluationService:
@@ -130,6 +150,51 @@ def _instructor_assessment_service_singleton() -> InstructorAssessmentService:
 
 def get_instructor_assessment_service() -> InstructorAssessmentService:
     return _instructor_assessment_service_singleton()
+
+
+@lru_cache(maxsize=1)
+def _instructor_question_bank_service_singleton() -> InstructorQuestionBankService:
+    instructor_svc = _instructor_assessment_service_singleton()
+    agent_client = AgentCoreProvider()
+    return InstructorQuestionBankService(
+        table=instructor_svc.table,
+        llm_client=agent_client,
+    )
+
+
+def get_instructor_question_bank_service() -> InstructorQuestionBankService:
+    return _instructor_question_bank_service_singleton()
+
+
+@lru_cache(maxsize=1)
+def _sqs_job_dispatcher_singleton() -> SQSJobDispatcher:
+    settings = get_settings()
+    instructor_svc = _instructor_assessment_service_singleton()
+    queue_url = resolve_queue_url(region=settings.aws_default_region)
+    return SQSJobDispatcher(
+        queue_url=queue_url,
+        region=settings.aws_default_region,
+        table=instructor_svc.table,
+    )
+
+
+def get_sqs_job_dispatcher() -> SQSJobDispatcher:
+    return _sqs_job_dispatcher_singleton()
+
+
+@lru_cache(maxsize=1)
+def _instructor_submission_service_singleton() -> InstructorSubmissionService:
+    settings = get_settings()
+    instructor_svc = _instructor_assessment_service_singleton()
+    return InstructorSubmissionService(
+        table=instructor_svc.table,
+        s3_bucket=settings.s3_assessment_bucket,
+        region=settings.aws_default_region,
+    )
+
+
+def get_instructor_submission_service() -> InstructorSubmissionService:
+    return _instructor_submission_service_singleton()
 
 
 @lru_cache(maxsize=1)

@@ -13,9 +13,11 @@ class ResponseEvaluationEngine:
         self.agent_client = agent_client
         self.evaluation_prompt = evaluation_prompt
 
-    def evaluate_qa_pair(self, qa_pair: Dict[str, Any]) -> Dict[str, Any]:
+    def evaluate_qa_pair(self, qa_pair: Dict[str, Any], rubric: str = "") -> Dict[str, Any]:
         question = qa_pair["question"]
         answer = qa_pair["answer"]
+
+        rubric_section = f"\n**Custom Rubric:**\n{rubric}\n" if rubric else ""
 
         user_prompt = f"""
 **Question Type:** {question.get('questionType', 'general')}
@@ -27,7 +29,7 @@ class ResponseEvaluationEngine:
 ```python
 {question.get('codeContext', '')}
 ```
-
+{rubric_section}
 **Student's Answer (Transcribed from audio):**
 {answer.get('transcript', 'No transcript available')}
 

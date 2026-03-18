@@ -56,7 +56,8 @@ class QuestionGenerationService:
         student_code: str,
         student_name: str,
         student_id: Optional[str] = None,
-        assessment_id: Optional[str] = None
+        assessment_id: Optional[str] = None,
+        assessment_time_limit: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Generate questions from assignment brief and student code.
@@ -119,7 +120,9 @@ class QuestionGenerationService:
         dynamodb_stored = False
         if student_id and assessment_id:
             try:
-                self._store_questions_in_dynamodb(questions, student_id, assessment_id, student_code)
+                self._store_questions_in_dynamodb(
+                    questions, student_id, assessment_id, student_code, assessment_time_limit
+                )
                 dynamodb_stored = True
                 print(f"[QuestionGenerationService] Stored questions in DynamoDB for student {student_id}")
             except Exception as e:
@@ -261,7 +264,8 @@ Generate the questions in JSON format as specified.
         questions: List[Dict[str, Any]],
         student_id: str,
         assessment_id: str,
-        student_code: str
+        student_code: str,
+        assessment_time_limit: Optional[int] = None,
     ):
         """
         Store generated questions in DynamoDB.
@@ -278,7 +282,7 @@ Generate the questions in JSON format as specified.
             for q in questions:
                 question_id = str(uuid.uuid4())
                 
-                item = {
+                item: Dict[str, Any] = {
                     'PK': f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
                     'SK': f"QUESTION#{question_id}",
                     'id': question_id,
@@ -289,10 +293,14 @@ Generate the questions in JSON format as specified.
                     'questionType': q.get('question_type', 'general'),
                     'rationale': q.get('rationale', ''),
                     'codeContext': q.get('code_reference', ''),
-                    'difficulty': 'medium',  # Could be derived from rationale
+                    'difficulty': 'medium',
                     'topic': self._extract_topic(q.get('rationale', '')),
-                    'createdAt': created_at
+                    'createdAt': created_at,
                 }
+                # Store assessment-level time limit as the default per-question limit.
+                # Individual questions can be overridden later via the instructor API.
+                if assessment_time_limit is not None:
+                    item['timeLimit'] = assessment_time_limit
                 
                 batch.put_item(Item=item)
         

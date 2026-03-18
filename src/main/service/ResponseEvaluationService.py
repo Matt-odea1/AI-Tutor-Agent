@@ -31,27 +31,20 @@ class ResponseEvaluationService:
         agent_client: Optional[AgentCoreProvider] = None,
         repository: Optional[ResponseEvaluationRepository] = None,
         base_output_dir: str = "test_outputs/evaluations",
-        responses_dir: str = "test_outputs/questions"
+        responses_dir: str = "test_outputs/questions",
+        transcription_service=None,
     ):
-        """
-        Initialize the response evaluation service.
-        
-        Args:
-            agent_client: LLM provider (defaults to AgentCoreProvider)
-            base_output_dir: Base directory for evaluation outputs
-            responses_dir: Directory where response CSV files are located
-        """
         self.agent_client = agent_client or AgentCoreProvider()
         self.repository = repository or ResponseEvaluationRepository()
         self.base_output_dir = Path(base_output_dir)
         self.base_output_dir.mkdir(parents=True, exist_ok=True)
         self.responses_dir = Path(responses_dir)
-        
+
         # In-memory job store
         self.job_store = EvaluationJobStore()
         self.jobs = self.job_store.jobs
         self.report_writer = EvaluationReportWriter()
-        
+
         # Load evaluation prompt
         prompt_file = Path(__file__).resolve().parents[3] / "prompts" / "response_evaluation_prompt.md"
         self.evaluation_prompt = read_prompt(prompt_file)
@@ -62,10 +55,8 @@ class ResponseEvaluationService:
             report_writer=self.report_writer,
             job_store=self.job_store,
             base_output_dir=self.base_output_dir,
+            transcription_service=transcription_service,
         )
-        
-        print(f"[ResponseEvaluationService] Initialized with output dir: {self.base_output_dir}")
-        print(f"[ResponseEvaluationService] Reading responses from: {self.responses_dir}")
 
     def start_evaluation_from_dynamodb(
         self,
