@@ -21,8 +21,8 @@ npm run lint         # ESLint
 npm run lint:fix     # ESLint with auto-fix
 npm run type-check   # tsc --noEmit only
 npm run validate     # type-check + lint + format check + tests (ai-tutor-frontend only)
-npm test             # Vitest (ai-tutor-frontend only)
-npm run test:run     # Vitest run mode (no watch)
+npm test             # Vitest (watch mode, all three frontends)
+npm run test:run     # Vitest run mode (all three frontends)
 ```
 
 Dev ports: `ai-tutor-frontend` → 5173, `oral-assessment-instructor` → 5175, `oral-assessment-student` → 5176
@@ -74,7 +74,10 @@ JWT-based auth with optional Google OAuth. Backend auth logic in `src/main/auth/
 
 ### Async Jobs
 
-Long-running evaluations use `EvaluationJobStore` (in-memory). Jobs are volatile — lost on server restart. Job status polled via `/internal/evaluations/{job_id}/status`.
+Two job systems are in use:
+
+- **`BatchJobManager` → `DynamoDBJobStore`** (DynamoDB-backed, persists across restarts) — used for batch evaluation and question generation jobs. Job items stored as `JOB#` records in the assessment table.
+- **`EvaluationJobStore`** (in-memory, volatile) — used for the legacy CSV-based evaluation workflow only. Job status polled via `/internal/evaluations/{job_id}/status`.
 
 ## Environment Setup
 

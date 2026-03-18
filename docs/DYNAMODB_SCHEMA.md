@@ -34,6 +34,8 @@ Sort-key subtypes:
 - `ANSWER#{questionId}`
 - `EVALUATION#{questionId}`
 - `PROGRESS`
+- `EVAL_PROGRESS` — per-student evaluation progress tracker (PK: `STUDENT#{id}#ASSESSMENT#{id}`, SK: `EVAL_PROGRESS`)
+- `JOB#{jobId}` — batch job records created by `BatchJobManager` / `DynamoDBJobStore`
 
 ### Access Patterns
 
@@ -42,6 +44,8 @@ Sort-key subtypes:
 - List students in assessment
 - Get questions/answers/evaluations for student+assessment
 - Read/write progress summary
+- Read/write per-student evaluation progress (`EVAL_PROGRESS`)
+- Read/write batch job state (`JOB#`)
 
 ## Auth Users Table (Optional)
 

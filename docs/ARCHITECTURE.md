@@ -728,7 +728,7 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 ### Scalability Considerations
 - **Neo4j**: Consider vector indexes for >10K documents
 - **AgentCore**: Rate limits apply (check AWS quotas)
-- **Async Jobs**: In-memory tracking (use Redis for production)
+- **Async Jobs**: Batch jobs use `DynamoDBJobStore` (persists across restarts); legacy CSV-based evaluation jobs use in-memory `EvaluationJobStore`
 - **Deepgram**: Concurrent transcription limits
 
 ---
