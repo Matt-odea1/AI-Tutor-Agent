@@ -270,6 +270,43 @@ These supersede the current implementation where noted.
 
 Sprint 6 is intentionally narrow — video recording and proctoring are both large and need full focus.
 
+**Resolved in Sprint 6 (previously deferred from Sprint 5):**
+- **Timer auto-advance on expiry**: `TakeAssessment` now passes `handleTimerExpire` to `QuestionTimer.onExpire`. When the countdown hits zero, any in-progress recording is submitted and the student advances automatically.
+
+**Deferred items from Sprint 5 (carry to Sprint 9):**
+- **SES production setup**: `AUTH_PASSWORD_RESET_FROM_EMAIL` is reused as the invite sender. A dedicated `INVITE_FROM_EMAIL` env var should be added, and both sender addresses need to be verified in SES + moved out of sandbox mode before production use. Belongs in Sprint 9 (infra hardening) or alongside Terraform (Sprint 2 follow-up).
+
+**Deferred items from Sprint 6 (carry to Sprint 7):**
+- **Video answer transcription + evaluation**: `EvaluationWorkflowRunner.evaluate_from_dynamodb` enriches `textContent → transcript` for text answers but has no equivalent for video answers. Video answers stored with `videoUrl` will evaluate with an empty transcript until the Sprint 7 transcription pipeline is in place (EPIC-5-1: FFmpeg audio extraction → Deepgram). The evaluator will still run and produce feedback based on the question alone; scores will be artificially low until transcription is wired.
+- ~~**Proctoring chunk upload failure visibility**~~: carried to Sprint 8 — see below.
+
+**Resolved in Sprint 7:**
+- **Video answer transcription + evaluation** (EPIC-5-1): `TranscriptionService` downloads audio/video from S3, transcribes via Deepgram with 3-attempt exponential backoff, writes `transcript` + `transcript_status` back to the DynamoDB answer item. `EvaluationWorkflowRunner` runs a transcription pre-pass before the evaluation loop.
+- **Batch evaluation via SQS** (EPIC-5-2, EPIC-7-1): `evaluate_batch` endpoint replaced in-memory polling loop with `SQSJobDispatcher.enqueue_evaluation_batch`. `BatchJobManager` in-memory threading fully replaced; all job state in DynamoDB `JOB#{jobId}`. SQS consumer calls `EvaluationWorkflowRunner.evaluate_from_dynamodb` synchronously per-student.
+- **Auto-evaluation on full submission** (EPIC-5-3): `submit_assessment` endpoint counts submitted students; if `autoEvaluate=True` and all have submitted, enqueues a batch evaluation job via SQS.
+- **Custom evaluation rubric** (EPIC-5-4): `rubric` field on assessment (stored in `ASSESSMENT#{id}/METADATA`); injected as `**Custom Rubric:**` block into `evaluate_qa_pair` LLM prompt.
+
+**Deferred items from Sprint 7 (carry to Sprint 8):**
+- **Proctoring chunk upload failure visibility**: failed chunk uploads are logged to `console.warn` only. The instructor will see gaps in the DynamoDB chunk manifest. Sprint 8 should add a chunk health indicator to the instructor's per-student results view (EPIC-6-2) so gaps can be identified.
+- **Per-question evaluation progress**: `EvaluationWorkflowRunner` calls `job_store.set_progress()` after each question, but these calls silently no-op because the batch job ID lives in DynamoDB, not in `EvaluationJobStore`. The batch status endpoint (`/evaluation-status/{jobId}`) exposes student-level counts only. Fine-grained per-question progress requires a separate DynamoDB write path — defer to Sprint 8 if needed alongside the results dashboard work.
+
+**Resolved in Sprint 8:**
+- **Proctoring chunk health indicator** (EPIC-6-2): `StudentResultDetail` page shows per-student proctoring chunk count, missing indexes, and chunk-by-chunk manifest. Missing gaps flagged in red.
+- **Class-level results dashboard** (EPIC-6-1): `ResultsDashboard` updated with median stat, fixed name sort, "Release Results" toggle, SSE auto-refresh on evaluation job completion, and CSV export with name/email columns.
+- **Per-student results with score override** (EPIC-6-2): New `GET /api/assessment/{id}/student/{studentId}/results` endpoint returns per-question details (transcript, audio/video playback URLs, AI score, instructor override). `PUT /api/assessment/{id}/student/{studentId}/question/{questionId}/override` writes `instructorScore` to DynamoDB; effective score uses override when set. `StudentResultDetail.tsx` page wires inline override form.
+- **Results release gate** (EPIC-6-3): `PUT /api/assessment/{id}/release-results` sets `resultsReleased=True` on assessment metadata. Student results endpoint raises "not released" until toggled. Student `ViewResults.tsx` shows a "Results Pending Release" screen. PDF download via `GET /api/student/{id}/assessment/{id}/results/pdf` (reportlab).
+- **Live progress monitor** (EPIC-6-4): `StudentProgressTable` shows "Inactive 30m+" badge for in-progress students inactive >30 min, and per-row "Send Reminder" button → `POST /api/assessment/{id}/student/{studentId}/remind` sends SES email.
+- **Per-question progress**: deferred — student-level progress via SSE is sufficient for Sprint 8 scope.
+
+**Resolved in Sprint 9:**
+- **Question preview and editing** (EPIC-3-3): Four new endpoints — `GET/PUT/DELETE/POST /api/assessment/{id}/students/{studentId}/questions[/{questionId}]`. Service enforces draft/scheduled-only lock. New `QuestionEditor.tsx` page at `/assessments/:assessmentId/questions/:studentId` with inline edit, delete (min 1 guard), and add-question form. Linked from `App.tsx`.
+- **Structured logging** (EPIC-7-2): `src/main/utils/structured_logger.py` adds `_JsonFormatter` (single-line JSON) and `configure_logging()` called at `app.py` startup. `LOG_FORMAT=json` switches to JSON output in production; default is human-readable text. `src/main/middleware/logging_middleware.py` logs every non-health request with `request_id, method, path, status, duration_ms`. `LOG_FORMAT` and `INVITE_FROM_EMAIL` added to `.env.example`.
+- **Test suite hardening** (EPIC-7-3): `moto[dynamodb,s3,sqs,ses]` added to `requirements.txt`. `tests/conftest.py` provides `mock_dynamodb`, `mock_s3`, `mock_sqs`, `mock_ses` fixtures. `tests/controllers/test_sprint9.py` covers 23 new tests: question CRUD controller mocks, moto DynamoDB integration, JSON formatter, logging middleware, INVITE_FROM_EMAIL preference.
+- **Vitest for oral assessment frontends** (EPIC-7-3): `vitest`, `@testing-library/react`, `jsdom`, `@vitest/coverage-v8` added to both `oral-assessment-instructor` and `oral-assessment-student`. `src/test/setup.ts` + `vite.config.ts` updated with `test` block. `NotFound.test.tsx` (instructor) and `helpers.test.ts` (student) provide initial coverage.
+- **Playwright E2E** (EPIC-7-3): `e2e/` directory with `playwright.config.ts` (auto-starts backend + both frontends), `tests/helpers/mockApi.ts` (page.route() intercepts), `tests/assessment.spec.ts` covering: student results view, not-released state, instructor assessment list.
+- **GitHub Actions CI** (EPIC-7-3): `.github/workflows/ci.yml` runs 4 jobs in parallel (backend pytest+moto, instructor Vitest, student Vitest, Playwright E2E). Merge blocked on any failure. Backend enforces ≥70% coverage (`--cov-fail-under=70`).
+- **SES INVITE_FROM_EMAIL** (carry-over from Sprint 5): `send_reminder_email` prefers `INVITE_FROM_EMAIL` env var over `AUTH_PASSWORD_RESET_FROM_EMAIL` fallback.
+
 ---
 
 ## 5. Cost Estimates
