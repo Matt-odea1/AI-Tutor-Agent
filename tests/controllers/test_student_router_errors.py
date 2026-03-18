@@ -20,6 +20,7 @@ def _build_client(principal: AuthPrincipal, oral_service=None) -> TestClient:
 def _answer_payload():
     return {
         "question_id": "q1",
+        "assessment_id": "a1",
         "audio_url": "https://example.com/audio.webm",
         "duration": 42,
     }
