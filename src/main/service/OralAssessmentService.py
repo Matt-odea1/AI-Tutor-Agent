@@ -305,7 +305,7 @@ class OralAssessmentService:
                 )
             
             # Update enrollment status
-            submitted_at = datetime.utcnow().isoformat()
+            submitted_at = datetime.now(timezone.utc).isoformat()
             
             enrollment_response = self.table.get_item(
                 Key={

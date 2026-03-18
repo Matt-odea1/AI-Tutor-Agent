@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from boto3.dynamodb.conditions import Key
@@ -68,7 +68,7 @@ class InstructorQuestionBankService:
             )
 
         question_id = str(uuid.uuid4())
-        created_at = datetime.utcnow().isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
         item: Dict[str, Any] = {
             "PK": f"ASSESSMENT#{assessment_id}",
             "SK": f"BANK_QUESTION#{question_id}",

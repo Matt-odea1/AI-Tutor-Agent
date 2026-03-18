@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List
 
 from boto3.dynamodb.conditions import Key
@@ -14,7 +14,7 @@ class InstructorAssessmentEnrollment:
     def upload_students(self, assessment_id: str, students: List[Dict[str, str]]) -> Dict[str, Any]:
         self.assessment_exists(assessment_id)
 
-        enrolled_at = datetime.utcnow().isoformat()
+        enrolled_at = datetime.now(timezone.utc).isoformat()
         with self.table.batch_writer() as batch:
             for student in students:
                 batch.put_item(

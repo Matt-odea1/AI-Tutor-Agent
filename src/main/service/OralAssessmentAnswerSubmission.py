@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 
@@ -22,7 +22,7 @@ class OralAssessmentAnswerSubmission:
         video_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-        submitted_at = datetime.utcnow().isoformat()
+        submitted_at = datetime.now(timezone.utc).isoformat()
 
         dynamo_item: Dict[str, Any] = {
             "PK": pk,
@@ -68,7 +68,7 @@ class OralAssessmentAnswerSubmission:
         timestamp: Optional[str] = None,
     ) -> Dict[str, Any]:
         pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-        recorded_at = timestamp or datetime.utcnow().isoformat()
+        recorded_at = timestamp or datetime.now(timezone.utc).isoformat()
 
         self.table.put_item(Item={
             "PK": pk,

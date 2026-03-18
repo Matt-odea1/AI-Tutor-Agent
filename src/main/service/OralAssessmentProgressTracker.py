@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from boto3.dynamodb.conditions import Key
@@ -40,6 +40,6 @@ class OralAssessmentProgressTracker:
                 "answeredQuestions": answered_questions,
                 "percentage": Decimal(str(percentage)),
                 "status": status,
-                "lastUpdated": datetime.utcnow().isoformat(),
+                "lastUpdated": datetime.now(timezone.utc).isoformat(),
             }
         )

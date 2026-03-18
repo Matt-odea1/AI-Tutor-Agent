@@ -19,7 +19,7 @@ import json
 import uuid
 import boto3
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 from src.main.service.InstructorAssessmentCatalog import InstructorAssessmentCatalog
@@ -116,7 +116,7 @@ class InstructorAssessmentService:
         """
         try:
             assessment_id = str(uuid.uuid4())
-            created_at = datetime.utcnow().isoformat()
+            created_at = datetime.now(timezone.utc).isoformat()
 
             assessment = {
                 'PK': f"ASSESSMENT#{assessment_id}",
@@ -232,7 +232,7 @@ class InstructorAssessmentService:
             raise InstructorAssessmentServiceError(
                 "Brief can only be edited while assessment is in draft or scheduled status"
             )
-        updated_at = datetime.utcnow().isoformat()
+        updated_at = datetime.now(timezone.utc).isoformat()
         self.table.update_item(
             Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
             UpdateExpression="SET assignmentBrief = :brief, updatedAt = :ua",
@@ -259,7 +259,7 @@ class InstructorAssessmentService:
             if access_mode == "scheduled" and (not scheduled_window_start or not scheduled_window_end):
                 raise InstructorAssessmentServiceError("scheduledWindowStart and scheduledWindowEnd are required for scheduled mode")
 
-            updated_at = datetime.utcnow().isoformat()
+            updated_at = datetime.now(timezone.utc).isoformat()
             self.table.update_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
                 UpdateExpression="SET accessMode = :am, scheduledWindowStart = :ws, scheduledWindowEnd = :we, updatedAt = :ua",
@@ -404,7 +404,7 @@ class InstructorAssessmentService:
             pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
             sk = f"EVALUATION#{question_id}"
             update_expr = "SET instructorScore = :s, updatedAt = :ua"
-            expr_vals: Dict[str, Any] = {":s": score, ":ua": datetime.utcnow().isoformat()}
+            expr_vals: Dict[str, Any] = {":s": score, ":ua": datetime.now(timezone.utc).isoformat()}
             if comment is not None:
                 update_expr += ", instructorComment = :c"
                 expr_vals[":c"] = comment
@@ -433,7 +433,7 @@ class InstructorAssessmentService:
                 UpdateExpression="SET resultsReleased = :r, updatedAt = :ua",
                 ExpressionAttributeValues={
                     ":r": True,
-                    ":ua": datetime.utcnow().isoformat(),
+                    ":ua": datetime.now(timezone.utc).isoformat(),
                 },
             )
             logger.info("Released results for assessment %s", assessment_id)
@@ -545,7 +545,7 @@ class InstructorAssessmentService:
 
             update_expr = "SET #t = :t, updatedAt = :ua"
             expr_names = {"#t": "text"}
-            expr_vals: Dict[str, Any] = {":t": text, ":ua": datetime.utcnow().isoformat()}
+            expr_vals: Dict[str, Any] = {":t": text, ":ua": datetime.now(timezone.utc).isoformat()}
             if time_limit is not None:
                 update_expr += ", timeLimit = :tl"
                 expr_vals[":tl"] = time_limit
@@ -624,7 +624,7 @@ class InstructorAssessmentService:
             next_number = max((q.get("questionNumber", 0) for q in existing), default=0) + 1
 
             qid = str(uuid.uuid4())
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             item: Dict[str, Any] = {
                 "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
                 "SK": f"QUESTION#{qid}",

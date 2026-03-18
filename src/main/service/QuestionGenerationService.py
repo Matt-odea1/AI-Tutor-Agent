@@ -11,7 +11,7 @@ import uuid
 import boto3
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from src.main.llm.AgentCoreProvider import AgentCoreProvider
@@ -276,7 +276,7 @@ Generate the questions in JSON format as specified.
             assessment_id: Assessment identifier
             student_code: Student's code (stored with questions)
         """
-        created_at = datetime.utcnow().isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat() + "Z"
         
         with self.table.batch_writer() as batch:
             for q in questions:
