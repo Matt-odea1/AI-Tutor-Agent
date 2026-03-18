@@ -236,7 +236,7 @@ __marimo__/
 
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json is committed to enable reproducible CI installs
 .pnp
 .pnp.js
 
