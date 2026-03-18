@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -273,7 +273,7 @@ def _seed_question(table, qid: str, number: int, text: str = "What is X?"):
         "questionType": "specific",
         "difficulty": "medium",
         "topic": "algorithms",
-        "createdAt": datetime.utcnow().isoformat(),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
     })
 
 

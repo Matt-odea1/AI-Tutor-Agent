@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
 import type { StudentProgress, Student } from '../../../shared/types/assessment';
+
+interface EvalProgress {
+  questionsEvaluated: number;
+  totalQuestions: number;
+  percentage: number;
+  status: string; // 'evaluating' | 'completed' | 'failed' | 'not_started'
+}
 
 interface StudentProgressTableProps {
   assessmentId: string;
@@ -20,6 +27,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>({});
+  const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
   // Load initial data
@@ -108,10 +117,37 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     setFilteredProgress(filtered);
   };
 
+  const openEvalProgressStream = (studentId: string) => {
+    if (evalStreams.current[studentId]) evalStreams.current[studentId].close();
+    const es = apiService.openStudentEvaluationProgressStream(assessmentId, studentId);
+    evalStreams.current[studentId] = es;
+    es.onmessage = (event) => {
+      try {
+        const data: EvalProgress = JSON.parse(event.data);
+        setEvalProgress(prev => ({ ...prev, [studentId]: data }));
+        if (data.status === 'completed' || data.status === 'failed') {
+          es.close();
+          delete evalStreams.current[studentId];
+        }
+      } catch { /* ignore */ }
+    };
+    es.onerror = () => {
+      es.close();
+      delete evalStreams.current[studentId];
+    };
+  };
+
+  // Close all eval streams on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(evalStreams.current).forEach(es => es.close());
+    };
+  }, []);
+
   const handleEvaluateAll = async () => {
     // Ensure progress is an array
     const progressArray = Array.isArray(progress) ? progress : [];
-    
+
     const completedStudents = progressArray
       .filter(p => p.status === 'completed')
       .map(p => p.studentId);
@@ -127,8 +163,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       setError(null);
       await apiService.evaluateAssessment(assessmentId, completedStudents);
       setError(null);
-      // Show success message
-      alert(`Started evaluation for ${completedStudents.length} students`);
+      // Open per-student progress streams
+      completedStudents.forEach(sid => openEvalProgressStream(sid));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start evaluation');
     } finally {
@@ -324,17 +360,41 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center space-x-3">
-                        <div className="flex-1">
-                          <div className="flex justify-between text-xs text-slate-400 mb-1">
-                            <span>{p.questionsAnswered} / {p.totalQuestions}</span>
-                            <span>{getProgressPercentage(p)}%</span>
+                        <div className="flex-1 space-y-2">
+                          {/* Submission progress */}
+                          <div>
+                            <div className="flex justify-between text-xs text-slate-400 mb-1">
+                              <span>{p.questionsAnswered} / {p.totalQuestions} answered</span>
+                              <span>{getProgressPercentage(p)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div
+                                className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${getProgressPercentage(p)}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="w-full bg-slate-700 rounded-full h-2">
-                            <div
-                              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${getProgressPercentage(p)}%` }}
-                            />
-                          </div>
+                          {/* Per-question evaluation progress (shown when evaluating) */}
+                          {evalProgress[p.studentId] && evalProgress[p.studentId].status !== 'not_started' && (
+                            <div>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className={evalProgress[p.studentId].status === 'completed' ? 'text-green-400' : evalProgress[p.studentId].status === 'failed' ? 'text-red-400' : 'text-yellow-400'}>
+                                  {evalProgress[p.studentId].status === 'completed'
+                                    ? 'Evaluated'
+                                    : evalProgress[p.studentId].status === 'failed'
+                                    ? 'Eval failed'
+                                    : `Evaluating… ${evalProgress[p.studentId].questionsEvaluated}/${evalProgress[p.studentId].totalQuestions} questions`}
+                                </span>
+                                <span className="text-slate-400">{evalProgress[p.studentId].percentage}%</span>
+                              </div>
+                              <div className="w-full bg-slate-700 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all duration-500 ${evalProgress[p.studentId].status === 'completed' ? 'bg-green-500' : evalProgress[p.studentId].status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'}`}
+                                  style={{ width: `${evalProgress[p.studentId].percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

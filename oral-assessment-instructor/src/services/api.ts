@@ -237,6 +237,12 @@ class ApiService {
     return new EventSource(url);
   }
 
+  openStudentEvaluationProgressStream(assessmentId: string, studentId: string): EventSource {
+    const token = localStorage.getItem('authToken');
+    const url = `${API_BASE_URL}/api/assessment/${assessmentId}/students/${studentId}/evaluation-progress${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
+  }
+
   // EPIC-3-3: Question preview and editing
   async listStudentQuestions(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.get(

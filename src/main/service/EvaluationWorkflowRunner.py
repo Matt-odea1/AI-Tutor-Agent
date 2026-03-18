@@ -58,6 +58,8 @@ class EvaluationWorkflowRunner:
             evaluations = []
             total_score = 0.0
 
+            self.repository.set_evaluation_progress(student_id, assessment_id, 0, total_questions, "evaluating")
+
             for index, qa_pair in enumerate(qa_pairs):
                 try:
                     logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
@@ -73,6 +75,7 @@ class EvaluationWorkflowRunner:
                     )
 
                     self.job_store.set_progress(job_id, index + 1, total_questions)
+                    self.repository.set_evaluation_progress(student_id, assessment_id, index + 1, total_questions, "evaluating")
                 except Exception as error:
                     logger.error("[Job %s] Error evaluating question %d: %s", job_id, index + 1, error)
                     evaluations.append(
@@ -89,6 +92,8 @@ class EvaluationWorkflowRunner:
             max_score = total_questions * 10
             percentage = (total_score / max_score * 100) if max_score > 0 else 0
             grade = self.engine.calculate_grade(percentage)
+
+            self.repository.set_evaluation_progress(student_id, assessment_id, total_questions, total_questions, "completed")
 
             self.job_store.mark_completed(
                 job_id,
@@ -111,6 +116,10 @@ class EvaluationWorkflowRunner:
             )
         except Exception as error:
             logger.error("[Job %s] DynamoDB evaluation failed: %s", job_id, error)
+            try:
+                self.repository.set_evaluation_progress(student_id, assessment_id, 0, 0, "failed")
+            except Exception:
+                pass
             self.job_store.mark_failed(job_id, str(error))
 
     def evaluate_from_csv(self, job_id: str, student_name: str, responses_file_path: str) -> None:

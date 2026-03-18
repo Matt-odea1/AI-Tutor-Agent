@@ -74,6 +74,7 @@ from src.main.service.InstructorSubmissionService import InstructorSubmissionSer
 from src.main.service.SQSJobDispatcher import SQSJobDispatcher
 from src.main.service.QuestionGenerationService import QuestionGenerationService
 from src.main.service.ResponseEvaluationService import ResponseEvaluationService
+from src.main.service.ResponseEvaluationRepository import ResponseEvaluationRepository
 
 
 logger = logging.getLogger(__name__)
@@ -675,6 +676,51 @@ async def stream_generation_status(
             yield f"data: {payload}\n\n"
 
             if job["status"] in terminal:
+                break
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@assessment_router.get("/{id}/students/{studentId}/evaluation-progress")
+async def stream_student_evaluation_progress(
+    id: str,
+    studentId: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """SSE stream for per-question evaluation progress for a single student.
+
+    Emits one event per poll cycle (2 s) with:
+      { questionsEvaluated, totalQuestions, percentage, status }
+
+    Closes when status is 'completed' or 'failed', or after 10 min (300 polls).
+    """
+    import json as _json
+    _assert_instructor_access(_principal)
+    assessment = svc.get_assessment(id)
+    _assert_assessment_owner(_principal, assessment)
+
+    repo = ResponseEvaluationRepository()
+    terminal = {"completed", "failed"}
+
+    async def event_stream():
+        for _ in range(300):  # max 10 min
+            item = repo.get_evaluation_progress(studentId, id)
+            if item is None:
+                yield f"data: {_json.dumps({'status': 'not_started', 'questionsEvaluated': 0, 'totalQuestions': 0, 'percentage': 0})}\n\n"
+                await asyncio.sleep(2)
+                continue
+
+            payload = _json.dumps({
+                "questionsEvaluated": int(item.get("questionsEvaluated", 0)),
+                "totalQuestions": int(item.get("totalQuestions", 0)),
+                "percentage": float(item.get("percentage", 0)),
+                "status": item.get("status", "evaluating"),
+                "updatedAt": item.get("updatedAt"),
+            })
+            yield f"data: {payload}\n\n"
+            if item.get("status") in terminal:
                 break
             await asyncio.sleep(2)
 

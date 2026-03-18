@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -37,6 +37,42 @@ class ResponseEvaluationRepository:
         )
         return response.get("Items", [])
 
+    def set_evaluation_progress(
+        self,
+        student_id: str,
+        assessment_id: str,
+        questions_evaluated: int,
+        total_questions: int,
+        status: str = "evaluating",
+    ) -> None:
+        """Write (or overwrite) the EVAL_PROGRESS marker for a student's evaluation run."""
+        percentage = round(questions_evaluated / total_questions * 100, 1) if total_questions > 0 else 0.0
+        self.table.put_item(Item={
+            "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+            "SK": "EVAL_PROGRESS",
+            "studentId": student_id,
+            "assessmentId": assessment_id,
+            "questionsEvaluated": questions_evaluated,
+            "totalQuestions": total_questions,
+            "percentage": str(percentage),
+            "status": status,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        })
+
+    def get_evaluation_progress(
+        self,
+        student_id: str,
+        assessment_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Read the EVAL_PROGRESS item, or None if not present."""
+        resp = self.table.get_item(
+            Key={
+                "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+                "SK": "EVAL_PROGRESS",
+            }
+        )
+        return resp.get("Item")
+
     def store_evaluation(
         self,
         student_id: str,
@@ -44,7 +80,7 @@ class ResponseEvaluationRepository:
         question_id: str,
         evaluation: Dict[str, Any],
     ) -> None:
-        created_at = datetime.utcnow().isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat() + "Z"
         item = {
             "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
             "SK": f"EVALUATION#{question_id}",
