@@ -69,8 +69,8 @@ export default function QuestionDisplay({
       {/* Instructions */}
       <div className="mt-4 p-3 bg-blue-50 rounded-lg">
         <p className="text-sm text-blue-800">
-          <span className="font-semibold">Instructions:</span> Record your verbal answer to this question.
-          Speak clearly and explain your thought process.
+          <span className="font-semibold">Instructions:</span> Answer this question using the oral or written
+          mode below. Explain your reasoning clearly.
         </p>
       </div>
     </div>

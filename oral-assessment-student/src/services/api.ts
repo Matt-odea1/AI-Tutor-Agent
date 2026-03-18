@@ -70,14 +70,82 @@ export async function getQuestions(
 export async function submitAnswer(
   studentId: string,
   questionId: string,
+  assessmentId: string,
   audioUrl: string,
   duration: number
 ): Promise<void> {
   try {
     await apiClient.post(`/api/student/${studentId}/answer`, {
       question_id: questionId,
+      assessment_id: assessmentId,
+      answer_type: 'audio',
       audio_url: audioUrl,
       duration,
+    });
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
+ * Submit a video answer for a question
+ */
+export async function submitVideoAnswer(
+  studentId: string,
+  questionId: string,
+  assessmentId: string,
+  videoUrl: string,
+  duration: number
+): Promise<void> {
+  try {
+    await apiClient.post(`/api/student/${studentId}/answer`, {
+      question_id: questionId,
+      assessment_id: assessmentId,
+      answer_type: 'video',
+      video_url: videoUrl,
+      duration,
+    });
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
+ * Submit a text answer for a question
+ */
+export async function submitTextAnswer(
+  studentId: string,
+  questionId: string,
+  assessmentId: string,
+  textContent: string
+): Promise<void> {
+  try {
+    await apiClient.post(`/api/student/${studentId}/answer`, {
+      question_id: questionId,
+      assessment_id: assessmentId,
+      answer_type: 'text',
+      text_content: textContent,
+    });
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
+ * Log a proctoring chunk manifest entry
+ */
+export async function submitProctorChunk(
+  studentId: string,
+  assessmentId: string,
+  chunkUrl: string,
+  chunkIndex: number
+): Promise<void> {
+  try {
+    await apiClient.post(`/api/student/${studentId}/proctoring-chunk`, {
+      assessment_id: assessmentId,
+      chunk_url: chunkUrl,
+      chunk_index: chunkIndex,
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -184,6 +252,9 @@ export async function uploadAudioToS3(
 export default {
   getQuestions,
   submitAnswer,
+  submitVideoAnswer,
+  submitTextAnswer,
+  submitProctorChunk,
   submitAssessment,
   getProgress,
   getResults,

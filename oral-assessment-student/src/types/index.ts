@@ -12,6 +12,7 @@ export interface Question {
   topic?: string;
   questionNumber?: number;
   questionType?: 'specific' | 'general';
+  timeLimit?: number; // per-question time limit in seconds (null = assessment default)
   createdAt: string;
 }
 

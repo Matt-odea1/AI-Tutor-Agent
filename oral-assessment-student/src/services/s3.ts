@@ -11,6 +11,28 @@ export interface UploadProgress {
 }
 
 /**
+ * Upload a media blob (audio or video) to S3 via a presigned URL.
+ * Returns the permanent S3 file URL.
+ */
+async function uploadMedia(
+  blob: Blob,
+  filename: string,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<string> {
+  const { uploadUrl, fileUrl } = await getUploadUrl(filename, blob.type);
+  await uploadAudioToS3(uploadUrl, blob, (percentage) => {
+    if (onProgress) {
+      onProgress({
+        loaded: (blob.size * percentage) / 100,
+        total: blob.size,
+        percentage,
+      });
+    }
+  });
+  return fileUrl;
+}
+
+/**
  * Upload audio blob to S3 and return the file URL
  */
 export async function uploadAudio(
@@ -20,28 +42,31 @@ export async function uploadAudio(
   onProgress?: (progress: UploadProgress) => void
 ): Promise<string> {
   try {
-    // Generate filename
-    const timestamp = Date.now();
-    const filename = `audio/${studentId}/${questionId}_${timestamp}.webm`;
-
-    // Get presigned URL from backend
-    const { uploadUrl, fileUrl } = await getUploadUrl(filename, audioBlob.type);
-
-    // Upload to S3
-    await uploadAudioToS3(uploadUrl, audioBlob, (percentage) => {
-      if (onProgress) {
-        onProgress({
-          loaded: (audioBlob.size * percentage) / 100,
-          total: audioBlob.size,
-          percentage,
-        });
-      }
-    });
-
-    return fileUrl;
+    const ext = audioBlob.type.includes('mp4') ? 'mp4' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+    const filename = `audio/${studentId}/${questionId}_${Date.now()}.${ext}`;
+    return await uploadMedia(audioBlob, filename, onProgress);
   } catch (error) {
     console.error('Failed to upload audio:', error);
     throw new Error('Failed to upload audio file. Please try again.');
+  }
+}
+
+/**
+ * Upload video blob to S3 and return the file URL
+ */
+export async function uploadVideo(
+  videoBlob: Blob,
+  studentId: string,
+  questionId: string,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<string> {
+  try {
+    const ext = videoBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    const filename = `video/${studentId}/${questionId}_${Date.now()}.${ext}`;
+    return await uploadMedia(videoBlob, filename, onProgress);
+  } catch (error) {
+    console.error('Failed to upload video:', error);
+    throw new Error('Failed to upload video file. Please try again.');
   }
 }
 
@@ -80,6 +105,7 @@ export function formatFileSize(bytes: number): string {
 
 export default {
   uploadAudio,
+  uploadVideo,
   validateAudioBlob,
   formatFileSize,
 };

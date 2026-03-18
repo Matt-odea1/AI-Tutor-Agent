@@ -1,22 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import JSZip from 'jszip';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
-import type { AssessmentResults } from '../../../shared/types/assessment';
+import type { AssessmentResults, EvaluationJob } from '../../../shared/types/assessment';
 
 interface ResultsDashboardProps {
   assessmentId: string;
+  evalJobId?: string; // if set, opens SSE stream and auto-refreshes when done
 }
 
-export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps) {
+export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDashboardProps) {
+  const navigate = useNavigate();
   const { results, setResults, setLoading, setError } = useAssessmentStore();
-  
+
   const [filteredResults, setFilteredResults] = useState<AssessmentResults[]>([]);
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'score' | 'date'>('score');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isExporting, setIsExporting] = useState(false);
+  const [isReleasing, setIsReleasing] = useState(false);
+  const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     loadResults();
@@ -25,6 +30,24 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
   useEffect(() => {
     applyFiltersAndSort();
   }, [results, gradeFilter, sortBy, sortOrder]);
+
+  // SSE: auto-refresh results when evaluation job completes
+  useEffect(() => {
+    if (!evalJobId) return;
+    const es = apiService.openEvaluationStatusStream(assessmentId, evalJobId);
+    sseRef.current = es;
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === 'completed') {
+          loadResults();
+          es.close();
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [evalJobId]);
 
   const loadResults = async () => {
     try {
@@ -43,46 +66,54 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
     const resultsArray = Array.isArray(results) ? results : [];
     let filtered = [...resultsArray];
 
-    // Apply grade filter
     if (gradeFilter !== 'all') {
       filtered = filtered.filter(r => r.grade === gradeFilter);
     }
 
-    // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
-      
       if (sortBy === 'score') {
         comparison = a.percentage - b.percentage;
       } else if (sortBy === 'date') {
         comparison = new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime();
       } else {
-        // Sort by name - need to fetch student info
-        comparison = 0; // Would need student names
+        // name sort — names are present in StudentResultItem
+        const aName = (a as any).name ?? a.studentId;
+        const bName = (b as any).name ?? b.studentId;
+        comparison = aName.localeCompare(bName);
       }
-
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
     setFilteredResults(filtered);
   };
 
+  const handleReleaseResults = async () => {
+    try {
+      setIsReleasing(true);
+      setReleaseMessage(null);
+      await apiService.releaseResults(assessmentId);
+      setReleaseMessage('Results released to students.');
+    } catch (err) {
+      setReleaseMessage(err instanceof Error ? err.message : 'Failed to release results');
+    } finally {
+      setIsReleasing(false);
+    }
+  };
+
   const exportToCSV = () => {
-    const headers = ['Student ID', 'Total Score', 'Max Score', 'Percentage', 'Grade', 'Completed At'];
+    const headers = ['Student ID', 'Name', 'Email', 'Total Score', 'Max Score', 'Percentage', 'Grade', 'Completed At'];
     const rows = filteredResults.map(r => [
       r.studentId,
+      (r as any).name ?? '',
+      (r as any).email ?? '',
       r.totalScore,
       r.maxScore,
       r.percentage,
       r.grade,
       new Date(r.completedAt).toLocaleString(),
     ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(',')),
-    ].join('\n');
-
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(v => `"${v}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -95,16 +126,9 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
   const exportAudioZip = async () => {
     try {
       setIsExporting(true);
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
-
-      // In a real implementation, you would:
-      // 1. Fetch audio URLs for each student
-      // 2. Download each audio file
-      // 3. Add to zip
-      // For now, we'll create a placeholder
-
-      zip.file('README.txt', 'Audio files export - Implementation pending');
-
+      zip.file('README.txt', 'Audio files export — implementation pending');
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -119,21 +143,25 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
     }
   };
 
-  // Calculate statistics
   const resultsArray = Array.isArray(results) ? results : [];
+
   const stats = {
     totalStudents: resultsArray.length,
-    averageScore: resultsArray.length > 0 
+    averageScore: resultsArray.length > 0
       ? Math.round(resultsArray.reduce((sum, r) => sum + r.percentage, 0) / resultsArray.length)
       : 0,
-    completionRate: 100, // All results are complete
+    medianScore: (() => {
+      if (resultsArray.length === 0) return 0;
+      const sorted = [...resultsArray].map(r => r.percentage).sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 !== 0 ? Math.round(sorted[mid]) : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    })(),
     excellentCount: resultsArray.filter(r => r.grade === 'Excellent').length,
     competentCount: resultsArray.filter(r => r.grade === 'Competent').length,
     developingCount: resultsArray.filter(r => r.grade === 'Developing').length,
     unsatisfactoryCount: resultsArray.filter(r => r.grade === 'Unsatisfactory').length,
   };
 
-  // Grade distribution data for pie chart
   const gradeDistributionData = [
     { name: 'Excellent', value: stats.excellentCount, color: '#10b981' },
     { name: 'Competent', value: stats.competentCount, color: '#3b82f6' },
@@ -141,7 +169,6 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
     { name: 'Unsatisfactory', value: stats.unsatisfactoryCount, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
-  // Score distribution data for bar chart
   const scoreRanges = [
     { range: '0-20%', min: 0, max: 20 },
     { range: '21-40%', min: 21, max: 40 },
@@ -152,64 +179,75 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
 
   const scoreDistributionData = scoreRanges.map(range => ({
     range: range.range,
-    count: results.filter(r => r.percentage >= range.min && r.percentage <= range.max).length,
+    count: resultsArray.filter(r => r.percentage >= range.min && r.percentage <= range.max).length,
   }));
 
   const getGradeBadgeColor = (grade: string) => {
-    const colors = {
-      'Excellent': 'bg-green-600 text-white',
-      'Competent': 'bg-blue-600 text-white',
-      'Developing': 'bg-yellow-600 text-white',
-      'Unsatisfactory': 'bg-red-600 text-white',
+    const colors: Record<string, string> = {
+      Excellent: 'bg-green-600 text-white',
+      Competent: 'bg-blue-600 text-white',
+      Developing: 'bg-yellow-600 text-white',
+      Unsatisfactory: 'bg-red-600 text-white',
     };
-    return colors[grade as keyof typeof colors] || 'bg-slate-600 text-slate-200';
+    return colors[grade] || 'bg-slate-600 text-slate-200';
   };
 
   if (results.length === 0) {
     return (
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
-        <svg
-          className="mx-auto h-16 w-16 text-slate-400 mb-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
+        <svg className="mx-auto h-16 w-16 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <h3 className="text-lg font-semibold text-slate-100 mb-2">No Results Available</h3>
-        <p className="text-slate-400">
-          Results will appear here once students complete the assessment and evaluations are processed.
-        </p>
+        <p className="text-slate-400">Results will appear here once students complete the assessment and evaluations are processed.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* Release Results Banner */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-200">Release Results to Students</p>
+          <p className="text-xs text-slate-400">Students will be able to view their scores and feedback after release.</p>
+          {releaseMessage && (
+            <p className="text-xs text-green-400 mt-1">{releaseMessage}</p>
+          )}
+        </div>
+        <button
+          onClick={handleReleaseResults}
+          disabled={isReleasing}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+        >
+          {isReleasing ? 'Releasing…' : 'Release Results'}
+        </button>
+      </div>
+
       {/* Statistics Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <div className="text-sm text-slate-400 mb-2">Average Score</div>
           <div className="text-4xl font-bold text-slate-100">{stats.averageScore}%</div>
         </div>
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-          <div className="text-sm text-slate-400 mb-2">Completion Rate</div>
-          <div className="text-4xl font-bold text-green-400">{stats.completionRate}%</div>
+          <div className="text-sm text-slate-400 mb-2">Median Score</div>
+          <div className="text-4xl font-bold text-slate-100">{stats.medianScore}%</div>
         </div>
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <div className="text-sm text-slate-400 mb-2">Total Students</div>
           <div className="text-4xl font-bold text-slate-100">{stats.totalStudents}</div>
         </div>
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+          <div className="text-sm text-slate-400 mb-2">Excellent Rate</div>
+          <div className="text-4xl font-bold text-green-400">
+            {stats.totalStudents > 0 ? Math.round((stats.excellentCount / stats.totalStudents) * 100) : 0}%
+          </div>
+        </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Grade Distribution Pie Chart */}
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-slate-100 mb-4">Grade Distribution</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -221,7 +259,6 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
                 labelLine={false}
                 label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                 outerRadius={80}
-                fill="#8884d8"
                 dataKey="value"
               >
                 {gradeDistributionData.map((entry, index) => (
@@ -233,7 +270,6 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
           </ResponsiveContainer>
         </div>
 
-        {/* Score Distribution Bar Chart */}
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-slate-100 mb-4">Score Distribution</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -241,10 +277,7 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
               <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
               <XAxis dataKey="range" stroke="#94a3b8" />
               <YAxis stroke="#94a3b8" />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} labelStyle={{ color: '#e2e8f0' }} />
               <Legend wrapperStyle={{ color: '#94a3b8' }} />
               <Bar dataKey="count" fill="#6366f1" name="Students" />
             </BarChart>
@@ -256,7 +289,6 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            {/* Grade Filter */}
             <select
               value={gradeFilter}
               onChange={(e) => setGradeFilter(e.target.value)}
@@ -269,18 +301,16 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
               <option value="Unsatisfactory">Unsatisfactory</option>
             </select>
 
-            {/* Sort By */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'name' | 'score' | 'date')}
               className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             >
               <option value="score">Sort by Score</option>
-              <option value="date">Sort by Date</option>
               <option value="name">Sort by Name</option>
+              <option value="date">Sort by Date</option>
             </select>
 
-            {/* Sort Order */}
             <button
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
               className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 hover:bg-slate-600 transition-colors"
@@ -289,20 +319,19 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
             </button>
           </div>
 
-          {/* Export Buttons */}
           <div className="flex items-center gap-2">
             <button
               onClick={exportToCSV}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
             >
               Export CSV
             </button>
             <button
               onClick={exportAudioZip}
               disabled={isExporting}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {isExporting ? 'Exporting...' : 'Export Audio ZIP'}
+              {isExporting ? 'Exporting…' : 'Export Audio ZIP'}
             </button>
           </div>
         </div>
@@ -314,56 +343,41 @@ export default function ResultsDashboard({ assessmentId }: ResultsDashboardProps
           <table className="w-full">
             <thead className="bg-slate-750">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Student ID
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Score
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Percentage
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Grade
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Completed At
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Student</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Score</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Percentage</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Grade</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Completed At</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700">
               {filteredResults.map((result) => (
                 <tr key={result.studentId} className="hover:bg-slate-750">
-                  <td className="px-4 py-3 text-sm text-slate-200">{result.studentId}</td>
-                  <td className="px-4 py-3 text-sm text-slate-200">
-                    {result.totalScore} / {result.maxScore}
+                  <td className="px-4 py-3">
+                    <div className="text-sm font-medium text-slate-200">{(result as any).name ?? result.studentId}</div>
+                    <div className="text-xs text-slate-400">{(result as any).email ?? ''}</div>
                   </td>
+                  <td className="px-4 py-3 text-sm text-slate-200">{result.totalScore} / {result.maxScore}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center space-x-2">
                       <div className="flex-1 max-w-[100px]">
                         <div className="w-full bg-slate-700 rounded-full h-2">
-                          <div
-                            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${result.percentage}%` }}
-                          />
+                          <div className="bg-primary-600 h-2 rounded-full transition-all duration-300" style={{ width: `${result.percentage}%` }} />
                         </div>
                       </div>
                       <span className="text-sm text-slate-200">{result.percentage}%</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getGradeBadgeColor(result.grade)}`}>
-                      {result.grade}
-                    </span>
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getGradeBadgeColor(result.grade)}`}>{result.grade}</span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-300">
-                    {new Date(result.completedAt).toLocaleString()}
-                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-300">{new Date(result.completedAt).toLocaleString()}</td>
                   <td className="px-4 py-3">
-                    <button className="text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors">
+                    <button
+                      onClick={() => navigate(`/assessments/${assessmentId}/student/${result.studentId}/results`)}
+                      className="text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors"
+                    >
                       View Details
                     </button>
                   </td>

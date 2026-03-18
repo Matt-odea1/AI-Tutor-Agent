@@ -19,6 +19,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [searchQuery, setSearchQuery] = useState('');
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
   // Load initial data
   useEffect(() => {
@@ -133,6 +135,24 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       setIsEvaluating(false);
       setLoading(false);
     }
+  };
+
+  const handleSendReminder = async (studentId: string) => {
+    setSendingReminder(studentId);
+    try {
+      await apiService.sendReminder(assessmentId, studentId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reminder');
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
+  const isInactive = (p: StudentProgress): boolean => {
+    if (p.status === 'completed' || p.status === 'submitted') return false;
+    const startedAt = (p as any).startedAt;
+    if (!startedAt) return false;
+    return Date.now() - new Date(startedAt).getTime() > INACTIVE_THRESHOLD_MS;
   };
 
   const getStatusBadge = (status: string) => {
@@ -322,9 +342,22 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                       {p.startedAt ? new Date(p.startedAt).toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-3">
-                      <button className="text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors">
-                        View Details
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {isInactive(p) && (
+                          <span className="px-2 py-0.5 text-xs bg-orange-900/40 text-orange-400 border border-orange-700 rounded">
+                            Inactive 30m+
+                          </span>
+                        )}
+                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                          <button
+                            onClick={() => handleSendReminder(p.studentId)}
+                            disabled={sendingReminder === p.studentId}
+                            className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
