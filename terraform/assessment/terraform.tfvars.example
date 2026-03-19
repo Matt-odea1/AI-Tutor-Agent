@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and fill in your values
+# (terraform.tfvars is gitignored — never commit real values)
+
+aws_region              = "us-east-1"
+assessment_table_name   = "oral_assessments"
+auth_users_table_name   = "auth_users"
+assessment_files_bucket = "chat9021-assessment-files"
+instructor_app_bucket   = "chat9021-instructor-app"
+student_app_bucket      = "chat9021-student-app"
+ses_domain              = "chat9021.org"
+ec2_role_name           = "ai-tutor-ec2-ssm-role"

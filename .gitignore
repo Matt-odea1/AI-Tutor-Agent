@@ -272,7 +272,7 @@ coverage/
 # ================================
 # Terraform
 # ================================
-terraform/
+# Track .tf and .tfvars.example files; ignore state, secrets, and local cache
 *.tfstate
 *.tfstate.*
 *.tfstate.backup
@@ -284,3 +284,5 @@ terraform/**/terraform.tfstate
 terraform/**/terraform.tfstate.*
 *.tfvars
 *.tfvars.json
+# Allow example files
+!*.tfvars.example

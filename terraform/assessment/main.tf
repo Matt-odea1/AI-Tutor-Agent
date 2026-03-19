@@ -1,0 +1,382 @@
+terraform {
+  required_version = ">= 1.3"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# ─────────────────────────────────────────────────────────────
+# DynamoDB — oral_assessments (single-table for all assessment data)
+#
+# Item types stored here:
+#   ASSESSMENT#<id> / METADATA       — assessment metadata
+#   STUDENT#<id>#ASSESSMENT#<id> / QUESTION#<id>    — per-student questions
+#   STUDENT#<id>#ASSESSMENT#<id> / ANSWER#<id>      — student answers
+#   STUDENT#<id>#ASSESSMENT#<id> / PROGRESS         — submission progress
+#   STUDENT#<id>#ASSESSMENT#<id> / EVALUATION#<id>  — AI evaluation results
+#   STUDENT#<id>#ASSESSMENT#<id> / EVAL_PROGRESS    — live evaluation progress
+#   JOB#<id> / METADATA                             — batch job state (7-day TTL)
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_dynamodb_table" "oral_assessments" {
+  name         = var.assessment_table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+
+  # GSI: look up all assessments created by an instructor
+  attribute {
+    name = "GSI1PK"
+    type = "S" # INSTRUCTOR#<id>
+  }
+
+  attribute {
+    name = "GSI1SK"
+    type = "S" # STATUS#ASSESSMENT#<id>  — allows filtering by status
+  }
+
+  global_secondary_index {
+    name            = "InstructorAssessmentsIndex"
+    hash_key        = "GSI1PK"
+    range_key       = "GSI1SK"
+    projection_type = "ALL"
+  }
+
+  # TTL attribute used by JOB# items (7-day auto-expiry)
+  ttl {
+    enabled        = true
+    attribute_name = "TTL"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = merge(var.tags, {
+    Name = "oral-assessments"
+  })
+}
+
+# ─────────────────────────────────────────────────────────────
+# DynamoDB — auth_users (shared auth table for instructors)
+# Skip if this table already exists in your account.
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_dynamodb_table" "auth_users" {
+  name         = var.auth_users_table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S" # USER#<user_id>
+  }
+
+  attribute {
+    name = "SK"
+    type = "S" # METADATA or SESSION#<token_hash>
+  }
+
+  # GSI: look up user by email
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "EmailIndex"
+    hash_key        = "email"
+    projection_type = "ALL"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = merge(var.tags, {
+    Name = "auth-users"
+  })
+
+  lifecycle {
+    # Prevent accidental deletion of user auth records
+    prevent_destroy = true
+  }
+}
+
+# ─────────────────────────────────────────────────────────────
+# S3 — assessment-files (private; presigned URL access only)
+#
+# Stores: student audio/video recordings, transcripts, evaluation reports
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_s3_bucket" "assessment_files" {
+  bucket = var.assessment_files_bucket
+  tags   = merge(var.tags, { Name = "assessment-files" })
+}
+
+resource "aws_s3_bucket_public_access_block" "assessment_files" {
+  bucket = aws_s3_bucket.assessment_files.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_cors_configuration" "assessment_files" {
+  bucket = aws_s3_bucket.assessment_files.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = var.allowed_cors_origins
+    expose_headers  = ["ETag", "Content-Length"]
+    max_age_seconds = 3600
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "assessment_files" {
+  bucket = aws_s3_bucket.assessment_files.id
+
+  # Move audio/video to Infrequent Access after 30 days, expire after 1 year
+  rule {
+    id     = "archive-old-recordings"
+    status = "Enabled"
+
+    filter {
+      prefix = "recordings/"
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+
+    expiration {
+      days = 365
+    }
+  }
+}
+
+# ─────────────────────────────────────────────────────────────
+# S3 — instructor frontend static site
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_s3_bucket" "instructor_app" {
+  bucket = var.instructor_app_bucket
+  tags   = merge(var.tags, { Name = "instructor-app" })
+}
+
+resource "aws_s3_bucket_website_configuration" "instructor_app" {
+  bucket = aws_s3_bucket.instructor_app.id
+
+  index_document { suffix = "index.html" }
+  error_document { key = "index.html" } # SPA fallback
+}
+
+resource "aws_s3_bucket_public_access_block" "instructor_app" {
+  bucket = aws_s3_bucket.instructor_app.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "instructor_app" {
+  bucket     = aws_s3_bucket.instructor_app.id
+  depends_on = [aws_s3_bucket_public_access_block.instructor_app]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "PublicReadGetObject"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = ["s3:GetObject"]
+      Resource  = ["${aws_s3_bucket.instructor_app.arn}/*"]
+    }]
+  })
+}
+
+# ─────────────────────────────────────────────────────────────
+# S3 — student frontend static site
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_s3_bucket" "student_app" {
+  bucket = var.student_app_bucket
+  tags   = merge(var.tags, { Name = "student-app" })
+}
+
+resource "aws_s3_bucket_website_configuration" "student_app" {
+  bucket = aws_s3_bucket.student_app.id
+
+  index_document { suffix = "index.html" }
+  error_document { key = "index.html" } # SPA fallback
+}
+
+resource "aws_s3_bucket_public_access_block" "student_app" {
+  bucket = aws_s3_bucket.student_app.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "student_app" {
+  bucket     = aws_s3_bucket.student_app.id
+  depends_on = [aws_s3_bucket_public_access_block.student_app]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "PublicReadGetObject"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = ["s3:GetObject"]
+      Resource  = ["${aws_s3_bucket.student_app.arn}/*"]
+    }]
+  })
+}
+
+# ─────────────────────────────────────────────────────────────
+# SES — domain identity for sending assessment invitation emails
+#
+# After apply, add the output DNS records to Cloudflare, then
+# run `terraform apply` again — Terraform will wait for verification.
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_ses_domain_identity" "main" {
+  domain = var.ses_domain
+}
+
+resource "aws_ses_domain_dkim" "main" {
+  domain = aws_ses_domain_identity.main.domain
+}
+
+# Configure mail-from subdomain (improves deliverability + SPF alignment)
+resource "aws_ses_domain_mail_from" "main" {
+  domain           = aws_ses_domain_identity.main.domain
+  mail_from_domain = "mail.${var.ses_domain}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# IAM — extend existing EC2 role with assessment resource access
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_iam_role_policy" "ec2_assessment" {
+  name = "ai-tutor-assessment-access"
+  role = var.ec2_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      # DynamoDB — oral assessments table
+      {
+        Sid    = "OralAssessmentsDynamoDB"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:BatchGetItem",
+          "dynamodb:DescribeTable",
+        ]
+        Resource = [
+          aws_dynamodb_table.oral_assessments.arn,
+          "${aws_dynamodb_table.oral_assessments.arn}/index/*",
+          aws_dynamodb_table.auth_users.arn,
+          "${aws_dynamodb_table.auth_users.arn}/index/*",
+        ]
+      },
+      # S3 — assessment files bucket (presigned URL generation + direct writes)
+      {
+        Sid    = "AssessmentFilesBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetObjectAttributes",
+        ]
+        Resource = [
+          aws_s3_bucket.assessment_files.arn,
+          "${aws_s3_bucket.assessment_files.arn}/*",
+        ]
+      },
+      # SES — send assessment invitation and reminder emails
+      {
+        Sid    = "SESEmail"
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail",
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:*:identity/${var.ses_domain}",
+          "arn:aws:ses:${var.aws_region}:*:identity/mail.${var.ses_domain}",
+        ]
+      },
+      # Bedrock — LLM inference for question generation and response evaluation
+      {
+        Sid    = "BedrockInference"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/*",
+        ]
+      },
+    ]
+  })
+}
+
+# ─────────────────────────────────────────────────────────────
+# CloudWatch — DLQ depth alarm (messages in DLQ = failed jobs)
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_cloudwatch_metric_alarm" "dlq_depth" {
+  alarm_name          = "ai-tutor-jobs-dlq-has-messages"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Evaluation or question-generation job moved to DLQ — check CloudWatch logs"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    QueueName = "ai-tutor-jobs-dlq"
+  }
+
+  tags = var.tags
+}
