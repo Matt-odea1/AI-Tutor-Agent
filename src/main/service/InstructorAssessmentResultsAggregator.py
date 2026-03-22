@@ -149,8 +149,8 @@ class InstructorAssessmentResultsAggregator:
                 "effectiveScore": effective if evaluation else None,
                 "maxScore": q_max,
                 "feedback": evaluation.get("feedback"),
-                "strengths": evaluation.get("strengths"),
-                "improvements": evaluation.get("improvements"),
+                "strengths": " ".join(evaluation["strengths"]) if isinstance(evaluation.get("strengths"), (list, set)) else evaluation.get("strengths"),
+                "improvements": " ".join(evaluation["improvements"]) if isinstance(evaluation.get("improvements"), (list, set)) else evaluation.get("improvements"),
                 "instructorComment": evaluation.get("instructorComment"),
                 "evaluatedAt": evaluation.get("evaluatedAt"),
             })

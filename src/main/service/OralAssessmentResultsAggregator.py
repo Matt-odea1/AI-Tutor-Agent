@@ -82,8 +82,8 @@ class OralAssessmentResultsAggregator:
                     "score": score,
                     "maxScore": q_max_score,
                     "feedback": evaluation.get("feedback"),
-                    "strengths": evaluation.get("strengths"),
-                    "improvements": evaluation.get("improvements"),
+                    "strengths": " ".join(evaluation["strengths"]) if isinstance(evaluation.get("strengths"), (list, set)) else evaluation.get("strengths"),
+                    "improvements": " ".join(evaluation["improvements"]) if isinstance(evaluation.get("improvements"), (list, set)) else evaluation.get("improvements"),
                     "evaluatedAt": evaluation.get("evaluatedAt"),
                 }
             )

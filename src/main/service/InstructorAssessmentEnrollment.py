@@ -32,6 +32,16 @@ class InstructorAssessmentEnrollment:
                         "enrolledAt": enrolled_at,
                     }
                 )
+                # Reverse lookup — required by ensure_student_enrollment
+                batch.put_item(
+                    Item={
+                        "PK": f"STUDENT#{student['studentId']}",
+                        "SK": f"ASSESSMENT#{assessment_id}",
+                        "assessmentId": assessment_id,
+                        "studentId": student["studentId"],
+                        "enrolledAt": enrolled_at,
+                    }
+                )
 
         return {
             "ok": True,
