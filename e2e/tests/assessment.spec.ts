@@ -37,7 +37,7 @@ test.describe('Student assessment critical path', () => {
   test('student can view results after submission', async ({ page }) => {
     // Navigate directly to the results page (post-submission flow)
     await page.goto(
-      `${STUDENT_BASE}/results/${STUDENT_ID}/${ASSESSMENT_ID}`
+      `${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`
     );
 
     // Results page heading
@@ -66,7 +66,7 @@ test.describe('Student assessment critical path', () => {
       }
     );
 
-    await page.goto(`${STUDENT_BASE}/results/${STUDENT_ID}/${ASSESSMENT_ID}`);
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
 
     // Should show the "pending release" state
     await expect(
