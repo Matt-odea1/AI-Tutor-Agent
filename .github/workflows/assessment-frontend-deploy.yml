@@ -39,8 +39,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd oral-assessment-instructor && npm ci
-          cd ../oral-assessment-student && npm ci
+          cd oral-assessment-instructor && npm install
+          cd ../oral-assessment-student && npm install
 
       - name: Build instructor frontend
         working-directory: oral-assessment-instructor
