@@ -83,33 +83,11 @@ resource "aws_dynamodb_table" "oral_assessments" {
 resource "aws_dynamodb_table" "auth_users" {
   name         = var.auth_users_table_name
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "PK"
-  range_key    = "SK"
+  hash_key     = "email"
 
-  attribute {
-    name = "PK"
-    type = "S" # USER#<user_id>
-  }
-
-  attribute {
-    name = "SK"
-    type = "S" # METADATA or SESSION#<token_hash>
-  }
-
-  # GSI: look up user by email
   attribute {
     name = "email"
     type = "S"
-  }
-
-  global_secondary_index {
-    name            = "EmailIndex"
-    hash_key        = "email"
-    projection_type = "ALL"
-  }
-
-  point_in_time_recovery {
-    enabled = true
   }
 
   tags = merge(var.tags, {
@@ -119,6 +97,8 @@ resource "aws_dynamodb_table" "auth_users" {
   lifecycle {
     # Prevent accidental deletion of user auth records
     prevent_destroy = true
+    # Ignore tag drift — tags were added by Terraform but the table predates this module
+    ignore_changes = [tags]
   }
 }
 
