@@ -68,9 +68,9 @@ test.describe('Student assessment critical path', () => {
 
     await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
 
-    // Should show the "pending release" state
+    // Should show the "pending release" heading
     await expect(
-      page.getByText(/pending release|not yet been released/i)
+      page.getByRole('heading', { name: /pending release/i })
     ).toBeVisible({ timeout: 10_000 });
   });
 });
