@@ -1,0 +1,95 @@
+name: Deploy Assessment Frontends
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "oral-assessment-instructor/**"
+      - "oral-assessment-student/**"
+      - "shared/**"
+      - "scripts/deploy-assessment-frontends.sh"
+      - ".github/workflows/assessment-frontend-deploy.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # OIDC: request id-token permission to get a short-lived AWS credential
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL || 'https://api.chat9021.org' }}
+      INSTRUCTOR_BUCKET: ${{ vars.INSTRUCTOR_APP_BUCKET || 'chat9021-instructor-app' }}
+      STUDENT_BUCKET: ${{ vars.STUDENT_APP_BUCKET || 'chat9021-student-app' }}
+      # Assessment S3 buckets are in us-east-1 per terraform/assessment
+      DEPLOY_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd oral-assessment-instructor && npm ci
+          cd ../oral-assessment-student && npm ci
+
+      - name: Build instructor frontend
+        working-directory: oral-assessment-instructor
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
+
+      - name: Build student frontend
+        working-directory: oral-assessment-student
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.DEPLOY_REGION }}
+
+      - name: Deploy instructor to S3
+        run: |
+          # Assets: long-lived cache (content-hashed filenames from Vite)
+          aws s3 sync oral-assessment-instructor/dist/ "s3://${{ env.INSTRUCTOR_BUCKET }}" \
+            --region "${{ env.DEPLOY_REGION }}" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          # index.html: never cache (ensures new deploys take effect immediately)
+          aws s3 cp oral-assessment-instructor/dist/index.html \
+            "s3://${{ env.INSTRUCTOR_BUCKET }}/index.html" \
+            --region "${{ env.DEPLOY_REGION }}" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html"
+
+          echo "Instructor deployed to s3://${{ env.INSTRUCTOR_BUCKET }}"
+
+      - name: Deploy student to S3
+        run: |
+          aws s3 sync oral-assessment-student/dist/ "s3://${{ env.STUDENT_BUCKET }}" \
+            --region "${{ env.DEPLOY_REGION }}" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          aws s3 cp oral-assessment-student/dist/index.html \
+            "s3://${{ env.STUDENT_BUCKET }}/index.html" \
+            --region "${{ env.DEPLOY_REGION }}" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html"
+
+          echo "Student deployed to s3://${{ env.STUDENT_BUCKET }}"
