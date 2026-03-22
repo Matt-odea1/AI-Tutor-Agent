@@ -143,7 +143,7 @@ export function checkBrowserSupport(): {
     missing.push('MediaRecorder API');
   }
 
-  if (!window.AudioContext && !(window as any).webkitAudioContext) {
+  if (!window.AudioContext && !(window as Window & { webkitAudioContext?: unknown }).webkitAudioContext) {
     missing.push('AudioContext API');
   }
 

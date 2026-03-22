@@ -26,7 +26,7 @@ const apiClient = axios.create({
 const handleApiError = (error: AxiosError): never => {
   if (error.response) {
     // Server responded with error
-    const responseData = error.response.data as any;
+    const responseData = error.response.data as { detail?: string };
     const apiError: ApiError = {
       message: responseData?.detail || error.message,
       status: error.response.status,

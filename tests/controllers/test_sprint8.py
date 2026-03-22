@@ -125,16 +125,16 @@ def _make_student_detail(**kwargs):
 
 class TestEffectiveScore:
     def test_returns_instructor_score_when_set(self):
-        assert _effective_score({"score": 5, "instructorScore": 9}) == 9
+        assert _effective_score({"totalScore": 5, "instructorScore": 9}) == 9
 
     def test_returns_ai_score_when_no_override(self):
-        assert _effective_score({"score": 6}) == 6
+        assert _effective_score({"totalScore": 6}) == 6
 
     def test_zero_when_no_scores(self):
         assert _effective_score({}) == 0
 
     def test_instructor_score_zero_is_valid(self):
-        assert _effective_score({"score": 8, "instructorScore": 0}) == 0
+        assert _effective_score({"totalScore": 8, "instructorScore": 0}) == 0
 
 
 # ─────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ class TestGetStudentDetail:
     def test_basic_aggregation(self):
         questions = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "QUESTION#q-1", "text": "What is X?"}]
         answers = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-1", "audioUrl": "s3://b/a.webm", "transcript": "X is Y"}]
-        evaluations = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1", "score": 8, "maxScore": 10, "feedback": "Good"}]
+        evaluations = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1", "totalScore": 8, "maxScore": 10, "feedback": "Good"}]
 
         table = self._make_table(questions=questions, answers=answers, evaluations=evaluations)
         agg = InstructorAssessmentResultsAggregator(table=table, get_students=MagicMock())
@@ -178,7 +178,7 @@ class TestGetStudentDetail:
     def test_instructor_override_used_in_effective_score(self):
         questions = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "QUESTION#q-1", "text": "Q"}]
         answers = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-1"}]
-        evaluations = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1", "score": 4, "instructorScore": 9, "maxScore": 10}]
+        evaluations = [{"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1", "totalScore": 4, "instructorScore": 9, "maxScore": 10}]
 
         table = self._make_table(questions=questions, answers=answers, evaluations=evaluations)
         agg = InstructorAssessmentResultsAggregator(table=table, get_students=MagicMock())

@@ -64,6 +64,7 @@ export default function AudioRecorder({
   useEffect(() => {
     if (recordedBlob) {
       const url = URL.createObjectURL(recordedBlob);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAudioUrl(url);
       return () => URL.revokeObjectURL(url);
     }
