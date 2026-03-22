@@ -79,7 +79,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: oral-assessment-instructor
-        run: npm ci
+        run: |
+          rm -f package-lock.json
+          npm install
 
       - name: Type check
         working-directory: oral-assessment-instructor

@@ -301,7 +301,12 @@ def test_update_question_time_limit_student_forbidden():
 # generate-questions-batch — uses SQS dispatcher
 # ─────────────────────────────────────────────────────────────
 
-def test_generate_questions_batch_enqueues_via_sqs():
+@patch("src.main.controllers.assessment_router.get_batch_job_manager")
+def test_generate_questions_batch_enqueues_via_sqs(mock_get_jm):
+    mock_jm = MagicMock()
+    mock_jm.create_job.return_value = "job-1"
+    mock_get_jm.return_value = mock_jm
+
     dispatcher = MagicMock()
     dispatcher.enqueue_question_generation.return_value = 1
 
@@ -330,7 +335,12 @@ def test_generate_questions_batch_no_students_returns_400():
     assert resp.json()["error"]["code"] == "no_students_to_process"
 
 
-def test_generate_questions_batch_uses_assignment_brief_over_description():
+@patch("src.main.controllers.assessment_router.get_batch_job_manager")
+def test_generate_questions_batch_uses_assignment_brief_over_description(mock_get_jm):
+    mock_jm = MagicMock()
+    mock_jm.create_job.return_value = "job-1"
+    mock_get_jm.return_value = mock_jm
+
     svc = _assessment_svc()
     svc.get_assessment.return_value = {
         **_ASSESSMENT,
