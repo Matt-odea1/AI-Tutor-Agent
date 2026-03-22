@@ -354,6 +354,18 @@ resource "aws_iam_role_policy" "ec2_assessment" {
           "arn:aws:bedrock:${var.aws_region}::foundation-model/*",
         ]
       },
+      # SSM Parameter Store — read app config and secrets at deploy/startup time
+      # (AmazonSSMManagedInstanceCore only grants SSM session access, not GetParameter)
+      {
+        Sid    = "SSMParameterRead"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+        ]
+        Resource = "arn:aws:ssm:*:*:parameter/ai-tutor/*"
+      },
     ]
   })
 }

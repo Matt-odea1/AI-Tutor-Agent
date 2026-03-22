@@ -23,13 +23,18 @@ AWS Services (us-east-1)
 ├── S3: chat9021-student-app       [NEW — student frontend]
 ├── SQS: ai-tutor-jobs             [existing — question gen + evaluation]
 └── SES: chat9021.org identity     [NEW — invitation/reminder emails]
+
+SSM Parameter Store (ap-southeast-2)
+└── /ai-tutor/prod/*    [NEW — all app config and secrets, replaces .env editing]
 ```
 
-All Terraform is automated except SES domain verification and Cloudflare DNS records, which require manual steps.
+All Terraform is automated except SES domain verification and Cloudflare DNS records.
+
+Secrets are managed in **AWS SSM Parameter Store** — no secrets in GitHub, no SSH to update `.env`.
 
 ---
 
-## What Claude has already built (Terraform)
+## What Terraform has already built
 
 `terraform/assessment/` creates:
 - DynamoDB `oral_assessments` — single-table for all assessment data
@@ -38,14 +43,57 @@ All Terraform is automated except SES domain verification and Cloudflare DNS rec
 - S3 `<instructor_app_bucket>` — public static website
 - S3 `<student_app_bucket>` — public static website
 - SES domain identity for `chat9021.org` + DKIM
-- IAM policy on existing EC2 role (`ai-tutor-ec2-ssm-role`) for DynamoDB, S3, SES, Bedrock
+- IAM policy on existing EC2 role (`ai-tutor-ec2-ssm-role`) for DynamoDB, S3, SES, Bedrock, **SSM Parameter Store**
 - CloudWatch alarm if DLQ accumulates failed jobs
+
+`terraform/github-oidc/` creates:
+- GitHub Actions OIDC identity provider — GitHub assumes an IAM role via short-lived tokens, **no stored AWS credentials needed**
+- IAM role `github-actions-AI-Tutor-Agent` with least-privilege deploy permissions
 
 ---
 
 ## Step-by-step deployment
 
-### Phase 1 — Configure and run Terraform (Claude can't do this — needs AWS credentials)
+### Phase 0 — Set up GitHub Actions OIDC (one-time)
+
+This replaces `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in GitHub secrets with a short-lived IAM role assumed via OIDC.
+
+**0.1 Apply the github-oidc Terraform module**
+
+```bash
+cd terraform/github-oidc
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars — set github_org, github_repo, and your S3 bucket names
+terraform init
+terraform apply
+# Note the role_arn output
+```
+
+**0.2 Update GitHub Actions settings**
+
+In GitHub → repo → Settings → Secrets and variables → Actions:
+
+| Action | Detail |
+|--------|--------|
+| Add **Variable** | `AWS_DEPLOY_ROLE_ARN` = `<role_arn from terraform output>` |
+| Delete **Secret** | `AWS_ACCESS_KEY_ID` |
+| Delete **Secret** | `AWS_SECRET_ACCESS_KEY` |
+| Delete **Secret** | `AUTH_JWT_SECRET` (will live in SSM) |
+
+Variables that stay in GitHub (not sensitive, used before AWS auth):
+
+| Variable | Example value |
+|----------|--------------|
+| `AWS_REGION` | `ap-southeast-2` |
+| `EC2_INSTANCE_ID` | `i-0abc123` (optional — falls back to tag lookup) |
+| `FRONTEND_API_BASE_URL` | `https://api.chat9021.org` |
+| `S3_BUCKET` | `chat9021` (ai-tutor-frontend bucket) |
+| `VITE_GOOGLE_CLIENT_ID` | `123....apps.googleusercontent.com` |
+| `VITE_ANALYTICS_ENABLED` | `true` |
+
+---
+
+### Phase 1 — Configure and run assessment Terraform
 
 **1.1 Create your tfvars file**
 
@@ -79,7 +127,7 @@ Expected output includes:
 - `ses_verification_token = "_amazonses TXT record value"`
 - `ses_dkim_tokens = ["token1", "token2", "token3"]`
 
-**Save this output** — you'll need the DNS record values in the next step.
+**Save this output** — you'll need the DNS record values and table/bucket names for the SSM step.
 
 > If the `auth_users` table already exists in your account, import it first:
 > `terraform import aws_dynamodb_table.auth_users auth_users`
@@ -112,41 +160,135 @@ Wait ~5–10 minutes for DNS propagation. SES will auto-verify once it sees the 
 
 ---
 
-### Phase 3 — Update the EC2 `.env` file (human action)
+### Phase 3 — Populate SSM Parameter Store (replaces .env editing)
 
-SSH to the EC2 instance:
+All app config and secrets live in SSM at `/ai-tutor/prod/`. The deploy workflow runs `scripts/load-ssm-env.sh` on each deploy to regenerate `.env` from SSM — **no SSH required** to update secrets.
 
-```bash
-ssh ubuntu@3.27.56.110    # or use SSM: aws ssm start-session --target <instance-id>
-cd /home/ubuntu/app       # or wherever the repo is checked out
-```
-
-Add/update these lines in `.env` (use the `env_block` from `terraform output`):
+Run these once from your local machine (AWS CLI configured with admin access):
 
 ```bash
-# Oral Assessment — add to existing .env
-DYNAMODB_ASSESSMENT_TABLE=oral_assessments
-DYNAMODB_AUTH_USERS_TABLE=auth_users
-S3_ASSESSMENT_BUCKET=chat9021-assessment-files
-INVITE_FROM_EMAIL=assessments@chat9021.org
-ALLOW_ORIGINS=https://app.chat9021.org,https://instructor.chat9021.org,https://student.chat9021.org
-DEEPGRAM_SECRET_KEY=<your-deepgram-api-key>
-LOG_FORMAT=json
+REGION=ap-southeast-2
+SSM=/ai-tutor/prod
+
+# ── Secrets (SecureString) ──────────────────────────────────────────────────
+# These are never stored in GitHub or visible in logs.
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_JWT_SECRET" \
+  --value "$(openssl rand -hex 32)" --type SecureString
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/DEEPGRAM_SECRET_KEY" \
+  --value "dg_..." --type SecureString
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/NEO4J_PASSWORD" \
+  --value "..." --type SecureString
+
+# ── Config derived from Terraform output ────────────────────────────────────
+# Copy values from: cd terraform/assessment && terraform output
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/DYNAMODB_ASSESSMENT_TABLE" --value "oral_assessments" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/S3_ASSESSMENT_BUCKET" --value "chat9021-assessment-files" --type String
+
+# ── Static config ───────────────────────────────────────────────────────────
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AWS_DEFAULT_REGION" --value "us-east-1" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AWS_REGION" --value "us-east-1" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/DYNAMODB_TABLE_NAME" --value "chat_sessions" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/DYNAMODB_REGION" --value "us-east-1" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/DYNAMODB_AUTH_USERS_TABLE" --value "auth_users" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/USE_DYNAMODB" --value "true" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/NEO4J_URI" --value "bolt://3.27.56.110:7687" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/NEO4J_USERNAME" --value "neo4j" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/NEO4J_DATABASE" --value "<your-neo4j-db-id>" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/BEDROCK_MODEL_CHAT" --value "amazon.nova-lite-v1:0" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/BEDROCK_MODEL_EMBED" --value "amazon.titan-embed-text-v2:0" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/BEDROCK_EMBED_DIM" --value "1024" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_JWT_SECRET" --value "..." --type SecureString  # if not done above
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_ACCESS_TOKEN_MINUTES" --value "60" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_PASSWORD_RESET_BASE_URL" \
+  --value "https://app.chat9021.org/?reset=1" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_PASSWORD_RESET_FROM_EMAIL" \
+  --value "noreply@chat9021.org" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_PASSWORD_RESET_TOKEN_MINUTES" --value "30" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/AUTH_PASSWORD_RESET_SES_REGION" --value "us-east-1" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/INVITE_FROM_EMAIL" --value "assessments@chat9021.org" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/ALLOW_ORIGINS" \
+  --value "https://app.chat9021.org,https://instructor.chat9021.org,https://student.chat9021.org" \
+  --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/LOG_FORMAT" --value "json" --type String
+
+aws ssm put-parameter --region $REGION \
+  --name "$SSM/LOG_LEVEL" --value "INFO" --type String
 ```
 
-`DEEPGRAM_SECRET_KEY` is the only secret you need to paste manually — get it from the Deepgram console.
-
-Restart the backend:
-
+**To update a secret later** (no SSH, no redeploy required unless you want it live immediately):
 ```bash
-docker compose pull     # optional: pull latest image if using registry
-docker compose down
-docker compose up -d
-docker compose logs -f api   # confirm "Application startup complete"
+aws ssm put-parameter --region ap-southeast-2 \
+  --name /ai-tutor/prod/DEEPGRAM_SECRET_KEY \
+  --value "new-key" --type SecureString --overwrite
+# Then push any change to main to trigger a deploy that reloads .env,
+# OR SSH to EC2 and run: ./scripts/load-ssm-env.sh && docker compose up -d api
 ```
+
+---
+
+### Phase 4 — First deploy (triggers automatically or run manually)
+
+Push to `main` or trigger `Deploy Backend` in GitHub Actions. The workflow will:
+1. Authenticate via OIDC (no stored credentials)
+2. Send SSM Run Command to EC2 that:
+   - Pulls latest code
+   - Runs `scripts/load-ssm-env.sh` → regenerates `.env` from SSM
+   - Rebuilds and restarts the Docker container
+   - Runs health checks
 
 Verify health:
-
 ```bash
 curl https://api.chat9021.org/health
 # Expected: {"status": "ok", ...}
@@ -154,7 +296,7 @@ curl https://api.chat9021.org/health
 
 ---
 
-### Phase 4 — Deploy frontends to S3 (human action)
+### Phase 5 — Deploy frontends to S3 (human action)
 
 From your local machine:
 
@@ -179,7 +321,7 @@ curl -I https://student.chat9021.org
 
 ---
 
-### Phase 5 — Exit SES sandbox (human action, AWS takes 24–48 hours)
+### Phase 6 — Exit SES sandbox (human action, AWS takes 24–48 hours)
 
 By default SES can only send to verified email addresses. To send to any email:
 
@@ -197,7 +339,7 @@ aws ses verify-email-identity --email-address student@example.com --region us-ea
 
 ---
 
-### Phase 6 — Smoke test (human action)
+### Phase 7 — Smoke test (human action)
 
 Once all phases complete, run through:
 
@@ -219,11 +361,13 @@ Once all phases complete, run through:
 |-------|-----|
 | S3 website returns `403 NoSuchBucket` | Bucket name must exactly match what's in tfvars |
 | Cloudflare shows "Error 1001" | CNAME target typo — re-check S3 website endpoint spelling |
-| SES `MessageRejected: Email address not verified` | Still in sandbox — verify recipient email or complete Phase 5 |
-| `CORS error` on audio upload | Check `allowed_cors_origins` in tfvars matches your exact domain (no trailing slash) |
+| SES `MessageRejected: Email address not verified` | Still in sandbox — verify recipient email or complete Phase 6 |
+| `CORS error` on audio upload | Check `ALLOW_ORIGINS` SSM parameter matches your exact domain (no trailing slash) |
 | DLQ CloudWatch alarm fires | Check `/ai-tutor/api` CloudWatch log group for evaluation errors; re-trigger batch |
-| Deepgram transcription fails | Verify `DEEPGRAM_SECRET_KEY` is set; check Deepgram console for quota |
-| `DYNAMODB_ASSESSMENT_TABLE not found` | Terraform didn't apply yet, or env var not set on EC2 |
+| Deepgram transcription fails | Verify `DEEPGRAM_SECRET_KEY` in SSM; check Deepgram console for quota |
+| `DYNAMODB_ASSESSMENT_TABLE not found` | SSM parameter missing or `load-ssm-env.sh` not run; check with `cat .env` on EC2 |
+| Deploy workflow fails: `sha_mismatch` | EC2 couldn't reach GitHub — check security group egress or git remote URL |
+| Deploy workflow fails: `AWS_DEPLOY_ROLE_ARN` empty | Add `AWS_DEPLOY_ROLE_ARN` as a GitHub Actions **Variable** (not secret) |
 
 ---
 
@@ -231,11 +375,17 @@ Once all phases complete, run through:
 
 **Backend code changes:**
 ```bash
-# On EC2:
-cd /home/ubuntu/app
-git pull
-docker compose build api
-docker compose up -d api
+# Push to main — GitHub Actions deploys automatically.
+# load-ssm-env.sh runs as part of each deploy, so .env is always fresh.
+```
+
+**Update a secret without code change:**
+```bash
+aws ssm put-parameter --region ap-southeast-2 \
+  --name /ai-tutor/prod/AUTH_JWT_SECRET \
+  --value "new-secret" --type SecureString --overwrite
+# Then trigger Deploy Backend manually in GitHub Actions, or:
+# SSH to EC2: ./scripts/load-ssm-env.sh && docker compose up -d api
 ```
 
 **Frontend changes:**

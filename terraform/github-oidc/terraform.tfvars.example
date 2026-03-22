@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars and fill in your values
+# (terraform.tfvars is gitignored — never commit real values)
+
+github_org  = "your-github-org"
+github_repo = "AI-Tutor-Agent"
+
+# ec2_region defaults to ap-southeast-2 — only change if EC2 moved
+# ec2_region = "ap-southeast-2"
+
+# All S3 buckets that GitHub Actions deploys frontends to.
+# "chat9021" is the existing ai-tutor-frontend bucket (check vars.S3_BUCKET in GitHub).
+frontend_s3_buckets = [
+  "chat9021",                   # ai-tutor-frontend (existing — verify bucket name)
+  "chat9021-instructor-app",    # oral-assessment-instructor
+  "chat9021-student-app",       # oral-assessment-student
+]
