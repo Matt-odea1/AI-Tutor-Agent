@@ -74,7 +74,7 @@ export default function QuestionEditor() {
       ]);
       setAssessment(asmtResp);
       setQuestions(qResp.questions || []);
-      const student = (studentsResp.students || []).find((s: any) => s.id === studentId);
+      const student = (studentsResp || []).find((s: any) => s.id === studentId);
       setStudentName(student?.name || studentId || '');
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || 'Failed to load questions');

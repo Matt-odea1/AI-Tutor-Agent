@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
-import type { AssessmentResults, EvaluationJob } from '../../../shared/types/assessment';
+import type { AssessmentResults } from '../../../shared/types/assessment';
 
 interface ResultsDashboardProps {
   assessmentId: string;
