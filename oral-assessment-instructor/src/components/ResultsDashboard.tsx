@@ -78,8 +78,8 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
         comparison = new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime();
       } else {
         // name sort — names are present in StudentResultItem
-        const aName = (a as any).name ?? a.studentId;
-        const bName = (b as any).name ?? b.studentId;
+        const aName = a.name ?? a.studentId;
+        const bName = b.name ?? b.studentId;
         comparison = aName.localeCompare(bName);
       }
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -105,8 +105,8 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     const headers = ['Student ID', 'Name', 'Email', 'Total Score', 'Max Score', 'Percentage', 'Grade', 'Completed At'];
     const rows = filteredResults.map(r => [
       r.studentId,
-      (r as any).name ?? '',
-      (r as any).email ?? '',
+      r.name ?? '',
+      r.email ?? '',
       r.totalScore,
       r.maxScore,
       r.percentage,
@@ -355,8 +355,8 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
               {filteredResults.map((result) => (
                 <tr key={result.studentId} className="hover:bg-slate-750">
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-slate-200">{(result as any).name ?? result.studentId}</div>
-                    <div className="text-xs text-slate-400">{(result as any).email ?? ''}</div>
+                    <div className="text-sm font-medium text-slate-200">{result.name ?? result.studentId}</div>
+                    <div className="text-xs text-slate-400">{result.email ?? ''}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-200">{result.totalScore} / {result.maxScore}</td>
                   <td className="px-4 py-3">

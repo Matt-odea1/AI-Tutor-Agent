@@ -196,6 +196,7 @@ class ApiService {
 
   // Sprint 8: Results Dashboards
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getStudentDetail(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.get(
       `/api/assessment/${assessmentId}/student/${studentId}/results`
@@ -203,13 +204,8 @@ class ApiService {
     return response.data;
   }
 
-  async overrideScore(
-    assessmentId: string,
-    studentId: string,
-    questionId: string,
-    score: number,
-    comment?: string
-  ): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async overrideScore(assessmentId: string, studentId: string, questionId: string, score: number, comment?: string): Promise<any> {
     const response = await this.client.put(
       `/api/assessment/${assessmentId}/student/${studentId}/question/${questionId}/override`,
       { score, comment }
@@ -217,6 +213,7 @@ class ApiService {
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async releaseResults(assessmentId: string): Promise<any> {
     const response = await this.client.put(
       `/api/assessment/${assessmentId}/release-results`
@@ -224,6 +221,7 @@ class ApiService {
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async sendReminder(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.post(
       `/api/assessment/${assessmentId}/student/${studentId}/remind`
@@ -244,6 +242,7 @@ class ApiService {
   }
 
   // EPIC-3-3: Question preview and editing
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async listStudentQuestions(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.get(
       `/api/assessment/${assessmentId}/students/${studentId}/questions`
@@ -251,13 +250,8 @@ class ApiService {
     return response.data;
   }
 
-  async updateStudentQuestion(
-    assessmentId: string,
-    studentId: string,
-    questionId: string,
-    text: string,
-    timeLimit?: number | null
-  ): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async updateStudentQuestion(assessmentId: string, studentId: string, questionId: string, text: string, timeLimit?: number | null): Promise<any> {
     const response = await this.client.put(
       `/api/assessment/${assessmentId}/students/${studentId}/questions/${questionId}`,
       { text, timeLimit }
@@ -265,22 +259,16 @@ class ApiService {
     return response.data;
   }
 
-  async deleteStudentQuestion(
-    assessmentId: string,
-    studentId: string,
-    questionId: string
-  ): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async deleteStudentQuestion(assessmentId: string, studentId: string, questionId: string): Promise<any> {
     const response = await this.client.delete(
       `/api/assessment/${assessmentId}/students/${studentId}/questions/${questionId}`
     );
     return response.data;
   }
 
-  async addStudentQuestion(
-    assessmentId: string,
-    studentId: string,
-    data: { text: string; questionType?: string; difficulty?: string; topic?: string; timeLimit?: number | null }
-  ): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async addStudentQuestion(assessmentId: string, studentId: string, data: { text: string; questionType?: string; difficulty?: string; topic?: string; timeLimit?: number | null }): Promise<any> {
     const response = await this.client.post(
       `/api/assessment/${assessmentId}/students/${studentId}/questions`,
       data

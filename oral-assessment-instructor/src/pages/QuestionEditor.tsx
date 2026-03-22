@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 
+type AxiosLike = { response?: { data?: { detail?: string } }; message?: string };
+const errMsg = (e: unknown, fallback: string) =>
+  ((e as AxiosLike)?.response?.data?.detail) || ((e as AxiosLike)?.message) || fallback;
+
 interface StudentQuestion {
   id: string;
   text: string;
@@ -35,7 +39,7 @@ export default function QuestionEditor() {
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
-  const [assessment, setAssessment] = useState<any>(null);
+  const [assessment, setAssessment] = useState<{ status: string } | null>(null);
   const [studentName, setStudentName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +78,10 @@ export default function QuestionEditor() {
       ]);
       setAssessment(asmtResp);
       setQuestions(qResp.questions || []);
-      const student = (studentsResp || []).find((s: any) => s.id === studentId);
+      const student = (studentsResp || []).find((s) => s.studentId === studentId);
       setStudentName(student?.name || studentId || '');
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Failed to load questions');
+    } catch (e: unknown) {
+      setError(errMsg(e, 'Failed to load questions'));
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +117,8 @@ export default function QuestionEditor() {
         prev.map((q) => (q.id === questionId ? resp.question : q))
       );
       setEditingId(null);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Failed to save');
+    } catch (e: unknown) {
+      setError(errMsg(e, 'Failed to save'));
     } finally {
       setSaving(false);
     }
@@ -127,8 +131,8 @@ export default function QuestionEditor() {
     try {
       await apiService.deleteStudentQuestion(assessmentId!, studentId!, questionId);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Failed to delete');
+    } catch (e: unknown) {
+      setError(errMsg(e, 'Failed to delete'));
     } finally {
       setDeletingId(null);
     }
@@ -153,8 +157,8 @@ export default function QuestionEditor() {
       setQuestions((prev) => [...prev, resp.question]);
       setAddForm({ text: '', questionType: 'manual', difficulty: 'medium', topic: 'general', timeLimit: '' });
       setShowAddForm(false);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Failed to add question');
+    } catch (e: unknown) {
+      setError(errMsg(e, 'Failed to add question'));
     } finally {
       setAdding(false);
     }

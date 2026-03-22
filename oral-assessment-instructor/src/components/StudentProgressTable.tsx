@@ -186,7 +186,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
 
   const isInactive = (p: StudentProgress): boolean => {
     if (p.status === 'completed' || p.status === 'submitted') return false;
-    const startedAt = (p as any).startedAt;
+    const startedAt = p.startedAt;
     if (!startedAt) return false;
     return Date.now() - new Date(startedAt).getTime() > INACTIVE_THRESHOLD_MS;
   };

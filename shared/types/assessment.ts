@@ -61,13 +61,15 @@ export interface StudentProgress {
   totalQuestions: number;
   currentQuestion?: number;
   status: 'not-started' | 'in-progress' | 'completed' | 'submitted';
-  startedAt?: Date;
-  submittedAt?: Date;
+  startedAt?: string | Date;
+  submittedAt?: string | Date;
 }
 
 export interface AssessmentResults {
   studentId: string;
   assessmentId: string;
+  name?: string;
+  email?: string;
   totalScore: number;
   maxScore: number;
   percentage: number;
