@@ -346,8 +346,51 @@ resource "aws_iam_role_policy" "ec2_assessment" {
         ]
         Resource = "arn:aws:ssm:*:*:parameter/ai-tutor/*"
       },
+      # SQS — send and receive job messages for async evaluation/question generation
+      {
+        Sid    = "SQSJobQueues"
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+        ]
+        Resource = [
+          aws_sqs_queue.jobs.arn,
+          aws_sqs_queue.jobs_dlq.arn,
+        ]
+      },
     ]
   })
+}
+
+# ─────────────────────────────────────────────────────────────
+# SQS — job queues for async evaluation and question generation
+#
+# Workers (running on EC2) poll ai-tutor-jobs; messages that
+# fail maxReceiveCount times move to the DLQ for alerting.
+# ─────────────────────────────────────────────────────────────
+
+resource "aws_sqs_queue" "jobs_dlq" {
+  name                      = "ai-tutor-jobs-dlq"
+  message_retention_seconds = 1209600 # 14 days
+
+  tags = merge(var.tags, { Name = "ai-tutor-jobs-dlq" })
+}
+
+resource "aws_sqs_queue" "jobs" {
+  name                       = "ai-tutor-jobs"
+  visibility_timeout_seconds = 300 # 5 min — matches max evaluation runtime
+  message_retention_seconds  = 86400 # 1 day
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.jobs_dlq.arn
+    maxReceiveCount     = 3
+  })
+
+  tags = merge(var.tags, { Name = "ai-tutor-jobs" })
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -367,7 +410,7 @@ resource "aws_cloudwatch_metric_alarm" "dlq_depth" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    QueueName = "ai-tutor-jobs-dlq"
+    QueueName = aws_sqs_queue.jobs_dlq.name
   }
 
   tags = var.tags

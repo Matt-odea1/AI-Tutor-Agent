@@ -225,6 +225,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# MCP server config (may contain API tokens)
+.mcp.json
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
