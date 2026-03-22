@@ -4,174 +4,237 @@
 
 ```
 Cloudflare DNS
-├── app.chat9021.org          → S3 (ai-tutor-frontend)     [existing]
-├── api.chat9021.org          → EC2 :443 → Nginx → :8000   [existing]
-├── instructor.chat9021.org   → S3 (oral-assessment-instructor)  [NEW]
-└── student.chat9021.org      → S3 (oral-assessment-student)     [NEW]
+├── app.chat9021.org          → S3 (ai-tutor-frontend)              [existing]
+├── api.chat9021.org          → EC2 :443 → Nginx → :8000            [existing]
+├── instructor.chat9021.org   → S3 (chat9021-instructor-app)         [NEW]
+└── student.chat9021.org      → S3 (chat9021-student-app)            [NEW]
 
 EC2 (t4g.small, ap-southeast-2)
 └── Docker
-    ├── FastAPI :8000   ← serves ALL routes for all three apps
+    ├── FastAPI :8000   ← serves ALL routes for all apps
     └── Neo4j :7687     ← RAG vector store (ai-tutor only)
 
 AWS Services (us-east-1)
-├── DynamoDB: oral_assessments  [NEW — assessment data, jobs, results]
-├── DynamoDB: auth_users        [NEW — instructor auth]
-├── DynamoDB: chat_sessions     [existing — AI tutor chat]
-├── S3: chat9021-assessment-files  [NEW — audio/video uploads, private]
-├── S3: chat9021-instructor-app    [NEW — instructor frontend]
-├── S3: chat9021-student-app       [NEW — student frontend]
-├── SQS: ai-tutor-jobs             [existing — question gen + evaluation]
-└── SES: chat9021.org identity     [NEW — invitation/reminder emails]
+├── DynamoDB: oral_assessments      [NEW — assessment data, jobs, results]
+├── DynamoDB: auth_users            [NEW — instructor auth]
+├── DynamoDB: chat_sessions         [existing — AI tutor chat]
+├── S3: chat9021-assessment-files   [NEW — audio/video uploads, private]
+├── S3: chat9021-instructor-app     [NEW — instructor frontend static site]
+├── S3: chat9021-student-app        [NEW — student frontend static site]
+├── SQS: ai-tutor-jobs              [existing — question gen + evaluation]
+└── SES: chat9021.org identity      [NEW — invitation/reminder emails]
 
 SSM Parameter Store (ap-southeast-2)
-└── /ai-tutor/prod/*    [NEW — all app config and secrets, replaces .env editing]
+└── /ai-tutor/prod/*    [NEW — all app config and secrets; replaces .env editing]
 ```
 
-All Terraform is automated except SES domain verification and Cloudflare DNS records.
+**What's automated:**
+- All AWS infrastructure via Terraform
+- All deployments via GitHub Actions (push to `main` triggers backend + frontend workflows)
+- Secret management via SSM — update a secret with one CLI command, no SSH
 
-Secrets are managed in **AWS SSM Parameter Store** — no secrets in GitHub, no SSH to update `.env`.
+**What requires manual steps:**
+- SES domain verification in Cloudflare DNS (tokens come from Terraform output)
+- Populating SSM parameters (one-time setup)
+- SES sandbox exit request to AWS
 
 ---
 
-## What Terraform has already built
+## Terraform modules
 
-`terraform/assessment/` creates:
-- DynamoDB `oral_assessments` — single-table for all assessment data
-- DynamoDB `auth_users` — instructor auth records
-- S3 `<assessment_files_bucket>` — private, CORS-enabled for presigned URLs
-- S3 `<instructor_app_bucket>` — public static website
-- S3 `<student_app_bucket>` — public static website
-- SES domain identity for `chat9021.org` + DKIM
-- IAM policy on existing EC2 role (`ai-tutor-ec2-ssm-role`) for DynamoDB, S3, SES, Bedrock, **SSM Parameter Store**
-- CloudWatch alarm if DLQ accumulates failed jobs
+### `terraform/github-oidc/`
+- GitHub Actions OIDC identity provider — replaces long-lived `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` with short-lived role credentials
+- IAM role `github-actions-AI-Tutor-Agent` scoped to: SSM SendCommand to EC2, S3 sync to frontend buckets, CloudFront invalidation
 
-`terraform/github-oidc/` creates:
-- GitHub Actions OIDC identity provider — GitHub assumes an IAM role via short-lived tokens, **no stored AWS credentials needed**
-- IAM role `github-actions-AI-Tutor-Agent` with least-privilege deploy permissions
+### `terraform/assessment/`
+- DynamoDB `oral_assessments` + `auth_users`
+- S3 `chat9021-assessment-files` (private, presigned URL access)
+- S3 `chat9021-instructor-app` + `chat9021-student-app` (public static websites)
+- SES domain identity + DKIM for `chat9021.org`
+- IAM inline policy on `ai-tutor-ec2-ssm-role`: DynamoDB, S3, SES, Bedrock, SSM Parameter Store read
+- CloudWatch alarm on DLQ depth
+
+---
+
+## GitHub Actions workflows
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| `ci.yml` | PR + push to main | pytest, type-check, lint, Vitest, Playwright |
+| `backend-deploy.yml` | push to main (`src/**`, `app.py`, etc.) | OIDC → SSM Run Command → EC2: git pull + load-ssm-env.sh + docker restart |
+| `frontend-deploy.yml` | push to main (`ai-tutor-frontend/**`) | OIDC → build → S3 sync → CloudFront invalidation |
+| `assessment-frontend-deploy.yml` | push to main (`oral-assessment-instructor/**`, `oral-assessment-student/**`, `shared/**`) | OIDC → build both → S3 sync (no CloudFront — Cloudflare handles HTTPS) |
+
+---
+
+## GitHub Actions settings reference
+
+After completing Phase 0, your GitHub Actions configuration should look exactly like this.
+
+### Secrets
+
+| Secret | Status |
+|--------|--------|
+| `AWS_ACCESS_KEY_ID` | **DELETE** — replaced by OIDC |
+| `AWS_SECRET_ACCESS_KEY` | **DELETE** — replaced by OIDC |
+| `AUTH_JWT_SECRET` | **DELETE** — now in SSM |
+
+No secrets remain after migration.
+
+### Variables
+
+| Variable | Action | Value | Used by |
+|----------|--------|-------|---------|
+| `AWS_DEPLOY_ROLE_ARN` | **ADD** | from `terraform/github-oidc` output | all deploy workflows |
+| `INSTRUCTOR_APP_BUCKET` | **ADD** | `chat9021-instructor-app` | assessment-frontend-deploy |
+| `STUDENT_APP_BUCKET` | **ADD** | `chat9021-student-app` | assessment-frontend-deploy |
+| `AWS_REGION` | keep | `ap-southeast-2` | backend-deploy (EC2 region), frontend-deploy |
+| `EC2_INSTANCE_ID` | keep | `i-0abc...` | backend-deploy (optional — falls back to tag lookup) |
+| `S3_BUCKET` | keep | `chat9021` (verify your bucket name) | frontend-deploy (ai-tutor-frontend) |
+| `FRONTEND_API_BASE_URL` | keep | `https://api.chat9021.org` | all three frontend builds |
+| `VITE_GOOGLE_CLIENT_ID` | keep | `123...apps.googleusercontent.com` | ai-tutor-frontend build |
+| `VITE_ANALYTICS_ENABLED` | keep | `true` | ai-tutor-frontend build |
+| `AUTH_PASSWORD_RESET_BASE_URL` | **DELETE** | — | moved to SSM |
+| `AUTH_PASSWORD_RESET_FROM_EMAIL` | **DELETE** | — | moved to SSM |
+| `AUTH_PASSWORD_RESET_TOKEN_MINUTES` | **DELETE** | — | moved to SSM |
+| `AUTH_PASSWORD_RESET_SES_REGION` | **DELETE** | — | moved to SSM |
+
+> **Why these variables stay in GitHub and don't move to SSM:** They're needed before AWS authentication happens in the workflow (to configure which role to assume, which bucket to deploy to, or to bake values into the frontend JS bundle at build time). SSM can only be read after authenticating.
 
 ---
 
 ## Step-by-step deployment
 
-### Phase 0 — Set up GitHub Actions OIDC (one-time)
+### Phase 0 — GitHub Actions OIDC setup (one-time)
 
-This replaces `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in GitHub secrets with a short-lived IAM role assumed via OIDC.
-
-**0.1 Apply the github-oidc Terraform module**
+**0.1 Apply `terraform/github-oidc`**
 
 ```bash
 cd terraform/github-oidc
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — set github_org, github_repo, and your S3 bucket names
-terraform init
-terraform apply
-# Note the role_arn output
 ```
 
-**0.2 Update GitHub Actions settings**
+Edit `terraform.tfvars`:
+```hcl
+github_org  = "your-org"
+github_repo = "AI-Tutor-Agent"
 
-In GitHub → repo → Settings → Secrets and variables → Actions:
+frontend_s3_buckets = [
+  "chat9021",                 # ai-tutor-frontend (verify this is the right bucket name)
+  "chat9021-instructor-app",
+  "chat9021-student-app",
+]
+```
 
-| Action | Detail |
-|--------|--------|
-| Add **Variable** | `AWS_DEPLOY_ROLE_ARN` = `<role_arn from terraform output>` |
-| Delete **Secret** | `AWS_ACCESS_KEY_ID` |
-| Delete **Secret** | `AWS_SECRET_ACCESS_KEY` |
-| Delete **Secret** | `AUTH_JWT_SECRET` (will live in SSM) |
+```bash
+terraform init
+terraform apply
+# Copy the role_arn output — you'll need it in the next step
+```
 
-Variables that stay in GitHub (not sensitive, used before AWS auth):
+**0.2 Update GitHub Actions → Settings → Secrets and variables → Actions**
 
-| Variable | Example value |
-|----------|--------------|
+**Secrets tab — delete all three:**
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AUTH_JWT_SECRET`
+
+**Variables tab — add three new:**
+- `AWS_DEPLOY_ROLE_ARN` = `<role_arn from terraform output>`
+- `INSTRUCTOR_APP_BUCKET` = `chat9021-instructor-app`
+- `STUDENT_APP_BUCKET` = `chat9021-student-app`
+
+**Variables tab — delete four that moved to SSM:**
+- `AUTH_PASSWORD_RESET_BASE_URL`
+- `AUTH_PASSWORD_RESET_FROM_EMAIL`
+- `AUTH_PASSWORD_RESET_TOKEN_MINUTES`
+- `AUTH_PASSWORD_RESET_SES_REGION`
+
+**Variables tab — verify these exist with correct values:**
+
+| Variable | Expected value |
+|----------|---------------|
 | `AWS_REGION` | `ap-southeast-2` |
-| `EC2_INSTANCE_ID` | `i-0abc123` (optional — falls back to tag lookup) |
 | `FRONTEND_API_BASE_URL` | `https://api.chat9021.org` |
-| `S3_BUCKET` | `chat9021` (ai-tutor-frontend bucket) |
-| `VITE_GOOGLE_CLIENT_ID` | `123....apps.googleusercontent.com` |
+| `S3_BUCKET` | your ai-tutor-frontend bucket name |
+| `VITE_GOOGLE_CLIENT_ID` | your Google OAuth client ID |
 | `VITE_ANALYTICS_ENABLED` | `true` |
+| `EC2_INSTANCE_ID` | your EC2 instance ID (optional) |
 
 ---
 
-### Phase 1 — Configure and run assessment Terraform
-
-**1.1 Create your tfvars file**
+### Phase 1 — Apply `terraform/assessment`
 
 ```bash
 cd terraform/assessment
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — fill in bucket names (must be globally unique)
 ```
 
-Suggested values:
+Edit `terraform.tfvars` (bucket names must be globally unique in S3):
 ```hcl
 assessment_files_bucket = "chat9021-assessment-files"
 instructor_app_bucket   = "chat9021-instructor-app"
 student_app_bucket      = "chat9021-student-app"
 ```
 
-**1.2 Apply**
-
 ```bash
-cd terraform/assessment
 terraform init
-terraform plan   # review — should show ~12 resources to create
+terraform plan   # ~12 resources to create
 terraform apply
 ```
 
-Expected output includes:
-- `assessment_table_name = "oral_assessments"`
-- `assessment_files_bucket = "chat9021-assessment-files"`
-- `instructor_app_website_endpoint = "chat9021-instructor-app.s3-website-us-east-1.amazonaws.com"`
-- `student_app_website_endpoint = "chat9021-student-app.s3-website-us-east-1.amazonaws.com"`
-- `ses_verification_token = "_amazonses TXT record value"`
-- `ses_dkim_tokens = ["token1", "token2", "token3"]`
+**Save the full output** — you'll need these values in Phase 3:
 
-**Save this output** — you'll need the DNS record values and table/bucket names for the SSM step.
+| Output | Example value | Used for |
+|--------|--------------|---------|
+| `assessment_table_name` | `oral_assessments` | SSM param |
+| `assessment_files_bucket` | `chat9021-assessment-files` | SSM param |
+| `instructor_app_website_endpoint` | `chat9021-instructor-app.s3-website-us-east-1.amazonaws.com` | Cloudflare CNAME |
+| `student_app_website_endpoint` | `chat9021-student-app.s3-website-us-east-1.amazonaws.com` | Cloudflare CNAME |
+| `ses_verification_token` | `abc123...` | Cloudflare TXT record |
+| `ses_dkim_tokens` | `["tok1", "tok2", "tok3"]` | Cloudflare CNAME × 3 |
 
-> If the `auth_users` table already exists in your account, import it first:
-> `terraform import aws_dynamodb_table.auth_users auth_users`
-
----
-
-### Phase 2 — Add DNS records to Cloudflare (human action)
-
-In Cloudflare → DNS for `chat9021.org`, add the following records:
-
-**Instructor and Student frontends** (Cloudflare handles HTTPS):
-
-| Type  | Name                      | Content                                                  | Proxy  |
-|-------|---------------------------|----------------------------------------------------------|--------|
-| CNAME | `instructor`              | `chat9021-instructor-app.s3-website-us-east-1.amazonaws.com` | Proxied |
-| CNAME | `student`                 | `chat9021-student-app.s3-website-us-east-1.amazonaws.com`    | Proxied |
-
-**SES domain verification** (so SES can send from `@chat9021.org`):
-
-| Type  | Name                            | Content                              |
-|-------|---------------------------------|--------------------------------------|
-| TXT   | `_amazonses.chat9021.org`       | `<ses_verification_token from output>` |
-| CNAME | `<token1>._domainkey`           | `<token1>.dkim.amazonses.com`        |
-| CNAME | `<token2>._domainkey`           | `<token2>.dkim.amazonses.com`        |
-| CNAME | `<token3>._domainkey`           | `<token3>.dkim.amazonses.com`        |
-| MX    | `mail`                          | `feedback-smtp.us-east-1.amazonses.com` (priority 10) |
-| TXT   | `mail`                          | `v=spf1 include:amazonses.com ~all` |
-
-Wait ~5–10 minutes for DNS propagation. SES will auto-verify once it sees the TXT records.
+> If `auth_users` table already exists: `terraform import aws_dynamodb_table.auth_users auth_users`
 
 ---
 
-### Phase 3 — Populate SSM Parameter Store (replaces .env editing)
+### Phase 2 — Add DNS records to Cloudflare
 
-All app config and secrets live in SSM at `/ai-tutor/prod/`. The deploy workflow runs `scripts/load-ssm-env.sh` on each deploy to regenerate `.env` from SSM — **no SSH required** to update secrets.
+In Cloudflare → `chat9021.org` → DNS:
 
-Run these once from your local machine (AWS CLI configured with admin access):
+**Instructor and Student frontends** (Cloudflare proxied = HTTPS termination at Cloudflare, HTTP to S3):
+
+| Type | Name | Content | Proxy |
+|------|------|---------|-------|
+| CNAME | `instructor` | `<instructor_app_website_endpoint from output>` | Proxied (orange) |
+| CNAME | `student` | `<student_app_website_endpoint from output>` | Proxied (orange) |
+
+**SES domain verification** (enables sending from `@chat9021.org`):
+
+| Type | Name | Content |
+|------|------|---------|
+| TXT | `_amazonses` | `<ses_verification_token from output>` |
+| CNAME | `<tok1>._domainkey` | `<tok1>.dkim.amazonses.com` |
+| CNAME | `<tok2>._domainkey` | `<tok2>.dkim.amazonses.com` |
+| CNAME | `<tok3>._domainkey` | `<tok3>.dkim.amazonses.com` |
+| MX | `mail` | `feedback-smtp.us-east-1.amazonses.com` (priority 10) |
+| TXT | `mail` | `v=spf1 include:amazonses.com ~all` |
+
+Wait ~5–10 minutes. SES auto-verifies once it sees the TXT record.
+
+---
+
+### Phase 3 — Populate SSM Parameter Store
+
+All backend env vars live here. The deploy workflow regenerates `.env` from SSM on every deploy — **no SSH, no `.env` editing ever again**.
+
+Run once from your local machine (AWS CLI configured with admin credentials):
 
 ```bash
 REGION=ap-southeast-2
 SSM=/ai-tutor/prod
 
-# ── Secrets (SecureString) ──────────────────────────────────────────────────
-# These are never stored in GitHub or visible in logs.
+# ── Secrets — never stored in GitHub or visible in logs ─────────────────────
 
 aws ssm put-parameter --region $REGION \
   --name "$SSM/AUTH_JWT_SECRET" \
@@ -179,14 +242,13 @@ aws ssm put-parameter --region $REGION \
 
 aws ssm put-parameter --region $REGION \
   --name "$SSM/DEEPGRAM_SECRET_KEY" \
-  --value "dg_..." --type SecureString
+  --value "dg_..." --type SecureString          # from Deepgram console
 
 aws ssm put-parameter --region $REGION \
   --name "$SSM/NEO4J_PASSWORD" \
   --value "..." --type SecureString
 
-# ── Config derived from Terraform output ────────────────────────────────────
-# Copy values from: cd terraform/assessment && terraform output
+# ── Derived from terraform/assessment output ────────────────────────────────
 
 aws ssm put-parameter --region $REGION \
   --name "$SSM/DYNAMODB_ASSESSMENT_TABLE" --value "oral_assessments" --type String
@@ -194,7 +256,7 @@ aws ssm put-parameter --region $REGION \
 aws ssm put-parameter --region $REGION \
   --name "$SSM/S3_ASSESSMENT_BUCKET" --value "chat9021-assessment-files" --type String
 
-# ── Static config ───────────────────────────────────────────────────────────
+# ── Static backend config ────────────────────────────────────────────────────
 
 aws ssm put-parameter --region $REGION \
   --name "$SSM/AWS_DEFAULT_REGION" --value "us-east-1" --type String
@@ -233,9 +295,6 @@ aws ssm put-parameter --region $REGION \
   --name "$SSM/BEDROCK_EMBED_DIM" --value "1024" --type String
 
 aws ssm put-parameter --region $REGION \
-  --name "$SSM/AUTH_JWT_SECRET" --value "..." --type SecureString  # if not done above
-
-aws ssm put-parameter --region $REGION \
   --name "$SSM/AUTH_ACCESS_TOKEN_MINUTES" --value "60" --type String
 
 aws ssm put-parameter --region $REGION \
@@ -267,28 +326,32 @@ aws ssm put-parameter --region $REGION \
   --name "$SSM/LOG_LEVEL" --value "INFO" --type String
 ```
 
-**To update a secret later** (no SSH, no redeploy required unless you want it live immediately):
+Verify all 25 parameters were created:
 ```bash
-aws ssm put-parameter --region ap-southeast-2 \
-  --name /ai-tutor/prod/DEEPGRAM_SECRET_KEY \
-  --value "new-key" --type SecureString --overwrite
-# Then push any change to main to trigger a deploy that reloads .env,
-# OR SSH to EC2 and run: ./scripts/load-ssm-env.sh && docker compose up -d api
+aws ssm get-parameters-by-path --region ap-southeast-2 \
+  --path /ai-tutor/prod/ --query 'Parameters[*].Name' --output table
 ```
 
 ---
 
-### Phase 4 — First deploy (triggers automatically or run manually)
+### Phase 4 — First backend deploy
 
-Push to `main` or trigger `Deploy Backend` in GitHub Actions. The workflow will:
+Trigger manually (or push any change to `main`):
+
+```
+GitHub → Actions → Deploy Backend → Run workflow
+```
+
+The workflow will:
 1. Authenticate via OIDC (no stored credentials)
-2. Send SSM Run Command to EC2 that:
-   - Pulls latest code
-   - Runs `scripts/load-ssm-env.sh` → regenerates `.env` from SSM
-   - Rebuilds and restarts the Docker container
-   - Runs health checks
+2. SSM Run Command to EC2:
+   - `git reset --hard origin/main`
+   - `./scripts/load-ssm-env.sh` — reads all SSM params, writes `.env`
+   - `docker compose build --pull --no-cache api`
+   - `docker compose up -d --force-recreate --no-deps api`
+   - health + openapi checks
 
-Verify health:
+Verify:
 ```bash
 curl https://api.chat9021.org/health
 # Expected: {"status": "ok", ...}
@@ -296,62 +359,91 @@ curl https://api.chat9021.org/health
 
 ---
 
-### Phase 5 — Deploy frontends to S3 (human action)
+### Phase 5 — First assessment frontend deploy
 
-From your local machine:
+Trigger manually (or push any change to the relevant paths):
 
-```bash
-# Install dependencies first (only needed once)
-cd oral-assessment-instructor && npm ci && cd ..
-cd oral-assessment-student && npm ci && cd ..
-
-# Deploy both frontends
-INSTRUCTOR_BUCKET=chat9021-instructor-app \
-STUDENT_BUCKET=chat9021-student-app \
-API_BASE_URL=https://api.chat9021.org \
-./scripts/deploy-assessment-frontends.sh
 ```
+GitHub → Actions → Deploy Assessment Frontends → Run workflow
+```
+
+This builds `oral-assessment-instructor` and `oral-assessment-student` with `VITE_API_BASE_URL=https://api.chat9021.org` and syncs them to S3 with correct cache headers.
 
 Verify:
 ```bash
-curl -I https://instructor.chat9021.org
-curl -I https://student.chat9021.org
-# Expected: HTTP/2 200
+curl -I https://instructor.chat9021.org   # Expected: HTTP/2 200
+curl -I https://student.chat9021.org      # Expected: HTTP/2 200
 ```
+
+> After this first deploy, both frontends deploy automatically on any push to `main` that touches `oral-assessment-instructor/**`, `oral-assessment-student/**`, or `shared/**`.
 
 ---
 
-### Phase 6 — Exit SES sandbox (human action, AWS takes 24–48 hours)
+### Phase 6 — Exit SES sandbox (AWS takes 24–48 hours)
 
-By default SES can only send to verified email addresses. To send to any email:
+By default SES can only send to verified email addresses:
 
 1. AWS Console → SES → Account dashboard → "Request production access"
-2. Fill out the form:
+2. Fill out:
    - Mail type: **Transactional**
    - Website URL: `https://instructor.chat9021.org`
-   - Use case: "We send assessment invitation emails and answer submission receipts to students. Volume: ~20 students per assessment, occasional batches."
+   - Use case: "We send assessment invitation emails and answer submission receipts to students (~20 per assessment)."
 3. Submit — AWS typically approves within 24 hours.
 
-**Until approved**: SES only sends to verified email addresses. Add student emails via:
+**Until approved** — verify student emails individually:
 ```bash
 aws ses verify-email-identity --email-address student@example.com --region us-east-1
 ```
 
 ---
 
-### Phase 7 — Smoke test (human action)
+### Phase 7 — Smoke test
 
-Once all phases complete, run through:
-
-1. **Instructor login** → `https://instructor.chat9021.org` → sign in
+1. **Instructor login** → `https://instructor.chat9021.org`
 2. **Create assessment** → fill title, course, due date
-3. **Upload students** → upload CSV with name + email
-4. **Generate questions** → click Generate, wait for SSE stream to complete
-5. **Send invitations** → click Send Invitations, verify emails arrive
+3. **Upload students** → CSV with name + email
+4. **Generate questions** → click Generate, wait for SSE stream
+5. **Send invitations** → verify emails arrive
 6. **Student flow** → open invitation link → `https://student.chat9021.org/...`
-7. **Submit answers** → answer all questions (text or audio)
-8. **Evaluate** → instructor clicks Evaluate All, watch per-student progress bars
-9. **Release results** → instructor releases, student sees results page
+7. **Submit answers** → text or audio for all questions
+8. **Evaluate** → Evaluate All → watch per-student progress bars
+9. **Release results** → instructor releases, student sees feedback
+
+---
+
+## Ongoing operations
+
+### Code changes
+Push to `main` — the relevant workflow fires automatically.
+
+| Change | Workflow triggered |
+|--------|--------------------|
+| `src/**`, `app.py`, `requirements.txt` | Deploy Backend |
+| `ai-tutor-frontend/**` | Deploy Frontend |
+| `oral-assessment-instructor/**`, `oral-assessment-student/**`, `shared/**` | Deploy Assessment Frontends |
+
+### Update a secret
+No SSH, no redeploy needed to change the value. The next deploy picks it up automatically. For an immediate live reload without a code deploy:
+
+```bash
+# Update in SSM
+aws ssm put-parameter --region ap-southeast-2 \
+  --name /ai-tutor/prod/DEEPGRAM_SECRET_KEY \
+  --value "new-key" --type SecureString --overwrite
+
+# Either: trigger Deploy Backend from GitHub Actions
+# Or: SSH to EC2 and reload without full redeploy
+ssh ubuntu@<ec2-ip>
+cd /home/ubuntu/AI-Tutor-Agent
+./scripts/load-ssm-env.sh && docker compose up -d api
+```
+
+### Infrastructure changes
+```bash
+cd terraform/assessment   # or terraform/github-oidc
+terraform plan
+terraform apply
+```
 
 ---
 
@@ -359,44 +451,14 @@ Once all phases complete, run through:
 
 | Issue | Fix |
 |-------|-----|
-| S3 website returns `403 NoSuchBucket` | Bucket name must exactly match what's in tfvars |
-| Cloudflare shows "Error 1001" | CNAME target typo — re-check S3 website endpoint spelling |
-| SES `MessageRejected: Email address not verified` | Still in sandbox — verify recipient email or complete Phase 6 |
-| `CORS error` on audio upload | Check `ALLOW_ORIGINS` SSM parameter matches your exact domain (no trailing slash) |
-| DLQ CloudWatch alarm fires | Check `/ai-tutor/api` CloudWatch log group for evaluation errors; re-trigger batch |
-| Deepgram transcription fails | Verify `DEEPGRAM_SECRET_KEY` in SSM; check Deepgram console for quota |
-| `DYNAMODB_ASSESSMENT_TABLE not found` | SSM parameter missing or `load-ssm-env.sh` not run; check with `cat .env` on EC2 |
-| Deploy workflow fails: `sha_mismatch` | EC2 couldn't reach GitHub — check security group egress or git remote URL |
-| Deploy workflow fails: `AWS_DEPLOY_ROLE_ARN` empty | Add `AWS_DEPLOY_ROLE_ARN` as a GitHub Actions **Variable** (not secret) |
-
----
-
-## Ongoing deployments (after first launch)
-
-**Backend code changes:**
-```bash
-# Push to main — GitHub Actions deploys automatically.
-# load-ssm-env.sh runs as part of each deploy, so .env is always fresh.
-```
-
-**Update a secret without code change:**
-```bash
-aws ssm put-parameter --region ap-southeast-2 \
-  --name /ai-tutor/prod/AUTH_JWT_SECRET \
-  --value "new-secret" --type SecureString --overwrite
-# Then trigger Deploy Backend manually in GitHub Actions, or:
-# SSH to EC2: ./scripts/load-ssm-env.sh && docker compose up -d api
-```
-
-**Frontend changes:**
-```bash
-# Local:
-./scripts/deploy-assessment-frontends.sh
-```
-
-**Infrastructure changes:**
-```bash
-cd terraform/assessment
-terraform plan
-terraform apply
-```
+| `403 NoSuchBucket` on S3 website | Bucket name in tfvars must match exactly |
+| Cloudflare "Error 1001" | CNAME target typo — re-check S3 website endpoint from `terraform output` |
+| `MessageRejected: Email address not verified` | Still in SES sandbox — verify recipient or complete Phase 6 |
+| `CORS error` on audio upload | `ALLOW_ORIGINS` SSM param must match exact domain, no trailing slash |
+| DLQ CloudWatch alarm fires | Check CloudWatch log group `/ai-tutor/api` for errors; re-trigger batch |
+| Deepgram transcription fails | Verify `DEEPGRAM_SECRET_KEY` in SSM; check Deepgram console quota |
+| `DYNAMODB_ASSESSMENT_TABLE not found` | SSM param missing or `load-ssm-env.sh` not run — `cat .env` on EC2 to check |
+| Deploy fails: `sha_mismatch` | EC2 can't reach GitHub — check security group egress rules |
+| Deploy fails: `AWS_DEPLOY_ROLE_ARN` empty | Add as GitHub Actions **Variable** (not secret); run `terraform/github-oidc` first |
+| Assessment frontend 404 on page refresh | S3 website `error_document` must be `index.html` (already set in Terraform) |
+| Cloudflare HTTPS but S3 returns HTTP | This is expected — Cloudflare terminates TLS, proxies HTTP to S3 |
