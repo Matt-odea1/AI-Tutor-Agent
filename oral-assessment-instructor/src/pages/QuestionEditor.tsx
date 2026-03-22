@@ -39,7 +39,7 @@ export default function QuestionEditor() {
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
-  const [assessment, setAssessment] = useState<{ status: string } | null>(null);
+  const [assessment, setAssessment] = useState<{ status: string; title?: string } | null>(null);
   const [studentName, setStudentName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
