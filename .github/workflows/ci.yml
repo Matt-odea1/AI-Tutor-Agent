@@ -169,8 +169,8 @@ jobs:
 
       - name: Install frontend dependencies
         run: |
-          cd oral-assessment-student && npm ci
-          cd ../oral-assessment-instructor && npm ci
+          cd oral-assessment-student && rm -f package-lock.json && npm install
+          cd ../oral-assessment-instructor && rm -f package-lock.json && npm install
 
       - name: Run Playwright tests (MOCK_API=true, servers auto-started)
         working-directory: e2e
