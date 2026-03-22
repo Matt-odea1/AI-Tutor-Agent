@@ -11,7 +11,7 @@
 # Environment overrides:
 #   SSM_PATH    SSM path prefix   (default: /ai-tutor/prod/)
 #   ENV_FILE    Output .env path  (default: /home/ubuntu/AI-Tutor-Agent/.env)
-#   AWS_REGION  AWS region        (default: ap-southeast-2)
+#   REGION      AWS region        (default: ap-southeast-2)
 #
 # To update a secret without redeploying code:
 #   aws ssm put-parameter --region ap-southeast-2 \
@@ -23,40 +23,38 @@ set -euo pipefail
 
 SSM_PATH="${SSM_PATH:-/ai-tutor/prod/}"
 ENV_FILE="${ENV_FILE:-/home/ubuntu/AI-Tutor-Agent/.env}"
-REGION="${AWS_REGION:-ap-southeast-2}"
+REGION="${REGION:-ap-southeast-2}"
 
 echo "Reading SSM parameters from ${SSM_PATH} (region: ${REGION})"
 
-TMP_JSON=$(mktemp)
-TMP_ENV=$(mktemp)
-trap 'rm -f "${TMP_JSON}" "${TMP_ENV}"' EXIT
+# Uses boto3 (pip3 install boto3) — no AWS CLI required.
+# Falls back gracefully with a clear error if boto3 is missing.
+SSM_PATH="${SSM_PATH}" ENV_FILE="${ENV_FILE}" REGION="${REGION}" python3 - <<'PYEOF'
+import sys, os
 
-aws ssm get-parameters-by-path \
-  --path "${SSM_PATH}" \
-  --with-decryption \
-  --recursive \
-  --region "${REGION}" \
-  --output json > "${TMP_JSON}"
+try:
+    import boto3
+except ImportError:
+    print("ERROR: boto3 not installed. Run: pip3 install boto3", file=sys.stderr)
+    sys.exit(1)
 
-# Convert SSM JSON to .env format
-# Pass SSM_PATH via env so the heredoc can be single-quoted (prevents bash
-# from interpreting backslashes and $ inside the Python code).
-SSM_PATH="${SSM_PATH}" python3 - "${TMP_JSON}" "${TMP_ENV}" <<'PYEOF'
-import sys, json, os
+ssm_path = os.environ["SSM_PATH"]
+env_file  = os.environ["ENV_FILE"]
+region    = os.environ["REGION"]
 
-tmp_json    = sys.argv[1]
-tmp_env     = sys.argv[2]
-path_prefix = os.environ["SSM_PATH"]
+client = boto3.client("ssm", region_name=region)
 
-with open(tmp_json) as f:
-    data = json.load(f)
-
-params = data.get("Parameters", [])
+params = []
+paginator = client.get_paginator("get_parameters_by_path")
+for page in paginator.paginate(
+    Path=ssm_path,
+    Recursive=True,
+    WithDecryption=True,
+):
+    params.extend(page["Parameters"])
 
 if not params:
-    print(f"ERROR: No SSM parameters found at {path_prefix}", file=sys.stderr)
-    print("Run 'terraform apply' in terraform/assessment/ and add secrets:", file=sys.stderr)
-    print("  aws ssm put-parameter --name /ai-tutor/prod/AUTH_JWT_SECRET --value '...' --type SecureString", file=sys.stderr)
+    print(f"ERROR: No SSM parameters found at {ssm_path}", file=sys.stderr)
     sys.exit(1)
 
 lines = [
@@ -65,52 +63,39 @@ lines = [
     "",
 ]
 
+required = {
+    "AUTH_JWT_SECRET", "DEEPGRAM_SECRET_KEY", "NEO4J_PASSWORD",
+    "AWS_DEFAULT_REGION", "DYNAMODB_TABLE_NAME",
+    "DYNAMODB_AUTH_USERS_TABLE", "DYNAMODB_ASSESSMENT_TABLE",
+}
+found = set()
+
 for p in sorted(params, key=lambda x: x["Name"]):
     key   = p["Name"]
     value = p["Value"]
 
-    if key.startswith(path_prefix):
-        key = key[len(path_prefix):]
+    if key.startswith(ssm_path):
+        key = key[len(ssm_path):]
 
-    # No quoting — all current values are single-word tokens, URLs, or region strings.
-    # If a value contains whitespace, wrap it here.
+    found.add(key)
+
     if any(c in value for c in (" ", "\t", "#")):
         value = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
     lines.append(f"{key}={value}")
 
-with open(tmp_env, "w") as f:
+missing = required - found
+if missing:
+    print("ERROR: Required SSM parameters are missing:", file=sys.stderr)
+    for k in sorted(missing):
+        print(f"  {ssm_path}{k}", file=sys.stderr)
+    sys.exit(1)
+
+import tempfile, os
+tmp = env_file + ".tmp"
+with open(tmp, "w") as f:
     f.write("\n".join(lines) + "\n")
+os.replace(tmp, env_file)
 
-print(f"Loaded {len(params)} parameters from SSM")
+print(f"Wrote {len(params)} env vars to {env_file}")
 PYEOF
-
-# Validate that required keys are present
-REQUIRED=(
-  AUTH_JWT_SECRET
-  DEEPGRAM_SECRET_KEY
-  NEO4J_PASSWORD
-  AWS_DEFAULT_REGION
-  DYNAMODB_TABLE_NAME
-  DYNAMODB_AUTH_USERS_TABLE
-  DYNAMODB_ASSESSMENT_TABLE
-)
-
-MISSING=()
-for key in "${REQUIRED[@]}"; do
-  if ! grep -q "^${key}=" "${TMP_ENV}"; then
-    MISSING+=("${key}")
-  fi
-done
-
-if [[ ${#MISSING[@]} -gt 0 ]]; then
-  echo "ERROR: The following required SSM parameters are missing:" >&2
-  for key in "${MISSING[@]}"; do
-    echo "  ${SSM_PATH}${key}" >&2
-  done
-  echo "Add them with: aws ssm put-parameter --region ${REGION} --name '${SSM_PATH}KEY' --value '...' --type SecureString" >&2
-  exit 1
-fi
-
-mv "${TMP_ENV}" "${ENV_FILE}"
-echo "Wrote $(grep -c '=' "${ENV_FILE}") env vars to ${ENV_FILE}"

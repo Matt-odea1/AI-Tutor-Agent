@@ -67,6 +67,8 @@ jobs:
           commands = [
               "set -eu",
               "export HOME=/home/ubuntu",
+              # Ensure boto3 is present — required by load-ssm-env.sh (no AWS CLI needed)
+              "pip3 install boto3 --quiet --disable-pip-version-check 2>/dev/null || true",
               "cd /home/ubuntu/AI-Tutor-Agent",
               "git config --global --add safe.directory /home/ubuntu/AI-Tutor-Agent",
               # Assign to shell variables first so shlex.quote'd values work correctly
