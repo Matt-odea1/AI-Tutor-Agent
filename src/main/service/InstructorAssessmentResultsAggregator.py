@@ -9,7 +9,7 @@ def _effective_score(eval_item: Dict[str, Any]) -> int:
     """Return instructorScore if set, else AI score, else 0."""
     if eval_item.get("instructorScore") is not None:
         return int(eval_item["instructorScore"])
-    score = eval_item.get("score")
+    score = eval_item.get("totalScore")
     return int(score) if score is not None else 0
 
 
@@ -125,7 +125,7 @@ class InstructorAssessmentResultsAggregator:
             answer = answers_map.get(question_id, {})
             evaluation = evaluations_map.get(question_id, {})
 
-            ai_score = int(evaluation.get("score", 0)) if evaluation.get("score") is not None else None
+            ai_score = int(evaluation.get("totalScore", 0)) if evaluation.get("totalScore") is not None else None
             instructor_score = int(evaluation["instructorScore"]) if evaluation.get("instructorScore") is not None else None
             effective = instructor_score if instructor_score is not None else (ai_score if ai_score is not None else 0)
             q_max = int(evaluation.get("maxScore", 10)) if evaluation.get("maxScore") is not None else 10

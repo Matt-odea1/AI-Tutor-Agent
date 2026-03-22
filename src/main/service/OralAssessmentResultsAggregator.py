@@ -66,7 +66,7 @@ class OralAssessmentResultsAggregator:
             answer = answers_map.get(question_id, {})
             evaluation = evaluations_map.get(question_id, {})
 
-            score = int(evaluation.get("score", 0)) if evaluation.get("score") is not None else None
+            score = int(evaluation.get("totalScore", 0)) if evaluation.get("totalScore") is not None else None
             q_max_score = int(evaluation.get("maxScore", 10)) if evaluation.get("maxScore") is not None else 10
 
             if score is not None:
