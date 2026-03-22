@@ -26,8 +26,11 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [searchQuery, setSearchQuery] = useState('');
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evaluatingSingle, setEvaluatingSingle] = useState<Record<string, boolean>>({});
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>({});
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -51,6 +54,16 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   useEffect(() => {
     applyFilters();
   }, [progress, students, statusFilter, searchQuery]);
+
+  // Tick the "last updated" counter every second
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      if (lastUpdated) {
+        setSecondsSinceUpdate(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [lastUpdated]);
 
   const loadProgressData = async () => {
     try {
@@ -81,6 +94,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       try {
         const progressData = await apiService.getAssessmentProgress(assessmentId);
         setProgress(Array.isArray(progressData) ? progressData : []);
+        setLastUpdated(new Date());
+        setSecondsSinceUpdate(0);
       } catch (err) {
         console.error('Error polling progress:', err);
       }
@@ -95,8 +110,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     const studentsArray = Array.isArray(students) ? students : [];
     
     let filtered = progressArray.map(p => {
-      const student = studentsArray.find(s => s.id === p.studentId);
-      return { ...p, student: student || { id: p.studentId, name: 'Unknown', email: '', studentId: '' } };
+      const student = studentsArray.find(s => s.studentId === p.studentId);
+      return { ...p, student: student || { id: p.studentId, name: p.studentId, email: '', studentId: p.studentId } };
     });
 
     // Status filter
@@ -170,6 +185,18 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     } finally {
       setIsEvaluating(false);
       setLoading(false);
+    }
+  };
+
+  const handleEvaluateSingle = async (studentId: string) => {
+    setEvaluatingSingle(prev => ({ ...prev, [studentId]: true }));
+    try {
+      await apiService.evaluateAssessment(assessmentId, [studentId]);
+      openEvalProgressStream(studentId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start evaluation');
+    } finally {
+      setEvaluatingSingle(prev => ({ ...prev, [studentId]: false }));
     }
   };
 
@@ -299,11 +326,16 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
               {isEvaluating ? 'Evaluating...' : `Evaluate All (${stats.completed})`}
             </button>
             <button
-              onClick={loadProgressData}
+              onClick={() => { loadProgressData(); setLastUpdated(new Date()); setSecondsSinceUpdate(0); }}
               className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
             >
               Refresh
             </button>
+            {lastUpdated && (
+              <span className="text-xs text-slate-400">
+                Updated {secondsSinceUpdate}s ago
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -415,6 +447,16 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                             className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
                           >
                             {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
+                          </button>
+                        )}
+                        {(p.status === 'completed' || p.status === 'submitted') &&
+                          (!evalProgress[p.studentId] || evalProgress[p.studentId].status === 'not_started') && (
+                          <button
+                            onClick={() => handleEvaluateSingle(p.studentId)}
+                            disabled={evaluatingSingle[p.studentId]}
+                            className="text-primary-400 hover:text-primary-300 text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            {evaluatingSingle[p.studentId] ? 'Starting…' : 'Evaluate'}
                           </button>
                         )}
                       </div>

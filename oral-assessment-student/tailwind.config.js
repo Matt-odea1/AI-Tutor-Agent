@@ -7,13 +7,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Primary brand colors - matching C9
+        // Primary brand colors - AI-tutor purple
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
+          50: '#f6f0fa',
+          100: '#ede1f7',
+          200: '#dac4ef',
+          300: '#c6a5e7',
+          400: '#b085de',
+          500: '#8947ae',
+          600: '#7a3f9b',
+          700: '#6a3587',
+          800: '#562b6f',
+          900: '#47255c',
         },
       },
       fontFamily: {
@@ -22,6 +27,7 @@ export default {
       },
       boxShadow: {
         'card': '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1)',
+        'message': '0 2px 8px -1px rgba(0, 0, 0, 0.08), 0 1px 4px -1px rgba(0, 0, 0, 0.04)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',

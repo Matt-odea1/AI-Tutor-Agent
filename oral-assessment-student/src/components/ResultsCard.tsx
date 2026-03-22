@@ -12,7 +12,7 @@ interface ResultsCardProps {
 export default function ResultsCard({ result }: ResultsCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const scorePercentage = Math.round((result.totalScore / 100) * 100);
+  const scorePercentage = Math.round(result.totalScore);
   const scoreColor =
     scorePercentage >= 90
       ? 'text-green-600 bg-green-100'
@@ -36,7 +36,7 @@ export default function ResultsCard({ result }: ResultsCardProps) {
                 Question {result.questionNumber}
               </span>
               {result.questionType && (
-                <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+                <span className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-800 rounded">
                   {result.questionType}
                 </span>
               )}
@@ -49,7 +49,7 @@ export default function ResultsCard({ result }: ResultsCardProps) {
           <div className="flex items-center space-x-4">
             {/* Score Badge */}
             <div className={`px-4 py-2 rounded-lg font-semibold ${scoreColor}`}>
-              {result.totalScore}%
+              {scorePercentage}%
             </div>
 
             {/* Expand Icon */}
@@ -76,7 +76,7 @@ export default function ResultsCard({ result }: ResultsCardProps) {
           {/* Score Breakdown */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-2xl font-bold text-primary-600">
                 {result.correctnessScore}
               </div>
               <div className="text-xs text-gray-600">Correctness</div>
@@ -171,7 +171,7 @@ export default function ResultsCard({ result }: ResultsCardProps) {
                 {result.suggestedImprovements.map((suggestion, index) => (
                   <li key={index} className="flex items-start text-sm">
                     <svg
-                      className="w-4 h-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0"
+                      className="w-4 h-4 text-primary-500 mr-2 mt-0.5 flex-shrink-0"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >

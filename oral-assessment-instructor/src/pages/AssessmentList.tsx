@@ -1,11 +1,14 @@
-import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import { format } from 'date-fns';
 
 export default function AssessmentList() {
+  const navigate = useNavigate();
   const { assessments, setAssessments, isLoading, setLoading, error, setError } = useAssessmentStore();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadAssessments();
@@ -21,6 +24,20 @@ export default function AssessmentList() {
       setError(err instanceof Error ? err.message : 'Failed to load assessments');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (assessmentId: string) => {
+    setIsDeleting(true);
+    try {
+      await apiService.deleteAssessment(assessmentId);
+      const current = Array.isArray(assessments) ? assessments : [];
+      setAssessments(current.filter(a => a.id !== assessmentId));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete assessment');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -91,26 +108,51 @@ export default function AssessmentList() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-3 mt-4">
-                <Link
-                  to={`/assessments/${assessment.id}/monitor`}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Monitor Progress
-                </Link>
-                <Link
-                  to={`/assessments/${assessment.id}/results`}
-                  className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  View Results
-                </Link>
-                <button className="text-slate-400 hover:text-slate-300 px-4 py-2 text-sm font-medium transition-colors">
-                  Edit
-                </button>
-                <button className="text-red-400 hover:text-red-300 px-4 py-2 text-sm font-medium transition-colors">
-                  Delete
-                </button>
-              </div>
+              {confirmDeleteId === assessment.id ? (
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="text-sm text-red-300">Delete this assessment?</span>
+                  <button
+                    onClick={() => handleDelete(assessment.id)}
+                    disabled={isDeleting}
+                    className="bg-red-600 text-white px-3 py-1 rounded text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Deleting…' : 'Confirm Delete'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="bg-slate-700 text-slate-200 px-3 py-1 rounded text-sm font-medium hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-3 mt-4">
+                  <Link
+                    to={`/assessments/${assessment.id}/monitor`}
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Monitor Progress
+                  </Link>
+                  <Link
+                    to={`/assessments/${assessment.id}/results`}
+                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    View Results
+                  </Link>
+                  <button
+                    onClick={() => navigate(`/assessments/${assessment.id}/generate`)}
+                    className="text-slate-400 hover:text-slate-300 px-4 py-2 text-sm font-medium transition-colors"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(assessment.id)}
+                    className="text-red-400 hover:text-red-300 px-4 py-2 text-sm font-medium transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
             ))}
           </div>

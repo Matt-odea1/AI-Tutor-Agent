@@ -6,7 +6,7 @@
 
 @layer base {
   body {
-    @apply bg-slate-900 text-slate-100 antialiased;
+    @apply bg-white text-gray-900 antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     margin: 0;
     padding: 0;
@@ -26,20 +26,20 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-slate-800;
+    @apply bg-gray-100;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-600 rounded-full;
+    @apply bg-gray-300 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-indigo-600;
+    @apply bg-primary-600;
   }
 
   /* Focus improvements */
   *:focus-visible {
-    @apply outline-none ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900;
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-white;
   }
 }
 
@@ -50,5 +50,8 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  .toast-enter {
+    @apply opacity-100 translate-x-0;
   }
 }

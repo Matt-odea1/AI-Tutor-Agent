@@ -149,7 +149,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
             </li>
             <li className="flex items-start">
               <span className="text-primary-400 mr-2">2.</span>
-              <span>AI generates unique questions for each student (Amazon Nova Lite via Bedrock AgentCore)</span>
+              <span>The AI generates unique questions tailored to each student's code and the assignment brief</span>
             </li>
             <li className="flex items-start">
               <span className="text-primary-400 mr-2">3.</span>

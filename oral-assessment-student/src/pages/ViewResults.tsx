@@ -44,7 +44,7 @@ export default function ViewResults() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <LoadingSpinner size="lg" message="Loading results..." />
       </div>
     );
@@ -55,15 +55,15 @@ export default function ViewResults() {
     const isNotReleased = error.message?.toLowerCase().includes('not released');
     const isPending = error.message?.toLowerCase().includes('not ready') || error.message?.toLowerCase().includes('not available');
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           {isNotReleased ? (
-            <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
-              <svg className="mx-auto h-12 w-12 text-blue-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="p-6 bg-primary-50 border border-primary-200 rounded-lg text-center">
+              <svg className="mx-auto h-12 w-12 text-primary-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
-              <h2 className="text-lg font-semibold text-blue-900 mb-2">Results Pending Release</h2>
-              <p className="text-sm text-blue-700">Your results are ready but have not yet been released by your instructor. Check back soon!</p>
+              <h2 className="text-lg font-semibold text-primary-900 mb-2">Results Pending Release</h2>
+              <p className="text-sm text-primary-700">Your results are ready but have not yet been released by your instructor. Check back soon!</p>
             </div>
           ) : (
             <>
@@ -75,7 +75,7 @@ export default function ViewResults() {
                   </p>
                 </div>
               )}
-              <button onClick={() => loadResults()} className="mt-4 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+              <button onClick={() => loadResults()} className="mt-4 w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700">
                 Retry
               </button>
             </>
@@ -88,7 +88,7 @@ export default function ViewResults() {
   // No results state
   if (!results) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             No Results Available
@@ -98,7 +98,7 @@ export default function ViewResults() {
           </p>
           <button
             onClick={() => loadResults()}
-            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
+            className="bg-primary-600 text-white px-6 py-2 rounded-md hover:bg-primary-700"
           >
             Check Again
           </button>
@@ -118,7 +118,7 @@ export default function ViewResults() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -154,7 +154,7 @@ export default function ViewResults() {
 
             <div className="grid grid-cols-3 gap-6 mt-6 pt-6 border-t">
               <div>
-                <div className="text-3xl font-bold text-blue-600">
+                <div className="text-3xl font-bold text-primary-600">
                   {results.totalScore}
                 </div>
                 <div className="text-sm text-gray-600">Total Score</div>
@@ -197,8 +197,8 @@ export default function ViewResults() {
         </div>
 
         {/* Summary */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">
+        <div className="mt-8 bg-primary-50 border border-primary-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-primary-900 mb-2">
             What's Next?
           </h3>
           <p className="text-blue-800">

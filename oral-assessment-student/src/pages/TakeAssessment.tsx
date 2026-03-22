@@ -13,9 +13,11 @@ import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import { parseUrlParams, checkBrowserSupport } from '../utils/helpers';
+import { useToastStore } from '../store/toastStore';
 
 export default function TakeAssessment() {
   const navigate = useNavigate();
+  const { addToast } = useToastStore();
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
@@ -50,6 +52,7 @@ export default function TakeAssessment() {
     startProctoring,
     restoreProctoring,
     clearError,
+    goToQuestion,
   } = useAssessmentStore();
 
   // Initialize assessment on mount
@@ -104,18 +107,21 @@ export default function TakeAssessment() {
   };
 
   const handleTimerExpire = async () => {
-    // Grace period: show a brief notification then auto-submit/advance
     const { answerMode, recordedBlob, videoBlob, textAnswer, currentQuestionIndex, questions } = useAssessmentStore.getState();
 
     if (answerMode === 'audio' && recordedBlob) {
+      addToast('Time\'s up! Submitting your audio answer.', 'warning');
       await submitCurrentAnswer();
     } else if (answerMode === 'video' && videoBlob) {
+      addToast('Time\'s up! Submitting your video answer.', 'warning');
       await submitCurrentVideoAnswer();
     } else if (answerMode === 'text' && textAnswer.trim().length >= 20) {
+      addToast('Time\'s up! Submitting your written answer.', 'warning');
       await submitCurrentTextAnswer();
     } else {
       // Nothing to submit — just advance
       if (currentQuestionIndex < questions.length - 1) {
+        addToast('Time\'s up! Moving to the next question.', 'warning');
         nextQuestion();
       }
     }
@@ -164,7 +170,7 @@ export default function TakeAssessment() {
           <ErrorMessage error={error} onDismiss={clearError} />
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            className="mt-4 w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
           >
             Reload Page
           </button>
@@ -256,6 +262,7 @@ export default function TakeAssessment() {
               currentIndex={currentQuestionIndex}
               totalQuestions={questions.length}
               answeredCount={answeredCount}
+              onNavigate={goToQuestion}
             />
           </div>
 
@@ -376,7 +383,7 @@ export default function TakeAssessment() {
             ) : (
               <button
                 onClick={handleNext}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
               >
                 <span>Next</span>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -393,7 +400,7 @@ export default function TakeAssessment() {
       {/* Submit Confirmation Modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
               Submit Assessment?
             </h2>

@@ -1,0 +1,44 @@
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Research Gaps and Questions}{3}{section.1.1}%
+\contentsline {chapter}{\numberline {2}Background}{5}{chapter.2}%
+\contentsline {section}{\numberline {2.1}The Paradoxical Nature of AI in Programming Education}{5}{section.2.1}%
+\contentsline {section}{\numberline {2.2}The Crisis of Assessment and Academic Integrity}{6}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Emerging Pedagogical Responses and Their Limitations}{7}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Developing Scalable, Authentic Assessments}{8}{section.2.4}%
+\contentsline {section}{\numberline {2.5}AI Solutions for Education}{9}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}Retrieval-Augmented Generation (RAG)}{9}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}Model Context Protocol (MCP) Servers}{10}{subsection.2.5.2}%
+\contentsline {chapter}{\numberline {3}System Design and Implementation}{12}{chapter.3}%
+\contentsline {section}{\numberline {3.1}System Architecture}{12}{section.3.1}%
+\contentsline {section}{\numberline {3.2}The AI Tutor}{13}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}Retrieval-Augmented Generation Pipeline}{13}{subsection.3.2.1}%
+\contentsline {subsubsection}{Knowledge Base Construction}{13}{section*.6}%
+\contentsline {subsubsection}{Semantic Search}{14}{section*.7}%
+\contentsline {subsubsection}{Chat Pipeline}{14}{section*.8}%
+\contentsline {subsection}{\numberline {3.2.2}Pedagogical Design}{14}{subsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.2.3}Student Interface}{15}{subsection.3.2.3}%
+\contentsline {section}{\numberline {3.3}The Automated Oral Assessment System}{15}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Question Generation}{15}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Student Assessment Interface}{16}{subsection.3.3.2}%
+\contentsline {subsection}{\numberline {3.3.3}Speech-to-Text Transcription}{16}{subsection.3.3.3}%
+\contentsline {subsection}{\numberline {3.3.4}Evaluation Engine}{16}{subsection.3.3.4}%
+\contentsline {subsection}{\numberline {3.3.5}Instructor Dashboard}{17}{subsection.3.3.5}%
+\contentsline {section}{\numberline {3.4}Infrastructure and Deployment}{17}{section.3.4}%
+\contentsline {chapter}{\numberline {4}Methodology}{18}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Project-Dependent Skills}{18}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Software Development Methodology}{18}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Project Ethical Considerations}{19}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Initial Product Design}{20}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}Personal AI tutor}{20}{subsection.4.4.1}%
+\contentsline {subsubsection}{Architecture Decisions}{20}{section*.9}%
+\contentsline {subsubsection}{User Stories and Acceptance Criteria}{21}{section*.10}%
+\contentsline {subsection}{\numberline {4.4.2}Automated Oral Assessment System}{23}{subsection.4.4.2}%
+\contentsline {subsubsection}{Architecture Decisions}{23}{section*.11}%
+\contentsline {subsubsection}{User Stories and Acceptance Criteria}{24}{section*.12}%
+\contentsline {section}{\numberline {4.5}Project Evaluation Plan}{26}{section.4.5}%
+\contentsline {subsection}{\numberline {4.5.1}Part 1: AI Tutor Evaluation}{27}{subsection.4.5.1}%
+\contentsline {subsection}{\numberline {4.5.2}Part 2: Automated Oral Assessment Evaluation}{27}{subsection.4.5.2}%
+\contentsline {subsection}{\numberline {4.5.3}Part 3: Comparative and Overall Impact}{28}{subsection.4.5.3}%
+\contentsline {chapter}{\numberline {5}Results}{29}{chapter.5}%
+\contentsline {chapter}{\numberline {6}Conclusions}{30}{chapter.6}%
+\contentsline {chapter}{Bibliography}{31}{chapter.6}%

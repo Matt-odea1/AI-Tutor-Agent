@@ -42,6 +42,10 @@ class ApiService {
       (response) => response,
       (error) => {
         console.error('API Error:', error.response?.data || error.message);
+        if (error.response?.status === 401) {
+          localStorage.removeItem('authToken');
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
     );
@@ -61,6 +65,10 @@ class ApiService {
   async listAssessments(): Promise<Assessment[]> {
     const response = await this.client.get<{ ok: boolean; assessments: Assessment[] }>('/api/assessment/list');
     return response.data.assessments || [];
+  }
+
+  async deleteAssessment(assessmentId: string): Promise<void> {
+    await this.client.delete(`/api/assessment/${assessmentId}`);
   }
 
   // Student upload endpoints

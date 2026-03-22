@@ -31,7 +31,7 @@ export default function ProgressTracker({
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
             style={{ width: `${percentage}%` }}
             role="progressbar"
             aria-valuenow={percentage}
@@ -55,7 +55,7 @@ export default function ProgressTracker({
               className={`
                 w-10 h-10 rounded-lg font-medium text-sm transition-all
                 ${isCurrent
-                  ? 'bg-blue-600 text-white ring-2 ring-blue-300'
+                  ? 'bg-primary-600 text-white ring-2 ring-primary-300'
                   : isAnswered
                   ? 'bg-green-100 text-green-800 hover:bg-green-200'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -64,7 +64,7 @@ export default function ProgressTracker({
               `}
               title={`Question ${i + 1}${isAnswered ? ' (answered)' : ''}${isCurrent ? ' (current)' : ''}`}
               aria-label={`Question ${i + 1}`}
-              aria-current={isCurrent}
+              aria-current={isCurrent ? 'step' : undefined}
             >
               {isAnswered && !isCurrent ? (
                 <svg

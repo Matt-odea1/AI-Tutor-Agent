@@ -55,7 +55,12 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey }: 
     : 'text-gray-700 border-gray-200 bg-white';
 
   return (
-    <div className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-mono font-semibold ${colorClass}`}>
+    <div
+      role="timer"
+      aria-live="polite"
+      aria-atomic="true"
+      className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-mono font-semibold ${colorClass}`}
+    >
       {/* Clock icon */}
       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

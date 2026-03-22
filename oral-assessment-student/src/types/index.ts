@@ -45,6 +45,7 @@ export interface QuestionResult {
   correctnessScore: number;
   understandingScore: number;
   totalScore: number;
+  maxScore?: number;
   feedback: string;
   strengths?: string[];
   weaknesses?: string[];

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
@@ -18,9 +19,9 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'score' | 'date'>('score');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [isExporting, setIsExporting] = useState(false);
   const [isReleasing, setIsReleasing] = useState(false);
   const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -123,25 +124,6 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     URL.revokeObjectURL(url);
   };
 
-  const exportAudioZip = async () => {
-    try {
-      setIsExporting(true);
-      const { default: JSZip } = await import('jszip');
-      const zip = new JSZip();
-      zip.file('README.txt', 'Audio files export — implementation pending');
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `assessment-${assessmentId}-audio.zip`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export audio files');
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const resultsArray = Array.isArray(results) ? results : [];
 
@@ -207,21 +189,44 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
   return (
     <div className="space-y-6">
       {/* Release Results Banner */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-200">Release Results to Students</p>
-          <p className="text-xs text-slate-400">Students will be able to view their scores and feedback after release.</p>
-          {releaseMessage && (
-            <p className="text-xs text-green-400 mt-1">{releaseMessage}</p>
-          )}
-        </div>
-        <button
-          onClick={handleReleaseResults}
-          disabled={isReleasing}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
-        >
-          {isReleasing ? 'Releasing…' : 'Release Results'}
-        </button>
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        {showReleaseConfirm ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-yellow-300">Confirm release?</p>
+            <p className="text-xs text-slate-400">This will make scores and feedback visible to all students immediately and cannot be undone.</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setShowReleaseConfirm(false); handleReleaseResults(); }}
+                disabled={isReleasing}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+              >
+                {isReleasing ? 'Releasing…' : 'Confirm Release'}
+              </button>
+              <button
+                onClick={() => setShowReleaseConfirm(false)}
+                className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-200">Release Results to Students</p>
+              <p className="text-xs text-slate-400">Students will be able to view their scores and feedback after release.</p>
+              {releaseMessage && (
+                <p className="text-xs text-green-400 mt-1">{releaseMessage}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowReleaseConfirm(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              Release Results
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Statistics Cards */}
@@ -327,11 +332,11 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
               Export CSV
             </button>
             <button
-              onClick={exportAudioZip}
-              disabled={isExporting}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+              disabled
+              title="Audio export — coming soon"
+              className="bg-slate-600 text-slate-400 px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed"
             >
-              {isExporting ? 'Exporting…' : 'Export Audio ZIP'}
+              Export Audio ZIP
             </button>
           </div>
         </div>
@@ -372,7 +377,9 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
                   <td className="px-4 py-3">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getGradeBadgeColor(result.grade)}`}>{result.grade}</span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{new Date(result.completedAt).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-300" title={new Date(result.completedAt).toLocaleString()}>
+                    {formatDistanceToNow(new Date(result.completedAt), { addSuffix: true })}
+                  </td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => navigate(`/assessments/${assessmentId}/student/${result.studentId}/results`)}

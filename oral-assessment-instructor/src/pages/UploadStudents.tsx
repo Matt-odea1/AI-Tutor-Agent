@@ -1,18 +1,30 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import BulkUploadCSV from '../components/BulkUploadCSV';
+import { useToast } from '../hooks/useToast';
+import Toast from '../components/Toast';
 
 export default function UploadStudents() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
+  const location = useLocation();
   const { selectedAssessment, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
+  const { toast, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     if (assessmentId && assessmentId !== selectedAssessment?.id) {
       loadAssessment(assessmentId);
     }
   }, [assessmentId]);
+
+  // Show success banner if we just created an assessment
+  useEffect(() => {
+    const state = location.state as { created?: string } | null;
+    if (state?.created) {
+      showToast(`Assessment "${state.created}" created successfully.`);
+    }
+  }, []);
 
   const loadAssessment = async (id: string) => {
     try {
@@ -37,6 +49,7 @@ export default function UploadStudents() {
 
   return (
     <div className="min-h-screen bg-slate-900">
+      {toast && <Toast toast={toast} onDismiss={dismissToast} />}
       <header className="bg-slate-800 border-b border-slate-700">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center space-x-4">
@@ -58,12 +71,15 @@ export default function UploadStudents() {
               Step 2: Upload Student Data
             </h2>
             <p className="text-slate-400 text-sm">
-              Upload a CSV file with student information and their code submissions. 
+              Upload a CSV file with student information and their code submissions.
               After uploading, you can proceed to generate questions automatically.
             </p>
           </div>
 
-          <BulkUploadCSV assessmentId={selectedAssessment.id} />
+          <BulkUploadCSV
+            assessmentId={selectedAssessment.id}
+            onUploadSuccess={() => showToast('Students uploaded successfully.')}
+          />
         </div>
       </main>
     </div>

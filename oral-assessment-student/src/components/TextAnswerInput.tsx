@@ -34,7 +34,7 @@ export default function TextAnswerInput({
         rows={8}
         placeholder="Type your answer here..."
         className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-900 placeholder-gray-400
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
                    disabled:bg-gray-50 disabled:cursor-not-allowed resize-y"
       />
 
@@ -52,8 +52,8 @@ export default function TextAnswerInput({
       <button
         onClick={onSubmit}
         disabled={!canSubmit}
-        className="w-full flex items-center justify-center space-x-2 bg-green-600 text-white px-6 py-3
-                   rounded-full hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed
+        className="w-full flex items-center justify-center space-x-2 bg-primary-600 text-white px-6 py-3
+                   rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                    transition-colors font-medium"
       >
         {isSubmitting ? (

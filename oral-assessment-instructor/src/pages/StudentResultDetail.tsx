@@ -74,11 +74,11 @@ export default function StudentResultDetail() {
     }
   };
 
-  const handleOverride = async (questionId: string) => {
+  const handleOverride = async (questionId: string, maxScore: number) => {
     const state = overrideStates[questionId];
     if (!state) return;
     const score = parseInt(state.score);
-    if (isNaN(score) || score < 0 || score > 10) return;
+    if (isNaN(score) || score < 0 || score > maxScore) return;
 
     setOverrideStates(prev => ({ ...prev, [questionId]: { ...prev[questionId], saving: true } }));
     try {
@@ -283,11 +283,11 @@ export default function StudentResultDetail() {
                           <input
                             type="number"
                             min={0}
-                            max={10}
+                            max={q.maxScore}
                             value={override.score}
                             onChange={e => setOverrideStates(prev => ({ ...prev, [q.questionId]: { ...prev[q.questionId], score: e.target.value } }))}
                             className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm"
-                            placeholder="0-10"
+                            placeholder={`0-${q.maxScore}`}
                           />
                           <input
                             type="text"
@@ -297,7 +297,7 @@ export default function StudentResultDetail() {
                             placeholder="Optional comment..."
                           />
                           <button
-                            onClick={() => handleOverride(q.questionId)}
+                            onClick={() => handleOverride(q.questionId, q.maxScore)}
                             disabled={override.saving}
                             className="px-3 py-1 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50"
                           >

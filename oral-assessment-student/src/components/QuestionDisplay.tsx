@@ -28,7 +28,7 @@ export default function QuestionDisplay({
             Question {questionNumber} of {totalQuestions}
           </span>
           {question.questionType && (
-            <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+            <span className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-800 rounded">
               {question.questionType}
             </span>
           )}
@@ -67,8 +67,8 @@ export default function QuestionDisplay({
       )}
 
       {/* Instructions */}
-      <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-        <p className="text-sm text-blue-800">
+      <div className="mt-4 p-3 bg-primary-50 rounded-lg">
+        <p className="text-sm text-primary-800">
           <span className="font-semibold">Instructions:</span> Answer this question using the oral or written
           mode below. Explain your reasoning clearly.
         </p>

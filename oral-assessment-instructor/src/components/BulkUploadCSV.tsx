@@ -16,9 +16,10 @@ interface ParsedStudent {
 
 interface BulkUploadCSVProps {
   assessmentId: string;
+  onUploadSuccess?: () => void;
 }
 
-export default function BulkUploadCSV({ assessmentId }: BulkUploadCSVProps) {
+export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUploadCSVProps) {
   const navigate = useNavigate();
   const { setLoading, setError } = useAssessmentStore();
 
@@ -143,12 +144,10 @@ export default function BulkUploadCSV({ assessmentId }: BulkUploadCSVProps) {
       }));
 
       await apiService.uploadStudents({ assessmentId, students: uploadData });
-      
-      // Students will be fetched later via API when viewing progress
-      // Don't need to add to store immediately
 
-      // Navigate to question generation
-      navigate(`/assessments/${assessmentId}/generate`);
+      // Notify parent and navigate to question generation
+      onUploadSuccess?.();
+      navigate(`/assessments/${assessmentId}/generate`, { state: { uploaded: true } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload students');
     } finally {

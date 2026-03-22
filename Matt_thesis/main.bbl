@@ -1,0 +1,247 @@
+\begin{thebibliography}{xx}
+
+\harvarditem[Ahmadi et~al.]{Ahmadi, Sharif \harvardand\
+  Banad}{2025}{Ahmadi2025}
+Ahmadi, A., Sharif, S. \harvardand\ Banad, Y.~M.  \harvardyearleft
+  2025\harvardyearright , Mcp bridge: A lightweight, llm-agnostic restful proxy
+  for model context protocol servers, Technical report, University of Oklahoma.
+\newline\harvardurl{https://github.com/INQUIRELAB/mcp-bridge-api.}
+
+\harvarditem{Alpizar-Chacon}{2025}{Alpizar-Chacon2025}
+Alpizar-Chacon  \harvardyearleft 2025\harvardyearright , Excited, skeptical, or
+  worried? a multi-institutional study of student views on generative ai in
+  computing education, {\em in} `Proceedings of 25th International Conference
+  on Computing Education Research, Koli Calling 2025', Association for
+  Computing Machinery, Inc.
+
+\harvarditem{Andersen-Kiel \harvardand\ Linos}{2024}{Andersen-Kiel2024}
+Andersen-Kiel, N. \harvardand\ Linos, P.  \harvardyearleft
+  2024\harvardyearright , Using chatgpt in undergraduate computer science and
+  software engineering courses: A students' perspective, {\em in} `Proceedings
+  - Frontiers in Education Conference, FIE', Institute of Electrical and
+  Electronics Engineers Inc.
+
+\harvarditem[Bakar et~al.]{Bakar, Halim, Hanid \harvardand\
+  Inderawati}{2025}{AbuBakar2025}
+Bakar, E. E.~A., Halim, N. D.~A., Hanid, M. F.~A. \harvardand\ Inderawati, R.
+  \harvardyearleft 2025\harvardyearright , `The challenges of teaching and
+  learning programming in schools: Insights from a systematic literature
+  review', {\em Karya Journal of Emerging Technologies in Human Services} {\bf
+  1},~48--63.
+\newline\harvardurl{https://karyailham.com.my/index.php/kjeths/article/view/203}
+
+\harvarditem[Bassner et~al.]{Bassner, Lenk-Ostendorf, Beinstingel, Wasner
+  \harvardand\ Krusche}{2026}{Bassner2026}
+Bassner, P., Lenk-Ostendorf, B., Beinstingel, R., Wasner, T. \harvardand\
+  Krusche, S.  \harvardyearleft 2026\harvardyearright , `Less stress, better
+  scores, same learning: The dissociation of performance and learning in
+  ai-supported programming education', {\em Computers and Education: Artificial
+  Intelligence} {\bf 10}.
+
+\harvarditem{Beck}{2001}{KentBeck2001}
+Beck, M. B.~K.  \harvardyearleft 2001\harvardyearright , `Manifesto for agile
+  software development'.
+\newline\harvardurl{https://agilemanifesto.org/}
+
+\harvarditem{Becker}{2023}{Becker}
+Becker, D.  \harvardyearleft 2023\harvardyearright , `Programming is hard –
+  or at least it used to be: Educational opportunities and challenges of ai
+  code generation'.
+
+\harvarditem[Bettayeb et~al.]{Bettayeb, Talib, Altayasinah \harvardand\
+  Dakalbab}{2024}{Bettayeb2024}
+Bettayeb, A.~M., Talib, M.~A., Altayasinah, A. Z.~S. \harvardand\ Dakalbab, F.
+  \harvardyearleft 2024\harvardyearright , `Exploring the impact of chatgpt:
+  conversational ai in education'.
+
+\harvarditem{Cambaz \harvardand\ Zhang}{2024}{Cambaz2024}
+Cambaz, D. \harvardand\ Zhang, X.  \harvardyearleft 2024\harvardyearright , Use
+  of ai-driven code generation models in teaching and learning programming: a
+  systematic literature review, {\em in} `SIGCSE 2024 - Proceedings of the 55th
+  ACM Technical Symposium on Computer Science Education', Vol.~1, Association
+  for Computing Machinery, Inc, pp.~172--178.
+
+\harvarditem{Edwards-Fapohunda \harvardand\
+  Adediji}{2024}{OlumideEdwards-Fapohunda2024}
+Edwards-Fapohunda, M.~O. \harvardand\ Adediji, M.~A.  \harvardyearleft
+  2024\harvardyearright , Sustainable development of distance learning in
+  continuing adult education: The impact of artificial intelligence, Technical
+  report, Global Banking School.
+\newline\harvardurl{https://www.researchgate.net/publication/387945682}
+
+\harvarditem[Elkhatat et~al.]{Elkhatat, Elsaid \harvardand\
+  Almeer}{2023}{Elkhatat2023}
+Elkhatat, A.~M., Elsaid, K. \harvardand\ Almeer, S.  \harvardyearleft
+  2023\harvardyearright , `Evaluating the efficacy of ai content detection
+  tools in differentiating between human and ai-generated text', {\em
+  International Journal for Educational Integrity} {\bf 19}.
+
+\harvarditem{Elsayed}{2024}{Elsayed2024}
+Elsayed, H.  \harvardyearleft 2024\harvardyearright , The impact of
+  hallucinated information in large language models on student learning
+  outcomes: A critical examination of misinformation risks in ai-assisted
+  education, Technical report, South Valley University, Egypt.
+
+\harvarditem[Finnie-Ansley et~al.]{Finnie-Ansley, Denny, Becker, Luxton-Reilly
+  \harvardand\ Prather}{2022}{Finnie-Ansley2022}
+Finnie-Ansley, J., Denny, P., Becker, B.~A., Luxton-Reilly, A. \harvardand\
+  Prather, J.  \harvardyearleft 2022\harvardyearright , The robots are coming:
+  Exploring the implications of openai codex on introductory programming, {\em
+  in} `ACM International Conference Proceeding Series', Association for
+  Computing Machinery, pp.~10--19.
+
+\harvarditem[Gambo et~al.]{Gambo, Abegunde, Gambo, Ogundokun, Babatunde
+  \harvardand\ Lee}{2024}{Gambo2024}
+Gambo, I., Abegunde, F.~J., Gambo, O., Ogundokun, R.~O., Babatunde, A.~N.
+  \harvardand\ Lee, C.~C.  \harvardyearleft 2024\harvardyearright , `Grad-ai:
+  An automated grading tool for code assessment and feedback in programming
+  course', {\em Education and Information Technologies} .
+
+\harvarditem[Gray et~al.]{Gray, Edsall \harvardand\
+  Parapadakis}{2025}{LeatonGray2025}
+Gray, S.~L., Edsall, D. \harvardand\ Parapadakis, D.  \harvardyearleft
+  2025\harvardyearright , `Ai-based digital cheating at university, and the
+  case for new ethical pedagogies', {\em Journal of Academic Ethics} .
+
+\harvarditem[Hou et~al.]{Hou, Zhao, Wang \harvardand\ Wang}{2025}{Hou2025}
+Hou, X., Zhao, Y., Wang, S. \harvardand\ Wang, H.  \harvardyearleft
+  2025\harvardyearright , `Model context protocol (mcp): Landscape, security
+  threats, and future research directions', {\em Huazhong University of Science
+  and Technology} .
+\newline\harvardurl{http://arxiv.org/abs/2503.23278}
+
+\harvarditem{Hu}{2023}{chatgpt_growth_2023}
+Hu, C.  \harvardyearleft 2023\harvardyearright , `Chatgpt sets record for
+  fastest-growing user base'.
+\newline\harvardurl{https://www.reuters.com/technology/chatgpt-sets-record-fastest-growing-user-base-analyst-note-2023-02-01/}
+
+\harvarditem{Huckins}{2025}{Huckins2025}
+Huckins, G.  \harvardyearleft 2025\harvardyearright , `Gpt-5 is here. now what?
+  | mit technology review'.
+\newline\harvardurl{https://www.technologyreview.com/2025/08/07/1121308/gpt-5-is-here-now-what/}
+
+\harvarditem[Humble et~al.]{Humble, Boustedt, Holmgren, Milutinovic, Seipel
+  \harvardand\ Östberg}{2024}{Humble2024}
+Humble, N., Boustedt, J., Holmgren, H., Milutinovic, G., Seipel, S.
+  \harvardand\ Östberg, A.~S.  \harvardyearleft 2024\harvardyearright ,
+  `Cheaters or ai-enhanced learners: Consequences of chatgpt for programming
+  education', {\em Electronic Journal of e-Learning} {\bf 22},~16--29.
+
+\harvarditem{Jiao}{2025}{Jiao2025}
+Jiao, H.  \harvardyearleft 2025\harvardyearright , Comparing human and ai rater
+  effects using the many-facet rasch model, Technical report, University of
+  Maryland.
+
+\harvarditem{Joseph \harvardand\ Judy}{2024}{Joseph2024}
+Joseph, J. \harvardand\ Judy, M.~V.  \harvardyearleft 2024\harvardyearright ,
+  Developing an intelligent integrated software agent for streamlined interview
+  automation and enhanced candidate insights, {\em in} `2024 2nd DMIHER
+  International Conference on Artificial Intelligence in Healthcare, Education
+  and Industry, IDICAIEI 2024', Institute of Electrical and Electronics
+  Engineers Inc.
+
+\harvarditem{Jukiewicz}{2024}{Jukiewicz2024}
+Jukiewicz, M.  \harvardyearleft 2024\harvardyearright , `The future of grading
+  programming assignments in education: The role of chatgpt in automating the
+  assessment and feedback process', {\em Thinking Skills and Creativity} {\bf
+  52}.
+
+\harvarditem[Kannam et~al.]{Kannam, Yang, Dharm \harvardand\
+  Lin}{2025}{Kannam2025}
+Kannam, S., Yang, Y., Dharm, A. \harvardand\ Lin, K.  \harvardyearleft
+  2025\harvardyearright , Code interviews: Design and evaluation of a more
+  authentic assessment for introductory programming assignments, {\em in}
+  `SIGCSE TS 2025 - Proceedings of the 56th ACM Technical Symposium on Computer
+  Science Education', Vol.~1, Association for Computing Machinery, Inc,
+  pp.~554--560.
+
+\harvarditem{Lau \harvardand\ Guo}{2023}{Lau2023}
+Lau, S. \harvardand\ Guo, P.  \harvardyearleft 2023\harvardyearright , From
+  "ban it till we understand it" to "resistance is futile": How university
+  programming instructors plan to adapt as more students use ai code generation
+  and explanation tools such as chatgpt and github copilot, {\em in} `ICER 2023
+  - Proceedings of the 2023 ACM Conference on International Computing Education
+  Research V.1', Association for Computing Machinery, Inc, pp.~106--121.
+
+\harvarditem{Lee}{2024}{Lee2024}
+Lee, H.  \harvardyearleft 2024\harvardyearright , `The rise of chatgpt:
+  Exploring its potential in medical education'.
+
+\harvarditem[Lewis et~al.]{Lewis, Perez, Piktus, Petroni, Karpukhin, Goyal,
+  Küttler, Lewis, tau Yih, Rocktäschel, Riedel \harvardand\
+  Kiela}{2021}{Lewis2021}
+Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N.,
+  Küttler, H., Lewis, M., tau Yih, W., Rocktäschel, T., Riedel, S.
+  \harvardand\ Kiela, D.  \harvardyearleft 2021\harvardyearright ,
+  `Retrieval-augmented generation for knowledge-intensive nlp tasks'.
+\newline\harvardurl{http://arxiv.org/abs/2005.11401}
+
+\harvarditem[Liu et~al.]{Liu, Zenke, Liu, Holmes, Thornton \harvardand\
+  Malan}{2024}{Liu2024}
+Liu, R., Zenke, C., Liu, C., Holmes, A., Thornton, P. \harvardand\ Malan, D.~J.
+   \harvardyearleft 2024\harvardyearright , Teaching cs50 with ai: Leveraging
+  generative artificial intelligence in computer science education, {\em in}
+  `SIGCSE 2024 - Proceedings of the 55th ACM Technical Symposium on Computer
+  Science Education', Vol.~1, Association for Computing Machinery, Inc,
+  pp.~750--756.
+
+\harvarditem{Lucia \harvardand\ Qusef}{2010}{DeLucia2010}
+Lucia, A.~D. \harvardand\ Qusef, A.  \harvardyearleft 2010\harvardyearright ,
+  `Requirements engineering in agile software development', {\em Journal of
+  Emerging Technologies in Web Intelligence} {\bf 2},~212--220.
+
+\harvarditem[Min et~al.]{Min, Lyu, Holtzman, Artetxe, Lewis, Hajishirzi
+  \harvardand\ Zettlemoyer}{2022}{Min2022}
+Min, S., Lyu, X., Holtzman, A., Artetxe, M., Lewis, M., Hajishirzi, H.
+  \harvardand\ Zettlemoyer, L.  \harvardyearleft 2022\harvardyearright ,
+  `Rethinking the role of demonstrations: What makes in-context learning
+  work?', {\em Allen Institute for AI} .
+\newline\harvardurl{http://arxiv.org/abs/2202.12837}
+
+\harvarditem[Parvathy et~al.]{Parvathy, Thushara \harvardand\
+  Kannimoola}{2025}{Parvathy2025}
+Parvathy, R., Thushara, M.~G. \harvardand\ Kannimoola, J.~M.  \harvardyearleft
+  2025\harvardyearright , `Automated code assessment and feedback: A
+  comprehensive model for improved programming education', {\em IEEE Access} .
+
+\harvarditem{Qureshi}{2023}{Qureshi2023}
+Qureshi, B.  \harvardyearleft 2023\harvardyearright , Chatgpt in computer
+  science curriculum assessment: An analysis of its successes and shortcomings,
+  {\em in} `ACM International Conference Proceeding Series', Association for
+  Computing Machinery, pp.~7--13.
+
+\harvarditem[Raj et~al.]{Raj, Becker, Goldweber \harvardand\
+  Jalote}{2023}{Raj2023}
+Raj, R.~K., Becker, B.~A., Goldweber, M. \harvardand\ Jalote, P.
+  \harvardyearleft 2023\harvardyearright , Perspectives on computer science
+  curricula 2023 (cs2023), {\em in} `CompEd 2023 - Proceedings of the ACM
+  Conference on Global Computing Education', Vol.~2, Association for Computing
+  Machinery, Inc, pp.~187--188.
+
+\harvarditem{Reckinger \harvardand\ Reckinger}{2022}{Reckinger2022}
+Reckinger, S.~J. \harvardand\ Reckinger, S.~M.  \harvardyearleft
+  2022\harvardyearright , A study of the effects of oral proficiency exams in
+  introductory programming courses on underrepresented groups, {\em in} `SIGCSE
+  2022 - Proceedings of the 53rd ACM Technical Symposium on Computer Science
+  Education', Vol.~1, Association for Computing Machinery, Inc, pp.~633--639.
+
+\harvarditem[Sheard et~al.]{Sheard, Simon, Butler, Falkner, Morgan \harvardand\
+  Weerasinghe}{2017}{Sheard2017}
+Sheard, J., Simon, Butler, M., Falkner, K., Morgan, M. \harvardand\
+  Weerasinghe, A.  \harvardyearleft 2017\harvardyearright , Strategies for
+  maintaining academic integrity in first-year computing courses, {\em in}
+  `Annual Conference on Innovation and Technology in Computer Science
+  Education, ITiCSE', Vol. Part F128680, Association for Computing Machinery,
+  pp.~244--249.
+
+\harvarditem{UNSW}{2025}{UNSW2025}
+UNSW  \harvardyearleft 2025\harvardyearright , `Human research ethics
+  procedure'.
+\newline\harvardurl{https://www.unsw.edu.au/content/dam/pdfs/governance/policy/2022-01-policies/humanresearchethicsprocedure.pdf}
+
+\harvarditem{Zviel-Girshin}{2024}{Zviel-Girshin2024}
+Zviel-Girshin, R.  \harvardyearleft 2024\harvardyearright , `The good and bad
+  of ai tools in novice programming education', {\em Education Sciences} {\bf
+  14}.
+
+\end{thebibliography}

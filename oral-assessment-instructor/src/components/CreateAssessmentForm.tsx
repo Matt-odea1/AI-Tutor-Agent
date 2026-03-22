@@ -14,7 +14,7 @@ export default function CreateAssessmentForm() {
     course: '',
     dueDate: '',
     totalQuestions: 8,
-    timeLimit: 5,
+    timeLimit: undefined,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest, string>>>({});
@@ -66,8 +66,8 @@ export default function CreateAssessmentForm() {
       addAssessment(assessment);
       setSelectedAssessment(assessment);
 
-      // Navigate to upload students
-      navigate(`/assessments/${assessment.id}/upload`);
+      // Navigate to upload students with success message
+      navigate(`/assessments/${assessment.id}/upload`, { state: { created: assessment.title } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create assessment');
     } finally {
@@ -81,7 +81,11 @@ export default function CreateAssessmentForm() {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'totalQuestions' || name === 'timeLimit' ? Number(value) : value,
+      [name]: name === 'totalQuestions'
+        ? Number(value)
+        : name === 'timeLimit'
+        ? (value === '' ? undefined : Number(value))
+        : value,
     }));
 
     // Clear error for this field
@@ -188,11 +192,12 @@ export default function CreateAssessmentForm() {
           type="number"
           id="timeLimit"
           name="timeLimit"
-          value={formData.timeLimit}
+          value={formData.timeLimit ?? ''}
           onChange={handleChange}
           min={1}
           max={30}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          placeholder="No limit"
+          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
         <p className="mt-1 text-sm text-slate-400">Optional: Leave blank for no time limit</p>
         {errors.timeLimit && <p className="mt-1 text-sm text-red-400">{errors.timeLimit}</p>}

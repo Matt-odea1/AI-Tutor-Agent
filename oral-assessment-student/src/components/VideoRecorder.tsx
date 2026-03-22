@@ -62,7 +62,7 @@ export default function VideoRecorder({ onSubmit, timeLimit = 0 }: VideoRecorder
         <p className="text-red-600 text-sm">{initError}</p>
         <button
           onClick={() => { setInitError(null); initializeVideoRecorder(); }}
-          className="mt-3 text-sm text-blue-600 underline"
+          className="mt-3 text-sm text-primary-600 underline"
         >
           Try again
         </button>
@@ -194,7 +194,7 @@ export default function VideoRecorder({ onSubmit, timeLimit = 0 }: VideoRecorder
             <button
               onClick={onSubmit}
               disabled={isUploading}
-              className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+              className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-2.5 rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
             >
               {isUploading ? (
                 <>
