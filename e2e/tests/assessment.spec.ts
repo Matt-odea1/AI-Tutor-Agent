@@ -54,9 +54,10 @@ test.describe('Student assessment critical path', () => {
   });
 
   test('results page shows pending when not released', async ({ page }) => {
-    // Override results route to return "not released" error
+    // Override results route to return "not released" error.
+    // Use ** glob so it matches regardless of the API base URL (localhost vs EC2).
     await page.route(
-      `http://localhost:8000/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/results`,
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/results`,
       async (route) => {
         await route.fulfill({
           status: 404,
@@ -79,8 +80,9 @@ test.describe('Instructor assessment dashboard', () => {
   const INSTRUCTOR_BASE = 'http://localhost:5175';
 
   test('assessment list page loads', async ({ page }) => {
-    // Stub the assessments list endpoint
-    await page.route('http://localhost:8000/api/assessment/list', async (route) => {
+    // Stub the assessments list endpoint.
+    // Use ** glob so it matches regardless of the API base URL (localhost vs EC2).
+    await page.route('**/api/assessment/list', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

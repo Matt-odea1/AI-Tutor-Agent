@@ -21,13 +21,16 @@ export interface MockContext {
   overrides?: Record<string, unknown>;
 }
 
-const API = 'http://localhost:8000';
+// Use ** glob prefix to match any host — dev servers may point to localhost:8000
+// or a remote EC2 IP depending on the local .env.local file.
+// The glob matches the path portion regardless of which base URL is in use.
+const G = '**/api';
 
 export async function setupMockApi(page: Page, ctx: MockContext): Promise<void> {
   const { studentId, assessmentId } = ctx;
 
   // Student: exchange invite token → session JWT (not a real JWT — tests stub auth)
-  await page.route(`${API}/api/auth/student/exchange`, async (route) => {
+  await page.route(`${G}/auth/student/exchange`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -36,7 +39,7 @@ export async function setupMockApi(page: Page, ctx: MockContext): Promise<void> 
   });
 
   // Student: get assessment questions
-  await page.route(`${API}/api/student/${studentId}/assessment/${assessmentId}/questions`, async (route) => {
+  await page.route(`${G}/student/${studentId}/assessment/${assessmentId}/questions`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -52,7 +55,7 @@ export async function setupMockApi(page: Page, ctx: MockContext): Promise<void> 
   });
 
   // Student: get presigned upload URL
-  await page.route(`${API}/api/student/*/presigned-url`, async (route) => {
+  await page.route(`${G}/student/*/presigned-url`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -61,17 +64,17 @@ export async function setupMockApi(page: Page, ctx: MockContext): Promise<void> 
   });
 
   // Student: submit answer
-  await page.route(`${API}/api/student/${studentId}/assessment/${assessmentId}/answer`, async (route) => {
+  await page.route(`${G}/student/${studentId}/answer`, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
 
   // Student: submit assessment
-  await page.route(`${API}/api/student/${studentId}/assessment/${assessmentId}/submit`, async (route) => {
+  await page.route(`${G}/student/${studentId}/submit`, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'submitted' }) });
   });
 
   // Student: get results (released)
-  await page.route(`${API}/api/student/${studentId}/assessment/${assessmentId}/results`, async (route) => {
+  await page.route(`${G}/student/${studentId}/assessment/${assessmentId}/results`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
