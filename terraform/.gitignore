@@ -1,0 +1,29 @@
+# Terraform State Files (contain sensitive data - NEVER commit)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform Local Files
+.terraform/
+.terraform.lock.hcl
+
+# Terraform Variable Files (may contain secrets)
+*.tfvars
+*.tfvars.json
+
+# Crash Logs
+crash.log
+crash.*.log
+
+# Override Files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI Configuration
+.terraformrc
+terraform.rc
+
+# macOS
+.DS_Store

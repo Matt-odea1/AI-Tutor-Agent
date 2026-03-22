@@ -1,0 +1,40 @@
+\documentclass[]{unswthesis}
+
+%% Thesis details
+\thesistitle{Investigating the Impact of AI Tools on Teaching and Learning in Introductory Programming Courses}
+
+\thesisschool{School of Computer Science and Engineering}
+\thesisauthor{Matthew O'Dea}
+\thesisZid{z5413887}
+\thesisdegree{Bachelor of Engineering in Software Engineering}
+\thesisdate{August 2025}
+\thesissupervisor{Prof. R Hamadi}% for undergrad theses only
+
+\usepackage{graphicx}
+\usepackage[authoryear]{natbib}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{placeins} % for \FloatBarrier
+\let\cite\citep
+
+%% My own LaTeX macros, definitions, etc
+\begin{document}
+\raggedbottom
+
+%% pages in the ``frontmatter'' section have roman numeral page number
+\frontmatter  
+\maketitle
+\include{abstract}
+\include{acknowledgements}
+\tableofcontents
+\listoffigures
+\listoftables
+
+\mainmatter
+\include{Body}
+
+\backmatter
+\bibliographystyle{agsm}
+\bibliography{references}
+
+\end{document}
