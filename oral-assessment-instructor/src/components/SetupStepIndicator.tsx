@@ -6,7 +6,7 @@ interface SetupStepIndicatorProps {
 }
 
 const STEPS = [
-  { label: 'Create', path: (_id: string) => `/assessments` },
+  { label: 'Create', path: () => `/assessments` },
   { label: 'Upload Students', path: (id: string) => `/assessments/${id}/upload` },
   { label: 'Generate Questions', path: (id: string) => `/assessments/${id}/generate` },
   { label: 'Monitor', path: (id: string) => `/assessments/${id}/monitor` },
@@ -21,7 +21,6 @@ export default function SetupStepIndicator({ currentStep, assessmentId }: SetupS
             const stepNum = (i + 1) as 1 | 2 | 3 | 4;
             const isCompleted = stepNum < currentStep;
             const isCurrent = stepNum === currentStep;
-            const isFuture = stepNum > currentStep;
 
             const label = (
               <span className={`font-medium ${isCurrent ? 'text-primary-400' : isCompleted ? 'text-green-400' : 'text-slate-500'}`}>

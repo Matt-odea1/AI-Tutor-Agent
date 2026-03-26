@@ -49,7 +49,6 @@ export default function TakeAssessment() {
     loadQuestions,
     loadProgress,
     nextQuestion,
-    previousQuestion,
     submitCurrentAnswer,
     submitCurrentTextAnswer,
     submitCurrentVideoAnswer,
