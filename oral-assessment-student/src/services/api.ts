@@ -25,18 +25,27 @@ const apiClient = axios.create({
 // Error handler
 const handleApiError = (error: AxiosError): never => {
   if (error.response) {
-    // Server responded with error
+    // Server responded with an error status
     const responseData = error.response.data as { detail?: string };
+    let message = responseData?.detail || error.message;
+
+    // Provide clearer messages for common status codes
+    if (error.response.status === 404) {
+      message = 'Assessment not found — please check your link or contact your instructor.';
+    } else if (error.response.status === 403) {
+      message = 'Access denied — this assessment link may have expired.';
+    }
+
     const apiError: ApiError = {
-      message: responseData?.detail || error.message,
+      message,
       status: error.response.status,
       details: error.response.data,
     };
     throw apiError;
   } else if (error.request) {
-    // Request made but no response
+    // Request made but no response received (network issue)
     throw {
-      message: 'No response from server. Please check your connection.',
+      message: 'Could not reach the server — please check your internet connection and try again.',
       status: 0,
     } as ApiError;
   } else {

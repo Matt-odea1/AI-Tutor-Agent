@@ -283,6 +283,10 @@ class ApiService {
     );
     return response.data;
   }
+
+  async updateBrief(assessmentId: string, brief: string): Promise<void> {
+    await this.client.put(`/api/assessment/${assessmentId}/brief`, { brief });
+  }
 }
 
 export const apiService = new ApiService();

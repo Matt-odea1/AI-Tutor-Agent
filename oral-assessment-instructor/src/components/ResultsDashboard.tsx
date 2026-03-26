@@ -13,7 +13,7 @@ interface ResultsDashboardProps {
 
 export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDashboardProps) {
   const navigate = useNavigate();
-  const { results, setResults, setLoading, setError } = useAssessmentStore();
+  const { results, setResults, isLoading, setLoading, setError } = useAssessmentStore();
 
   const [filteredResults, setFilteredResults] = useState<AssessmentResults[]>([]);
   const [gradeFilter, setGradeFilter] = useState<string>('all');
@@ -22,10 +22,14 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
   const [isReleasing, setIsReleasing] = useState(false);
   const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [resultsReleased, setResultsReleased] = useState<boolean | null>(null);
   const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    setResults([]);
+    setResultsReleased(null);
     loadResults();
+    loadReleasedState();
   }, [assessmentId]);
 
   useEffect(() => {
@@ -49,6 +53,13 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     es.onerror = () => es.close();
     return () => es.close();
   }, [evalJobId]);
+
+  const loadReleasedState = async () => {
+    try {
+      const assessment = await apiService.getAssessment(assessmentId);
+      setResultsReleased(assessment.resultsReleased ?? false);
+    } catch { /* non-critical */ }
+  };
 
   const loadResults = async () => {
     try {
@@ -94,6 +105,7 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       setIsReleasing(true);
       setReleaseMessage(null);
       await apiService.releaseResults(assessmentId);
+      setResultsReleased(true);
       setReleaseMessage('Results released to students.');
     } catch (err) {
       setReleaseMessage(err instanceof Error ? err.message : 'Failed to release results');
@@ -174,7 +186,15 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     return colors[grade] || 'bg-slate-600 text-slate-200';
   };
 
-  if (results.length === 0) {
+  if (isLoading && results.length === 0) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
+      </div>
+    );
+  }
+
+  if (!isLoading && results.length === 0) {
     return (
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
         <svg className="mx-auto h-16 w-16 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,7 +210,17 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     <div className="space-y-6">
       {/* Release Results Banner */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-        {showReleaseConfirm ? (
+        {resultsReleased ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-green-400">Results Released</p>
+              <p className="text-xs text-slate-400">Students can view their scores and feedback.</p>
+            </div>
+            <span className="px-4 py-2 rounded-lg text-sm font-medium bg-green-900/40 text-green-300 border border-green-700">
+              Released ✓
+            </span>
+          </div>
+        ) : showReleaseConfirm ? (
           <div className="space-y-3">
             <p className="text-sm font-medium text-yellow-300">Confirm release?</p>
             <p className="text-xs text-slate-400">This will make scores and feedback visible to all students immediately and cannot be undone.</p>

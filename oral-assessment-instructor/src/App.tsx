@@ -9,6 +9,7 @@ import StudentResultDetail from './pages/StudentResultDetail';
 import QuestionEditor from './pages/QuestionEditor';
 import NotFound from './pages/NotFound';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import AuthGate from './components/AuthGate';
 import './index.css';
 
@@ -18,6 +19,7 @@ function App() {
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* Default route */}
         <Route path="/" element={<Navigate to="/assessments" replace />} />

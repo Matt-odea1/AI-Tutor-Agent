@@ -11,6 +11,11 @@ export interface Assessment {
   createdAt: Date;
   createdBy: string;
   status: 'draft' | 'active' | 'completed' | 'archived';
+  resultsReleased?: boolean;
+  accessMode?: 'open' | 'scheduled';
+  scheduledWindowStart?: string;
+  scheduledWindowEnd?: string;
+  assignmentBrief?: string;
 }
 
 export interface Student {
@@ -117,6 +122,9 @@ export interface CreateAssessmentRequest {
   dueDate: string;
   totalQuestions: number;
   timeLimit?: number;
+  accessMode?: 'open' | 'scheduled';
+  scheduledWindowStart?: string;
+  scheduledWindowEnd?: string;
 }
 
 export interface UploadStudentsRequest {

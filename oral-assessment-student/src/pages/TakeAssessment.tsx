@@ -115,12 +115,25 @@ export default function TakeAssessment() {
   };
 
   const handleTimerExpire = async () => {
-    const { answerMode, recordedBlob, videoBlob, textAnswer, currentQuestionIndex, questions } = useAssessmentStore.getState();
+    const store = useAssessmentStore.getState();
+    const { answerMode, isRecording, recordedBlob, videoBlob, textAnswer, currentQuestionIndex, questions } = store;
 
-    if (answerMode === 'audio' && recordedBlob) {
+    // If recording is still active, stop it first to capture the blob
+    if (isRecording) {
+      if (answerMode === 'audio') {
+        await store.stopRecording();
+      } else if (answerMode === 'video') {
+        await store.stopVideoRecording();
+      }
+    }
+
+    // Re-read blobs after potential stop
+    const state = useAssessmentStore.getState();
+
+    if (answerMode === 'audio' && (recordedBlob || state.recordedBlob)) {
       addToast('Time\'s up! Submitting your audio answer.', 'warning');
       await submitCurrentAnswer();
-    } else if (answerMode === 'video' && videoBlob) {
+    } else if (answerMode === 'video' && (videoBlob || state.videoBlob)) {
       addToast('Time\'s up! Submitting your video answer.', 'warning');
       await submitCurrentVideoAnswer();
     } else if (answerMode === 'text' && textAnswer.trim().length >= 20) {
@@ -236,8 +249,8 @@ export default function TakeAssessment() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Consent modal — shown once before assessment begins */}
-      {!consentGiven && (
+      {/* Consent modal — only shown once questions have loaded successfully */}
+      {!consentGiven && questions.length > 0 && (
         <ConsentModal
           onConsent={handleConsentAccepted}
           onDecline={handleConsentDeclined}
@@ -246,13 +259,22 @@ export default function TakeAssessment() {
       )}
 
       {/* Pre-assessment overview — shown after consent, before question 1 */}
-      {consentGiven && !assessmentStarted && assessment && (
-        <PreAssessmentOverview
-          assessment={assessment}
-          questionCount={questions.length}
-          onStart={() => setAssessmentStarted(true)}
-        />
+      {consentGiven && !assessmentStarted && (
+        assessment ? (
+          <PreAssessmentOverview
+            assessment={assessment}
+            questionCount={questions.length}
+            onStart={() => setAssessmentStarted(true)}
+          />
+        ) : (
+          <div className="fixed inset-0 bg-gray-50 flex items-center justify-center z-40">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
+          </div>
+        )
       )}
+
+      {/* Main assessment UI — hidden from AT while consent modal is active */}
+      <div aria-hidden={!consentGiven || undefined}>
 
       {/* Browser support error banner */}
       {browserError && (
@@ -325,7 +347,7 @@ export default function TakeAssessment() {
             <div className="mb-4 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3">
               <span className="text-green-800 text-sm font-medium">All questions answered — ready to submit?</span>
               <button
-                onClick={() => setShowSubmitModal(true)}
+                onClick={() => { if (pendingNavIndex === null) setShowSubmitModal(true); }}
                 className="ml-4 bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
               >
                 Submit Assessment
@@ -447,9 +469,9 @@ export default function TakeAssessment() {
               <span>Previous</span>
             </button>
 
-            {isLastQuestion ? (
+            {isLastQuestion && !allAnswered ? (
               <button
-                onClick={() => setShowSubmitModal(true)}
+                onClick={() => pendingNavIndex === null && setShowSubmitModal(true)}
                 className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
               >
                 <span>Submit Assessment</span>
@@ -459,7 +481,7 @@ export default function TakeAssessment() {
                     clipRule="evenodd" />
                 </svg>
               </button>
-            ) : (
+            ) : !isLastQuestion ? (
               <button
                 onClick={handleNext}
                 className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
@@ -471,7 +493,7 @@ export default function TakeAssessment() {
                     clipRule="evenodd" />
                 </svg>
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </main>
@@ -514,6 +536,8 @@ export default function TakeAssessment() {
           </div>
         </div>
       )}
+
+      </div>{/* end aria-hidden wrapper */}
     </div>
   );
 }

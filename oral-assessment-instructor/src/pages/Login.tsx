@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -90,6 +90,11 @@ export default function Login() {
             {isLoading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+        <div className="mt-4 text-center">
+          <Link to="/forgot-password" className="text-slate-400 hover:text-slate-300 text-sm">
+            Forgot password?
+          </Link>
+        </div>
       </div>
     </div>
   );

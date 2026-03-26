@@ -6,7 +6,7 @@ interface SetupStepIndicatorProps {
 }
 
 const STEPS = [
-  { label: 'Create', path: (id: string) => `/assessments/create` },
+  { label: 'Create', path: (_id: string) => `/assessments` },
   { label: 'Upload Students', path: (id: string) => `/assessments/${id}/upload` },
   { label: 'Generate Questions', path: (id: string) => `/assessments/${id}/generate` },
   { label: 'Monitor', path: (id: string) => `/assessments/${id}/monitor` },

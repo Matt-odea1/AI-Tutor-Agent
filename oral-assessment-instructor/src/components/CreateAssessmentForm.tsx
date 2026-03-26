@@ -15,9 +15,12 @@ export default function CreateAssessmentForm() {
     dueDate: '',
     totalQuestions: 8,
     timeLimit: undefined,
+    accessMode: 'open',
+    scheduledWindowStart: undefined,
+    scheduledWindowEnd: undefined,
   });
 
-  const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest | string, string>>>({});
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof CreateAssessmentRequest, string>> = {};
@@ -45,6 +48,20 @@ export default function CreateAssessmentForm() {
 
     if (formData.timeLimit && (formData.timeLimit < 1 || formData.timeLimit > 30)) {
       newErrors.timeLimit = 'Time limit must be between 1 and 30 minutes';
+    }
+
+    if (formData.accessMode === 'scheduled') {
+      if (!formData.scheduledWindowStart) {
+        newErrors.scheduledWindowStart = 'Window start is required for scheduled access';
+      }
+      if (!formData.scheduledWindowEnd) {
+        newErrors.scheduledWindowEnd = 'Window end is required for scheduled access';
+      }
+      if (formData.scheduledWindowStart && formData.scheduledWindowEnd) {
+        if (new Date(formData.scheduledWindowEnd) <= new Date(formData.scheduledWindowStart)) {
+          newErrors.scheduledWindowEnd = 'Window end must be after window start';
+        }
+      }
     }
 
     setErrors(newErrors);
@@ -92,6 +109,15 @@ export default function CreateAssessmentForm() {
     if (errors[name as keyof CreateAssessmentRequest]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
+  };
+
+  const handleAccessModeChange = (mode: 'open' | 'scheduled') => {
+    setFormData(prev => ({
+      ...prev,
+      accessMode: mode,
+      scheduledWindowStart: mode === 'open' ? undefined : prev.scheduledWindowStart,
+      scheduledWindowEnd: mode === 'open' ? undefined : prev.scheduledWindowEnd,
+    }));
   };
 
   return (
@@ -149,7 +175,7 @@ export default function CreateAssessmentForm() {
       {/* Due Date */}
       <div>
         <label htmlFor="dueDate" className="block text-sm font-medium text-slate-200 mb-2">
-          Due Date *
+          Display Deadline *
         </label>
         <input
           type="datetime-local"
@@ -159,8 +185,80 @@ export default function CreateAssessmentForm() {
           onChange={handleChange}
           className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
+        <p className="mt-1 text-sm text-slate-400">
+          Shown to students as a reminder — does not enforce access. Use "Scheduled Window" below to restrict when students can open the assessment.
+        </p>
         {errors.dueDate && <p className="mt-1 text-sm text-red-400">{errors.dueDate}</p>}
       </div>
+
+      {/* Access Mode */}
+      <div>
+        <label className="block text-sm font-medium text-slate-200 mb-2">
+          Student Access
+        </label>
+        <div className="flex space-x-4">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="accessMode"
+              checked={formData.accessMode === 'open'}
+              onChange={() => handleAccessModeChange('open')}
+              className="text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-slate-200 text-sm font-medium">Open access</span>
+          </label>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="accessMode"
+              checked={formData.accessMode === 'scheduled'}
+              onChange={() => handleAccessModeChange('scheduled')}
+              className="text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-slate-200 text-sm font-medium">Scheduled window</span>
+          </label>
+        </div>
+        <p className="mt-1 text-sm text-slate-400">
+          {formData.accessMode === 'open'
+            ? 'Students can open their link at any time until the display deadline.'
+            : 'Students can only access the assessment during the specified window.'}
+        </p>
+      </div>
+
+      {/* Scheduled Window (shown only when scheduled mode is selected) */}
+      {formData.accessMode === 'scheduled' && (
+        <div className="bg-slate-700/50 rounded-lg p-4 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-200">Scheduled Access Window</h3>
+          <div>
+            <label htmlFor="scheduledWindowStart" className="block text-sm font-medium text-slate-300 mb-2">
+              Window opens *
+            </label>
+            <input
+              type="datetime-local"
+              id="scheduledWindowStart"
+              name="scheduledWindowStart"
+              value={formData.scheduledWindowStart ?? ''}
+              onChange={handleChange}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            />
+            {errors.scheduledWindowStart && <p className="mt-1 text-sm text-red-400">{errors.scheduledWindowStart}</p>}
+          </div>
+          <div>
+            <label htmlFor="scheduledWindowEnd" className="block text-sm font-medium text-slate-300 mb-2">
+              Window closes *
+            </label>
+            <input
+              type="datetime-local"
+              id="scheduledWindowEnd"
+              name="scheduledWindowEnd"
+              value={formData.scheduledWindowEnd ?? ''}
+              onChange={handleChange}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            />
+            {errors.scheduledWindowEnd && <p className="mt-1 text-sm text-red-400">{errors.scheduledWindowEnd}</p>}
+          </div>
+        </div>
+      )}
 
       {/* Total Questions */}
       <div>
@@ -213,7 +311,7 @@ export default function CreateAssessmentForm() {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/assessments')}
           className="bg-slate-700 text-slate-200 px-6 py-2.5 rounded-lg font-medium hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900"
         >
           Cancel

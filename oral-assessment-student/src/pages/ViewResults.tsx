@@ -142,41 +142,35 @@ export default function ViewResults() {
         {/* Overall Score Card */}
         <div className="bg-white rounded-lg shadow-md p-8 mb-8">
           <div className="text-center">
-            <div className="mb-4">
-              <div className="text-6xl font-bold text-gray-900 mb-2">
-                {results.percentage}%
+            {/* Score, percentage, and grade as a single coherent unit */}
+            <div className="mb-6">
+              <div className="text-5xl font-bold text-gray-900 mb-1">
+                {results.totalScore} / {results.maxScore}
               </div>
-              <div className={`inline-block px-6 py-2 rounded-full text-2xl font-semibold ${gradeColorClass}`}>
-                Grade: {grade}
+              <div className="text-2xl text-gray-600 mb-3">
+                ({results.percentage}%)
+              </div>
+              <div className={`inline-block px-6 py-2 rounded-full text-xl font-semibold ${gradeColorClass}`}>
+                {grade}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-6 mt-6 pt-6 border-t">
+            <div className="grid grid-cols-2 gap-6 pt-6 border-t">
               <div>
-                <div className="text-3xl font-bold text-primary-600">
-                  {results.totalScore}
-                </div>
-                <div className="text-sm text-gray-600">Total Score</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-purple-600">
-                  {results.maxScore}
-                </div>
-                <div className="text-sm text-gray-600">Max Score</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-green-600">
                   {results.questions.length}
                 </div>
                 <div className="text-sm text-gray-600">Questions</div>
               </div>
-            </div>
-
-            {results.completedAt && (
-              <div className="mt-4 text-sm text-gray-500">
-                Completed: {formatTimestamp(results.completedAt)}
+              <div>
+                {results.completedAt && (
+                  <>
+                    <div className="text-sm font-medium text-gray-700">{formatTimestamp(results.completedAt)}</div>
+                    <div className="text-sm text-gray-600">Completed</div>
+                  </>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 

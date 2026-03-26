@@ -26,9 +26,14 @@ export default function AssessmentList() {
       const entries = await Promise.all(
         list.map(async (a) => {
           try {
-            const prog = await apiService.getAssessmentProgress(a.id);
-            const students = Array.isArray(prog) ? prog : [];
-            return [a.id, { enrolled: students.length, completed: students.filter(s => s.status === 'submitted' || s.status === 'completed').length }] as const;
+            const [studentsData, progData] = await Promise.all([
+              apiService.getAssessmentStudents(a.id),
+              apiService.getAssessmentProgress(a.id),
+            ]);
+            const enrolled = Array.isArray(studentsData) ? studentsData.length : 0;
+            const prog = Array.isArray(progData) ? progData : [];
+            const completed = prog.filter(s => s.status === 'submitted' || s.status === 'completed').length;
+            return [a.id, { enrolled, completed }] as const;
           } catch {
             return [a.id, { enrolled: 0, completed: 0 }] as const;
           }
@@ -192,7 +197,7 @@ export default function AssessmentList() {
           </div>
         )}
 
-        {!isLoading && displayAssessments.length === 0 && (
+        {!isLoading && !error && displayAssessments.length === 0 && (
           <div className="text-center py-12">
             <p className="text-slate-400 mb-4">No assessments yet</p>
             <Link

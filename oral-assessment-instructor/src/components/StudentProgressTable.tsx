@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
 import type { StudentProgress, Student } from '../../../shared/types/assessment';
@@ -28,15 +29,30 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluatingSingle, setEvaluatingSingle] = useState<Record<string, boolean>>({});
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
-  const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>({});
+  const [reminderSent, setReminderSent] = useState<string | null>(null);
+  const EVAL_DONE_KEY = `evalDone:${assessmentId}`;
+  const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>(() => {
+    // Restore completed evaluations from localStorage
+    try {
+      const stored = localStorage.getItem(EVAL_DONE_KEY);
+      const doneIds: string[] = stored ? JSON.parse(stored) : [];
+      return Object.fromEntries(
+        doneIds.map(id => [id, { questionsEvaluated: 1, totalQuestions: 1, percentage: 100, status: 'completed' }])
+      );
+    } catch {
+      return {};
+    }
+  });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
   const [showRefreshInfo, setShowRefreshInfo] = useState(true);
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
-  // Load initial data
+  // Load initial data (reset stale data first to avoid showing previous assessment's state)
   useEffect(() => {
+    setProgress([]);
+    setStudents([]);
     loadProgressData();
     loadStudents();
   }, [assessmentId]);
@@ -116,7 +132,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     });
 
     // Status filter
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'done') {
+      filtered = filtered.filter(p => p.status === 'completed' || p.status === 'submitted');
+    } else if (statusFilter !== 'all') {
       filtered = filtered.filter(p => p.status === statusFilter);
     }
 
@@ -141,7 +159,18 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       try {
         const data: EvalProgress = JSON.parse(event.data);
         setEvalProgress(prev => ({ ...prev, [studentId]: data }));
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (data.status === 'completed') {
+          // Persist to localStorage so Evaluate button stays hidden after refresh
+          try {
+            const stored = localStorage.getItem(EVAL_DONE_KEY);
+            const doneIds: string[] = stored ? JSON.parse(stored) : [];
+            if (!doneIds.includes(studentId)) {
+              localStorage.setItem(EVAL_DONE_KEY, JSON.stringify([...doneIds, studentId]));
+            }
+          } catch { /* ignore storage errors */ }
+          es.close();
+          delete evalStreams.current[studentId];
+        } else if (data.status === 'failed') {
           es.close();
           delete evalStreams.current[studentId];
         }
@@ -205,6 +234,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     setSendingReminder(studentId);
     try {
       await apiService.sendReminder(assessmentId, studentId);
+      setReminderSent(studentId);
+      setTimeout(() => setReminderSent(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send reminder');
     } finally {
@@ -312,8 +343,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
               <option value="all">All Status</option>
               <option value="not-started">Not Started</option>
               <option value="in-progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="submitted">Submitted</option>
+              <option value="done">Completed / Submitted</option>
             </select>
           </div>
 
@@ -435,20 +465,24 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                       {p.startedAt ? new Date(p.startedAt).toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {isInactive(p) && (
                           <span className="px-2 py-0.5 text-xs bg-orange-900/40 text-orange-400 border border-orange-700 rounded">
                             Inactive 30m+
                           </span>
                         )}
                         {(p.status === 'not-started' || p.status === 'in-progress') && (
-                          <button
-                            onClick={() => handleSendReminder(p.studentId)}
-                            disabled={sendingReminder === p.studentId}
-                            className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
-                          >
-                            {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
-                          </button>
+                          reminderSent === p.studentId ? (
+                            <span className="text-green-400 text-xs font-medium">Sent ✓</span>
+                          ) : (
+                            <button
+                              onClick={() => handleSendReminder(p.studentId)}
+                              disabled={sendingReminder === p.studentId}
+                              className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
+                            >
+                              {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
+                            </button>
+                          )
                         )}
                         {(p.status === 'completed' || p.status === 'submitted') &&
                           (!evalProgress[p.studentId] || evalProgress[p.studentId].status === 'not_started') && (
@@ -460,6 +494,12 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                             {evaluatingSingle[p.studentId] ? 'Starting…' : 'Evaluate'}
                           </button>
                         )}
+                        <Link
+                          to={`/assessments/${assessmentId}/questions/${p.studentId}`}
+                          className="text-slate-400 hover:text-slate-300 text-xs font-medium transition-colors"
+                        >
+                          Edit Questions
+                        </Link>
                       </div>
                     </td>
                   </tr>

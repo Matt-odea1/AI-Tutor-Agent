@@ -12,7 +12,7 @@ interface ResultsCardProps {
 export default function ResultsCard({ result }: ResultsCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const scorePercentage = Math.round(result.totalScore);
+  const scorePercentage = Math.round((result.totalScore / (result.maxScore ?? 10)) * 100);
   const scoreColor =
     scorePercentage >= 90
       ? 'text-green-600 bg-green-100'
