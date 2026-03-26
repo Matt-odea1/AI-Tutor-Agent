@@ -29,8 +29,8 @@ const handleApiError = (error: AxiosError): never => {
     const responseData = error.response.data as { detail?: string };
     let message = responseData?.detail || error.message;
 
-    // Provide clearer messages for common status codes
-    if (error.response.status === 404) {
+    // Provide clearer messages for common status codes, but preserve domain-specific detail messages
+    if (error.response.status === 404 && !responseData?.detail) {
       message = 'Assessment not found — please check your link or contact your instructor.';
     } else if (error.response.status === 403) {
       message = 'Access denied — this assessment link may have expired.';
