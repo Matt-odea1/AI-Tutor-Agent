@@ -26,8 +26,12 @@ function DefaultRoute() {
         <p className="text-gray-600 mb-2">
           This platform is used to take oral assessments set by your instructor.
         </p>
-        <p className="text-sm text-gray-500 mb-8">
+        <p className="text-sm text-gray-500 mb-2">
           If you have an assessment link, open it in your browser or paste it below.
+        </p>
+        <p className="text-xs text-gray-400 mb-8 font-mono bg-gray-50 rounded px-3 py-2 text-left">
+          Your link will look like:<br />
+          <span className="text-gray-600">https://…/s12345/a1b2c3d4-…</span>
         </p>
         <div className="flex space-x-2">
           <input

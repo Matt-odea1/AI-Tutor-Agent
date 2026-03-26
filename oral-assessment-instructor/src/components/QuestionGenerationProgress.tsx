@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
+import type { Student } from '../../../shared/types/assessment';
 
 interface QuestionGenerationProgressProps {
   assessmentId: string;
@@ -13,6 +14,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
 
   // Clean up polling on unmount
   useEffect(() => {
@@ -56,6 +58,15 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
 
     setPollingInterval(interval);
   }, [generationJob?.jobId, pollingInterval]);
+
+  // Load students when job completes so we can show per-student question links
+  useEffect(() => {
+    if (generationJob?.status === 'completed' && students.length === 0) {
+      apiService.getAssessmentStudents(assessmentId)
+        .then(s => setStudents(Array.isArray(s) ? s : []))
+        .catch(() => { /* non-critical */ });
+    }
+  }, [generationJob?.status]);
 
   const handleStartGeneration = async () => {
     try {
@@ -293,6 +304,25 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                 <p className="text-green-400 text-sm font-medium">
                   ✓ Question generation completed successfully!
                 </p>
+                {students.length > 0 && (
+                  <div className="text-left mt-4">
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">
+                      Questions generated for {students.length} student{students.length !== 1 ? 's' : ''}
+                    </h4>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {students.map(s => (
+                        <Link
+                          key={s.studentId}
+                          to={`/assessments/${assessmentId}/questions/${s.studentId}`}
+                          className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 transition-colors text-sm"
+                        >
+                          <span className="text-slate-200">{s.name || s.studentId}</span>
+                          <span className="text-primary-400 text-xs font-medium">Edit Questions →</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={handleContinue}
                   className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-900"

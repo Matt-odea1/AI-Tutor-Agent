@@ -1,8 +1,8 @@
 /**
  * ProctorCamera — fixed bottom-right Picture-in-Picture webcam preview
- * with a red REC indicator. Mounts once proctoring consent has been given.
+ * with a red REC indicator. Supports minimise to a dot.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ProctorCameraProps {
   stream: MediaStream | null;
@@ -11,6 +11,7 @@ interface ProctorCameraProps {
 
 export default function ProctorCamera({ stream, isRecording }: ProctorCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [minimised, setMinimised] = useState(false);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -19,6 +20,26 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
   }, [stream]);
 
   if (!stream) return null;
+
+  if (minimised) {
+    return (
+      <button
+        onClick={() => setMinimised(false)}
+        className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full bg-gray-900 border-2 border-gray-700 shadow-xl flex items-center justify-center hover:border-gray-500 transition-colors"
+        title="Expand proctoring camera"
+        aria-label="Expand proctoring camera"
+      >
+        {isRecording && (
+          <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+        )}
+        {!isRecording && (
+          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        )}
+      </button>
+    );
+  }
 
   return (
     <div
@@ -41,6 +62,14 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
           </span>
         </div>
       )}
+      <button
+        onClick={() => setMinimised(true)}
+        className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-black/80 rounded text-white text-xs flex items-center justify-center transition-colors"
+        title="Minimise camera"
+        aria-label="Minimise proctoring camera"
+      >
+        ×
+      </button>
     </div>
   );
 }
