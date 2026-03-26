@@ -548,7 +548,8 @@ class InstructorAssessmentService:
             expr_vals: Dict[str, Any] = {":t": text, ":ua": datetime.now(timezone.utc).isoformat()}
             if time_limit is not None:
                 update_expr += ", timeLimit = :tl"
-                expr_vals[":tl"] = time_limit
+                # time_limit arrives in minutes from UpdateStudentQuestionRequest; store as seconds.
+                expr_vals[":tl"] = time_limit * 60
             else:
                 update_expr += " REMOVE timeLimit"
 
@@ -639,7 +640,8 @@ class InstructorAssessmentService:
                 "createdAt": now,
             }
             if time_limit is not None:
-                item["timeLimit"] = time_limit
+                # time_limit arrives in minutes from AddStudentQuestionRequest; store as seconds.
+                item["timeLimit"] = time_limit * 60
             self.table.put_item(Item=item)
             logger.info("Added question %s for %s/%s", qid, assessment_id, student_id)
             return self._convert_decimals(item)
@@ -648,6 +650,36 @@ class InstructorAssessmentService:
         except Exception as e:
             logger.error("Failed to add question: %s", e)
             raise InstructorAssessmentServiceError(f"Failed to add question: {e}")
+
+    def update_status(self, assessment_id: str, new_status: str) -> Dict[str, Any]:
+        """
+        Transition assessment status.
+        Valid transitions: draft → open, open → closed.
+        """
+        if new_status not in ("open", "closed"):
+            raise InstructorAssessmentServiceError("status must be 'open' or 'closed'")
+
+        current = self.get_assessment(assessment_id)
+        current_status = current.get("status", "draft")
+
+        allowed: Dict[str, List[str]] = {
+            "draft": ["open"],
+            "open": ["closed"],
+        }
+        if new_status not in allowed.get(current_status, []):
+            raise InstructorAssessmentServiceError(
+                f"Cannot transition from '{current_status}' to '{new_status}'"
+            )
+
+        updated_at = datetime.now(timezone.utc).isoformat()
+        self.table.update_item(
+            Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
+            UpdateExpression="SET #s = :s, updatedAt = :ua",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": new_status, ":ua": updated_at},
+        )
+        logger.info("Assessment %s status: %s → %s", assessment_id, current_status, new_status)
+        return self.get_assessment(assessment_id)
 
     def count_submitted_students(self, assessment_id: str) -> tuple:
         """

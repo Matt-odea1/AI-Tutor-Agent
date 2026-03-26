@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import StudentProgressTable from '../components/StudentProgressTable';
+import SetupStepIndicator from '../components/SetupStepIndicator';
 
 export default function MonitorProgress() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -60,6 +61,8 @@ export default function MonitorProgress() {
           </div>
         </div>
       </header>
+
+      <SetupStepIndicator currentStep={4} assessmentId={assessmentId!} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <StudentProgressTable assessmentId={assessmentId} />

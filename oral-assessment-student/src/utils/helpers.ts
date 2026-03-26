@@ -170,6 +170,19 @@ export function capitalize(text: string): string {
 }
 
 /**
+ * Get grade color class for backend band grades (Excellent / Competent / Developing / Unsatisfactory)
+ */
+export function getBandGradeColor(grade: string): string {
+  switch (grade) {
+    case 'Excellent': return 'text-green-600 bg-green-100';
+    case 'Competent': return 'text-blue-600 bg-blue-100';
+    case 'Developing': return 'text-yellow-600 bg-yellow-100';
+    case 'Unsatisfactory': return 'text-red-600 bg-red-100';
+    default: return 'text-gray-600 bg-gray-100';
+  }
+}
+
+/**
  * Get difficulty badge color
  */
 export function getDifficultyColor(difficulty: string): string {
@@ -192,6 +205,7 @@ export default {
   calculatePercentage,
   getGradeFromPercentage,
   getGradeColor,
+  getBandGradeColor,
   getStatusColor,
   validateStudentId,
   validateAssessmentId,

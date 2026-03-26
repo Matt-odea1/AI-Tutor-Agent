@@ -74,6 +74,9 @@ interface AssessmentStore {
   results: Results | null;
   isResultsReady: boolean;
 
+  // Per-question answered tracking
+  answeredQuestionIds: Set<string>;
+
   // Loading and error states
   isLoading: boolean;
   error: ApiError | null;
@@ -161,6 +164,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   consentGiven: false,
   results: null,
   isResultsReady: false,
+  answeredQuestionIds: new Set<string>(),
   isLoading: false,
   error: null,
 
@@ -196,12 +200,16 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
   // Load progress
   loadProgress: async () => {
-    const { studentId, assessmentId } = get();
+    const { studentId, assessmentId, questions } = get();
     if (!studentId || !assessmentId) return;
 
     try {
       const progress = await getProgress(studentId, assessmentId);
-      set({ progress });
+      // Best-effort: assume first answeredQuestions questions (by index) are answered
+      const ids = new Set<string>(
+        questions.slice(0, progress.answeredQuestions).map((q) => q.id)
+      );
+      set({ progress, answeredQuestionIds: ids });
     } catch (error) {
       console.error('Failed to load progress:', error);
     }
@@ -597,7 +605,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       await submitAnswer(studentId, currentQuestion.id, assessmentId, audioUrl, recordingDuration);
       await get().loadProgress();
 
-      set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, playbackUrl: null });
+      const newAnsweredIds = new Set(get().answeredQuestionIds);
+      newAnsweredIds.add(currentQuestion.id);
+      set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
 
       if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
     } catch (error) {
@@ -631,7 +641,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       await submitTextAnswer(studentId, currentQuestion.id, assessmentId, textAnswer.trim());
       await get().loadProgress();
 
-      set({ isUploading: false, textAnswer: '' });
+      const newAnsweredIds = new Set(get().answeredQuestionIds);
+      newAnsweredIds.add(currentQuestion.id);
+      set({ isUploading: false, textAnswer: '', answeredQuestionIds: newAnsweredIds });
 
       if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
     } catch (error) {
@@ -678,12 +690,15 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       // Release object URL
       if (videoPreviewUrl && videoRecorder) videoRecorder.releaseVideoUrl(videoPreviewUrl);
 
+      const newAnsweredIds = new Set(get().answeredQuestionIds);
+      newAnsweredIds.add(currentQuestion.id);
       set({
         isUploading: false,
         uploadProgress: 0,
         videoBlob: null,
         recordingDuration: 0,
         videoPreviewUrl: null,
+        answeredQuestionIds: newAnsweredIds,
       });
 
       if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
@@ -767,6 +782,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       consentGiven: false,
       results: null,
       isResultsReady: false,
+      answeredQuestionIds: new Set<string>(),
       isLoading: false,
       error: null,
     });

@@ -179,10 +179,10 @@ export default function QuestionEditor() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <button
-              onClick={() => navigate(`/assessments/${assessmentId}/generate`)}
+              onClick={() => navigate(-1)}
               className="text-sm text-slate-400 hover:text-slate-200 mb-1 flex items-center gap-1"
             >
-              ← Back to Generate Questions
+              ← Back
             </button>
             <h1 className="text-xl font-bold">Question Editor</h1>
             <p className="text-sm text-slate-400 mt-0.5">

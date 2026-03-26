@@ -331,13 +331,6 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
             >
               Export CSV
             </button>
-            <button
-              disabled
-              title="Audio export — coming soon"
-              className="bg-slate-600 text-slate-400 px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed"
-            >
-              Export Audio ZIP
-            </button>
           </div>
         </div>
       </div>

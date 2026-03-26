@@ -16,7 +16,7 @@ class CreateAssessmentRequest(BaseModel):
     description: str = Field(default="", description="Assessment description")
     dueDate: str = Field(..., description="Due date (ISO format)")
     totalQuestions: int = Field(..., description="Number of questions to generate", ge=1, le=20)
-    timeLimit: Optional[int] = Field(None, description="Time limit per question in minutes", ge=1, le=30)
+    timeLimit: Optional[int] = Field(None, description="Time limit per question in minutes (1–30). Stored and served to students as seconds.", ge=1, le=30)
     accessMode: str = Field("open", description="'open' or 'scheduled'")
     scheduledWindowStart: Optional[str] = Field(None, description="ISO datetime for window start (scheduled mode)")
     scheduledWindowEnd: Optional[str] = Field(None, description="ISO datetime for window end (scheduled mode)")
@@ -58,6 +58,11 @@ class UpdateScheduleRequest(BaseModel):
 class UpdateBriefRequest(BaseModel):
     """Request to update the assignment brief"""
     brief: str = Field(..., description="Assignment brief text (min 50 characters)", min_length=50)
+
+
+class UpdateStatusRequest(BaseModel):
+    """Request to transition assessment status (draft→open, open→closed)"""
+    status: str = Field(..., description="Target status: 'open' or 'closed'")
 
 
 # --- Response Models ---
@@ -399,7 +404,7 @@ class StudentQuestionListResponse(BaseModel):
 class UpdateStudentQuestionRequest(BaseModel):
     """Instructor edits the text (and optionally time limit) of a generated question"""
     text: str = Field(..., description="Updated question text", min_length=10)
-    timeLimit: Optional[int] = Field(None, description="Per-question time limit in minutes", ge=1, le=30)
+    timeLimit: Optional[int] = Field(None, description="Per-question time limit in minutes (1–30). Stored as seconds.", ge=1, le=30)
 
 
 class AddStudentQuestionRequest(BaseModel):
@@ -408,7 +413,7 @@ class AddStudentQuestionRequest(BaseModel):
     questionType: str = Field("manual", description="Question type")
     difficulty: str = Field("medium", description="easy / medium / hard")
     topic: str = Field("general", description="Question topic")
-    timeLimit: Optional[int] = Field(None, description="Per-question time limit in minutes", ge=1, le=30)
+    timeLimit: Optional[int] = Field(None, description="Per-question time limit in minutes (1–30). Stored as seconds.", ge=1, le=30)
 
 
 class StudentQuestionResponse(BaseModel):

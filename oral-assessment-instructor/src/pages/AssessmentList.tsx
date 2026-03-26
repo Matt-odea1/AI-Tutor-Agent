@@ -9,6 +9,7 @@ export default function AssessmentList() {
   const { assessments, setAssessments, isLoading, setLoading, error, setError } = useAssessmentStore();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [statsCache, setStatsCache] = useState<Record<string, { enrolled: number; completed: number }>>({});
 
   useEffect(() => {
     loadAssessments();
@@ -19,12 +20,31 @@ export default function AssessmentList() {
       setLoading(true);
       setError(null);
       const data = await apiService.listAssessments();
-      setAssessments(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setAssessments(list);
+      // Fetch enrollment/completion stats for all assessments in parallel
+      const entries = await Promise.all(
+        list.map(async (a) => {
+          try {
+            const prog = await apiService.getAssessmentProgress(a.id);
+            const students = Array.isArray(prog) ? prog : [];
+            return [a.id, { enrolled: students.length, completed: students.filter(s => s.status === 'submitted' || s.status === 'completed').length }] as const;
+          } catch {
+            return [a.id, { enrolled: 0, completed: 0 }] as const;
+          }
+        })
+      );
+      setStatsCache(Object.fromEntries(entries));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load assessments');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    navigate('/login');
   };
 
   const handleDelete = async (assessmentId: string) => {
@@ -62,12 +82,20 @@ export default function AssessmentList() {
             <h1 className="text-2xl font-bold text-slate-100">
               Oral Assessments
             </h1>
-            <Link
-              to="/assessments/create"
-              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              + Create Assessment
-            </Link>
+            <div className="flex items-center space-x-3">
+              <Link
+                to="/assessments/create"
+                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                + Create Assessment
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+              >
+                Log out
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -100,11 +128,17 @@ export default function AssessmentList() {
                       {assessment.status}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-4 text-sm text-slate-400 mb-4">
+                  <div className="flex items-center space-x-4 text-sm text-slate-400 mb-2">
                     <span>📚 {assessment.course}</span>
                     <span>📅 Due: {format(new Date(assessment.dueDate), 'MMM dd, yyyy')}</span>
                     <span>🔢 {assessment.totalQuestions} questions</span>
                   </div>
+                  {statsCache[assessment.id] && (
+                    <div className="flex items-center space-x-4 text-xs text-slate-500 mb-2">
+                      <span>👥 {statsCache[assessment.id].enrolled} enrolled</span>
+                      <span>✅ {statsCache[assessment.id].completed} completed</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -143,7 +177,7 @@ export default function AssessmentList() {
                     onClick={() => navigate(`/assessments/${assessment.id}/generate`)}
                     className="text-slate-400 hover:text-slate-300 px-4 py-2 text-sm font-medium transition-colors"
                   >
-                    Edit
+                    Questions
                   </button>
                   <button
                     onClick={() => setConfirmDeleteId(assessment.id)}

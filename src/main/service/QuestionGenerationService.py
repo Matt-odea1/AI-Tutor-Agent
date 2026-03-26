@@ -298,9 +298,11 @@ Generate the questions in JSON format as specified.
                     'createdAt': created_at,
                 }
                 # Store assessment-level time limit as the default per-question limit.
+                # assessment_time_limit arrives in minutes; store as seconds so the
+                # student frontend (which expects seconds) receives the correct value.
                 # Individual questions can be overridden later via the instructor API.
                 if assessment_time_limit is not None:
-                    item['timeLimit'] = assessment_time_limit
+                    item['timeLimit'] = assessment_time_limit * 60
                 
                 batch.put_item(Item=item)
         

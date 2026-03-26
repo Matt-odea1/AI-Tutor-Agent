@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import BulkUploadCSV from '../components/BulkUploadCSV';
+import SetupStepIndicator from '../components/SetupStepIndicator';
 import { useToast } from '../hooks/useToast';
 import Toast from '../components/Toast';
 
@@ -63,6 +64,8 @@ export default function UploadStudents() {
           <p className="text-slate-400 text-sm mt-1">{selectedAssessment.course}</p>
         </div>
       </header>
+
+      <SetupStepIndicator currentStep={2} assessmentId={assessmentId!} />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-8">

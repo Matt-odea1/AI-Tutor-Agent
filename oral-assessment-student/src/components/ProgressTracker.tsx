@@ -8,6 +8,8 @@ interface ProgressTrackerProps {
   currentIndex: number;
   totalQuestions: number;
   answeredCount: number;
+  questionIds?: string[];
+  answeredQuestionIds?: Set<string>;
   onNavigate?: (index: number) => void;
 }
 
@@ -15,6 +17,8 @@ export default function ProgressTracker({
   currentIndex,
   totalQuestions,
   answeredCount,
+  questionIds,
+  answeredQuestionIds,
   onNavigate,
 }: ProgressTrackerProps) {
   const percentage = calculatePercentage(answeredCount, totalQuestions);
@@ -45,7 +49,9 @@ export default function ProgressTracker({
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: totalQuestions }, (_, i) => {
           const isCurrent = i === currentIndex;
-          const isAnswered = i < answeredCount;
+          const isAnswered = answeredQuestionIds && questionIds
+            ? answeredQuestionIds.has(questionIds[i] ?? '')
+            : i < answeredCount;
 
           return (
             <button

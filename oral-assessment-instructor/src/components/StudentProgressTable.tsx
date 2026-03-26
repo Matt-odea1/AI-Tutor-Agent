@@ -31,6 +31,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  const [showRefreshInfo, setShowRefreshInfo] = useState(true);
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -255,7 +256,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
           <div className="text-sm text-slate-400 mb-1">Total Students</div>
           <div className="text-2xl font-bold text-slate-100">{stats.total}</div>
@@ -470,29 +471,40 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       </div>
 
       {/* Info Box */}
-      <div className="bg-blue-500/10 border border-blue-500 rounded-lg p-4">
-        <div className="flex items-start">
-          <svg
-            className="h-5 w-5 text-blue-400 mr-3 mt-0.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h4 className="text-sm font-medium text-blue-300 mb-1">Auto-refresh Enabled</h4>
-            <p className="text-sm text-blue-200">
-              This table automatically refreshes every 10 seconds to show real-time progress updates.
-            </p>
+      {showRefreshInfo && (
+        <div className="bg-blue-500/10 border border-blue-500 rounded-lg p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start">
+              <svg
+                className="h-5 w-5 text-blue-400 mr-3 mt-0.5 flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div>
+                <h4 className="text-sm font-medium text-blue-300 mb-1">Auto-refresh Enabled</h4>
+                <p className="text-sm text-blue-200">
+                  This table automatically refreshes every 10 seconds to show real-time progress updates.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowRefreshInfo(false)}
+              className="text-blue-400 hover:text-blue-200 ml-4 text-lg leading-none flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              &times;
+            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

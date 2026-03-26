@@ -156,12 +156,29 @@ class OralAssessmentService:
             self.question_access.ensure_student_enrollment(student_id, assessment_id)
             self._check_assessment_window(assessment_id)
 
+            # Record startedAt on first access (no-op on subsequent calls)
+            try:
+                self.table.update_item(
+                    Key={
+                        "PK": f"ASSESSMENT#{assessment_id}",
+                        "SK": f"STUDENT#{student_id}",
+                    },
+                    UpdateExpression="SET startedAt = :t",
+                    ConditionExpression="attribute_not_exists(startedAt)",
+                    ExpressionAttributeValues={":t": datetime.now(timezone.utc).isoformat()},
+                )
+            except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+                pass  # Already set on a previous access
+
             # Fetch assessment metadata to get time limit for question view
             meta_resp = self.table.get_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
             )
             assessment_meta = meta_resp.get("Item", {})
-            assessment_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
+            # timeLimit is stored in minutes at the assessment level; convert to seconds
+            # for the student-facing question view.
+            raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
+            assessment_time_limit = (raw_time_limit * 60) if raw_time_limit is not None else None
 
             student_items = self.question_access.get_student_questions(student_id, assessment_id)
             bank_items = self.question_access.get_bank_questions(assessment_id)
@@ -284,7 +301,26 @@ class OralAssessmentService:
         """
         try:
             pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-            
+
+            # Check due date before accepting final submission
+            try:
+                meta = self.table.get_item(
+                    Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+                ).get("Item", {})
+                due_date_str = meta.get("dueDate")
+                if due_date_str:
+                    due = datetime.fromisoformat(due_date_str.replace("Z", "+00:00"))
+                    if not due.tzinfo:
+                        due = due.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > due:
+                        raise OralAssessmentServiceError(
+                            f"Assessment submission deadline has passed ({due_date_str})"
+                        )
+            except OralAssessmentServiceError:
+                raise
+            except Exception:
+                pass  # Fail open if date parsing fails
+
             # Get progress to check completion
             progress_response = self.table.get_item(
                 Key={'PK': pk, 'SK': 'PROGRESS'}
@@ -413,7 +449,7 @@ class OralAssessmentService:
             percentage = round((answered_questions / total_questions * 100), 1) if total_questions > 0 else 0
             
             # Determine status from enrollment
-            status = enrollment.get('Status', 'not_started')
+            status = enrollment.get('status', 'not_started')
             
             # Get assessment metadata
             assessment_response = self.table.get_item(

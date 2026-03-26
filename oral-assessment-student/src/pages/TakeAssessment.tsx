@@ -8,6 +8,7 @@ import VideoRecorder from '../components/VideoRecorder';
 import TextAnswerInput from '../components/TextAnswerInput';
 import QuestionTimer from '../components/QuestionTimer';
 import ConsentModal from '../components/ConsentModal';
+import PreAssessmentOverview from '../components/PreAssessmentOverview';
 import ProctorCamera from '../components/ProctorCamera';
 import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -21,10 +22,14 @@ export default function TakeAssessment() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [assessmentStarted, setAssessmentStarted] = useState(false);
+  const [pendingNavIndex, setPendingNavIndex] = useState<number | null>(null);
 
   const {
     studentId,
     assessmentId,
+    assessment,
     questions,
     currentQuestionIndex,
     progress,
@@ -33,10 +38,13 @@ export default function TakeAssessment() {
     error,
     answerMode,
     textAnswer,
+    recordedBlob,
+    videoBlob,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
     consentGiven,
+    answeredQuestionIds,
     setStudentInfo,
     loadQuestions,
     loadProgress,
@@ -75,7 +83,7 @@ export default function TakeAssessment() {
   useEffect(() => {
     const { supported, missing } = checkBrowserSupport();
     if (!supported) {
-      alert(
+      setBrowserError(
         `Your browser is missing required features: ${missing.join(', ')}. ` +
         'Please use a modern browser like Chrome, Firefox, or Safari.'
       );
@@ -139,12 +147,37 @@ export default function TakeAssessment() {
     await submitCurrentVideoAnswer();
   };
 
+  const hasUnsavedAnswer =
+    (answerMode === 'audio' && recordedBlob !== null) ||
+    (answerMode === 'video' && videoBlob !== null) ||
+    (answerMode === 'text' && textAnswer.trim().length > 0);
+
+  const navigateTo = (index: number) => {
+    if (index === currentQuestionIndex) return;
+    if (hasUnsavedAnswer) {
+      setPendingNavIndex(index);
+    } else {
+      goToQuestion(index);
+    }
+  };
+
   const handleNext = () => {
-    nextQuestion();
+    navigateTo(currentQuestionIndex + 1);
   };
 
   const handlePrevious = () => {
-    previousQuestion();
+    navigateTo(currentQuestionIndex - 1);
+  };
+
+  const handleNavigate = (index: number) => {
+    navigateTo(index);
+  };
+
+  const confirmNav = () => {
+    if (pendingNavIndex !== null) {
+      goToQuestion(pendingNavIndex);
+      setPendingNavIndex(null);
+    }
   };
 
   const handleSubmitAssessment = async () => {
@@ -199,6 +232,7 @@ export default function TakeAssessment() {
   const isFirstQuestion = currentQuestionIndex === 0;
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
+  const allAnswered = answeredCount >= questions.length;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -209,6 +243,36 @@ export default function TakeAssessment() {
           onDecline={handleConsentDeclined}
           isRequestingPermission={isRequestingPermission}
         />
+      )}
+
+      {/* Pre-assessment overview — shown after consent, before question 1 */}
+      {consentGiven && !assessmentStarted && assessment && (
+        <PreAssessmentOverview
+          assessment={assessment}
+          questionCount={questions.length}
+          onStart={() => setAssessmentStarted(true)}
+        />
+      )}
+
+      {/* Browser support error banner */}
+      {browserError && (
+        <div className="bg-red-600 text-white px-4 py-3 flex items-center justify-between">
+          <span className="text-sm">{browserError}</span>
+          <button onClick={() => setBrowserError(null)} className="ml-4 text-red-200 hover:text-white text-lg leading-none">&times;</button>
+        </div>
+      )}
+
+      {/* Unsaved answer navigation warning */}
+      {pendingNavIndex !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6">
+            <p className="text-gray-900 font-medium mb-4">You have an unsaved answer. Leave this question anyway?</p>
+            <div className="flex space-x-3">
+              <button onClick={() => setPendingNavIndex(null)} className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Stay</button>
+              <button onClick={confirmNav} className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700">Leave</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Camera revoked overlay */}
@@ -226,11 +290,11 @@ export default function TakeAssessment() {
       <header className="bg-white shadow-sm border-b flex-shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <h1 className="text-2xl font-bold text-gray-900">
-            Oral Assessment
+            {assessment?.title ?? 'Oral Assessment'}
           </h1>
           <div className="flex items-center justify-between mt-2">
             <p className="text-sm text-gray-600">
-              Student: {studentId} | Assessment: {assessmentId?.slice(0, 8)}...
+              Student {studentId}
             </p>
             <div className="flex items-center space-x-4">
               <div className="text-sm font-medium text-gray-700">
@@ -256,13 +320,28 @@ export default function TakeAssessment() {
             </div>
           )}
 
+          {/* All-answered submit banner */}
+          {allAnswered && (
+            <div className="mb-4 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+              <span className="text-green-800 text-sm font-medium">All questions answered — ready to submit?</span>
+              <button
+                onClick={() => setShowSubmitModal(true)}
+                className="ml-4 bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                Submit Assessment
+              </button>
+            </div>
+          )}
+
           {/* Progress Tracker */}
           <div className="mb-4">
             <ProgressTracker
               currentIndex={currentQuestionIndex}
               totalQuestions={questions.length}
               answeredCount={answeredCount}
-              onNavigate={goToQuestion}
+              questionIds={questions.map((q) => q.id)}
+              answeredQuestionIds={answeredQuestionIds}
+              onNavigate={handleNavigate}
             />
           </div>
 
@@ -354,7 +433,7 @@ export default function TakeAssessment() {
           </div>
 
           {/* Navigation */}
-          <div className="flex justify-between items-center pb-6">
+          <div className={`flex justify-between items-center ${isProctoringActive ? 'pb-32' : 'pb-6'}`}>
             <button
               onClick={handlePrevious}
               disabled={isFirstQuestion}

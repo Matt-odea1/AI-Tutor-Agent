@@ -26,6 +26,22 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
   const [parsedStudents, setParsedStudents] = useState<ParsedStudent[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+
+  const handleDownloadTemplate = () => {
+    const csv = [
+      'name,email,studentId,code',
+      'Jane Smith,jane@university.edu,s12345,"def factorial(n): return 1 if n <= 1 else n * factorial(n-1)"',
+      'John Doe,john@university.edu,s12346,"def factorial(n):\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n-1)"',
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'students_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const parseCSV = (csvText: string): Promise<ParsedStudent[]> => {
     return new Promise<ParsedStudent[]>((resolve, reject) => {
@@ -195,6 +211,12 @@ John Doe,john@example.com,12345,"def factorial(n): return 1 if n <= 1 else n * f
 Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n-1)"`}
           </pre>
         </div>
+        <button
+          onClick={handleDownloadTemplate}
+          className="mt-4 text-sm text-primary-400 hover:text-primary-300 underline transition-colors"
+        >
+          Download template CSV
+        </button>
       </div>
 
       {/* Dropzone */}
@@ -266,7 +288,7 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
               Preview ({parsedStudents.length} students)
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="w-full">
               <thead className="bg-slate-750">
                 <tr>
@@ -280,29 +302,41 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
                     Student ID
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
-                    Code Length
+                    Code
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700">
-                {parsedStudents.slice(0, 10).map((student, index) => (
-                  <tr key={index} className="hover:bg-slate-750">
-                    <td className="px-4 py-3 text-sm text-slate-200">{student.name}</td>
-                    <td className="px-4 py-3 text-sm text-slate-300">{student.email}</td>
-                    <td className="px-4 py-3 text-sm text-slate-300">{student.studentId}</td>
-                    <td className="px-4 py-3 text-sm text-slate-400">
-                      {student.code.length} chars
-                    </td>
-                  </tr>
+                {parsedStudents.map((student, index) => (
+                  <>
+                    <tr key={index} className="hover:bg-slate-750">
+                      <td className="px-4 py-3 text-sm text-slate-200">{student.name}</td>
+                      <td className="px-4 py-3 text-sm text-slate-300">{student.email}</td>
+                      <td className="px-4 py-3 text-sm text-slate-300">{student.studentId}</td>
+                      <td className="px-4 py-3 text-sm text-slate-400">
+                        <div className="flex items-center gap-2">
+                          <span>{student.code.length} chars</span>
+                          <button
+                            onClick={() => setExpandedRow(expandedRow === index ? null : index)}
+                            className="text-xs text-primary-400 hover:text-primary-300 underline"
+                          >
+                            {expandedRow === index ? 'hide' : 'view'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedRow === index && (
+                      <tr key={`${index}-expand`}>
+                        <td colSpan={4} className="px-4 py-2 bg-slate-900">
+                          <pre className="text-xs text-slate-300 font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{student.code}</pre>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
           </div>
-          {parsedStudents.length > 10 && (
-            <div className="px-4 py-3 bg-slate-750 text-sm text-slate-400">
-              Showing 10 of {parsedStudents.length} students
-            </div>
-          )}
         </div>
       )}
 

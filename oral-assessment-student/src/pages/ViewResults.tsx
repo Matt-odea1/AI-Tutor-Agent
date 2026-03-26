@@ -5,8 +5,7 @@ import ResultsCard from '../components/ResultsCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import {
-  getGradeFromPercentage,
-  getGradeColor,
+  getBandGradeColor,
   formatTimestamp,
 } from '../utils/helpers';
 
@@ -107,8 +106,8 @@ export default function ViewResults() {
     );
   }
 
-  const grade = getGradeFromPercentage(results.percentage);
-  const gradeColorClass = getGradeColor(grade);
+  const grade = results.grade;
+  const gradeColorClass = getBandGradeColor(grade);
 
   const handleDownloadPdf = () => {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -126,7 +125,7 @@ export default function ViewResults() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Assessment Results</h1>
               <p className="text-sm text-gray-600 mt-1">
-                Student: {studentId} | Assessment: {assessmentId?.slice(0, 8)}...
+                Student: {studentId}
               </p>
             </div>
             <button

@@ -124,12 +124,6 @@ export default function AudioRecorder({
             {formatDuration(recordingDuration)}
           </div>
           
-          {/* Time Limit */}
-          {timeLimit && (
-            <span className="ml-2 text-sm text-gray-500">
-              / {formatDuration(timeLimit)}
-            </span>
-          )}
         </div>
         
         {isRecordingState && (

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import QuestionGenerationProgress from '../components/QuestionGenerationProgress';
+import SetupStepIndicator from '../components/SetupStepIndicator';
 
 export default function GenerateQuestions() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -50,6 +51,8 @@ export default function GenerateQuestions() {
           <p className="text-slate-400 text-sm mt-1">{selectedAssessment.course}</p>
         </div>
       </header>
+
+      <SetupStepIndicator currentStep={3} assessmentId={assessmentId!} />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <QuestionGenerationProgress assessmentId={assessmentId} />

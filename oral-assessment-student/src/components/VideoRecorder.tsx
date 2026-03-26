@@ -107,7 +107,6 @@ export default function VideoRecorder({ onSubmit, timeLimit = 0 }: VideoRecorder
                 : 'bg-black/50 text-white'
             }`}>
               {formatTime(recordingDuration)}
-              {timeLimit > 0 && ` / ${formatTime(timeLimit)}`}
             </div>
           )}
         </div>
