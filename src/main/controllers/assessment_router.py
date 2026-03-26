@@ -64,6 +64,7 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     UpdateStudentQuestionRequest,
     UpdateQuestionTimeLimitRequest,
     UpdateScheduleRequest,
+    UpdateStatusRequest,
     UploadStudentsRequest,
     ZipUploadResponse,
 )
@@ -285,6 +286,31 @@ async def update_assessment_schedule(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in update_assessment_schedule: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.put("/{id}/status", response_model=AssessmentResponse)
+async def update_assessment_status(
+    id: str,
+    request: UpdateStatusRequest = Body(...),
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Transition assessment status: draft→open, open→closed."""
+    try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+        result = svc.update_status(id, request.status)
+        return AssessmentResponse(**result)
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="update_status_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in update_assessment_status: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

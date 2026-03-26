@@ -90,6 +90,7 @@ class ResponseEvaluationRepository:
             "correctnessScore": Decimal(str(evaluation.get("correctness_score", 0))),
             "understandingScore": Decimal(str(evaluation.get("understanding_score", 0))),
             "totalScore": Decimal(str(evaluation.get("total_score", 0))),
+            "maxScore": Decimal(str(evaluation.get("max_score", 10))),
             "feedback": evaluation.get("feedback", ""),
             "strengths": evaluation.get("strengths", []),
             "weaknesses": evaluation.get("weaknesses", []),

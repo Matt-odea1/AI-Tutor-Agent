@@ -31,7 +31,7 @@ class InstructorAssessmentCatalog:
 
     def list_assessments(self, owner_user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         response = self.table.query(
-            IndexName="GSI1",
+            IndexName="InstructorAssessmentsIndex",
             KeyConditionExpression=Key("GSI1PK").eq("ASSESSMENT"),
             ScanIndexForward=False,
         )

@@ -43,7 +43,7 @@ class AuthService:
         )
         self.signup_default_roles = [
             role.strip()
-            for role in os.getenv("AUTH_SIGNUP_DEFAULT_ROLES", "instructor").split(",")
+            for role in os.getenv("AUTH_SIGNUP_DEFAULT_ROLES", "student").split(",")
             if role.strip()
         ]
         self.persist_users = os.getenv("USE_DYNAMODB", "false").lower() == "true"

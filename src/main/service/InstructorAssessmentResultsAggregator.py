@@ -150,7 +150,7 @@ class InstructorAssessmentResultsAggregator:
                 "maxScore": q_max,
                 "feedback": evaluation.get("feedback"),
                 "strengths": " ".join(evaluation["strengths"]) if isinstance(evaluation.get("strengths"), (list, set)) else evaluation.get("strengths"),
-                "improvements": " ".join(evaluation["improvements"]) if isinstance(evaluation.get("improvements"), (list, set)) else evaluation.get("improvements"),
+                "improvements": " ".join(evaluation["suggestedImprovements"]) if isinstance(evaluation.get("suggestedImprovements"), (list, set)) else evaluation.get("suggestedImprovements"),
                 "instructorComment": evaluation.get("instructorComment"),
                 "evaluatedAt": evaluation.get("evaluatedAt"),
             })
