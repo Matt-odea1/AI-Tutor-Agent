@@ -22,11 +22,17 @@ export default function TakeAssessment() {
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
-  const [assessmentStarted, setAssessmentStarted] = useState(false);
+  const [assessmentStarted, setAssessmentStartedRaw] = useState(false);
   // Preparation countdown for oral mode (counts down from preparationTime → 0)
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Wrapper to persist assessmentStarted to sessionStorage
+  const setAssessmentStarted = (v: boolean) => {
+    setAssessmentStartedRaw(v);
+    if (v && assessmentId) sessionStorage.setItem(`started_${assessmentId}`, 'true');
+  };
 
   const {
     studentId,
@@ -53,6 +59,7 @@ export default function TakeAssessment() {
     nextQuestion,
     submitCurrentAnswer,
     submitCurrentTextAnswer,
+    skipCurrentQuestion,
     submitCompleteAssessment,
     setTextAnswer,
     setConsentGiven,
@@ -76,6 +83,24 @@ export default function TakeAssessment() {
       loadProgress();
     }
   }, [studentId, assessmentId, questions.length, loadQuestions, loadProgress]);
+
+  // Restore consent/started state from server + sessionStorage on refresh
+  useEffect(() => {
+    if (questions.length === 0) return; // not loaded yet
+    // If server says we're past Q1, we've already started
+    if (currentQuestionIndex > 0) {
+      if (!consentGiven) setConsentGiven(true);
+      if (!assessmentStarted) setAssessmentStarted(true);
+    } else if (assessmentId) {
+      // Q1 but check sessionStorage (consented + started but haven't answered Q1 yet)
+      if (sessionStorage.getItem(`consent_${assessmentId}`) === 'true' && !consentGiven) {
+        setConsentGiven(true);
+      }
+      if (sessionStorage.getItem(`started_${assessmentId}`) === 'true' && !assessmentStarted) {
+        setAssessmentStartedRaw(true);
+      }
+    }
+  }, [questions.length, currentQuestionIndex, assessmentId]);
 
   // Check browser support
   useEffect(() => {
@@ -127,6 +152,7 @@ export default function TakeAssessment() {
     try {
       await startProctoring();
       setConsentGiven(true);
+      if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
     } finally {
       setIsRequestingPermission(false);
     }
@@ -135,6 +161,7 @@ export default function TakeAssessment() {
   const handleConsentDeclined = () => {
     // Allow assessment without proctoring (consent declined = proceed without camera)
     setConsentGiven(true);
+    if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
   };
 
   const handleRestoreCamera = async () => {
@@ -163,9 +190,9 @@ export default function TakeAssessment() {
       addToast('Time\'s up! Submitting your written answer.', 'warning');
       await handleSubmitTextAnswer();
     } else {
-      // Nothing to submit — auto-skip with a "skipped" marker
+      // Nothing to submit — skip with a marker so the server advances
       addToast('Time\'s up! Moving to the next question.', 'warning');
-      await submitCurrentTextAnswer();
+      await skipCurrentQuestion();
     }
   };
 
@@ -178,9 +205,9 @@ export default function TakeAssessment() {
     await submitCurrentTextAnswer();
   };
 
-  const handleNext = async () => {
-    // Re-fetch to advance — server already incremented currentQuestionIdx on submit
-    await loadQuestions();
+  const handleNext = () => {
+    // No-op: store already re-fetches after submit and auto-advances via server index.
+    // This button exists only as a visual affordance; the store drives navigation.
   };
 
   const handleSubmitAssessment = async () => {

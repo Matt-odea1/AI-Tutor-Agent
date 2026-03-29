@@ -241,8 +241,8 @@ class OralAssessmentService:
             logger.error(f"Failed to get questions: {e}")
             raise OralAssessmentServiceError(f"Database error: {e}")
     
-    def _validate_and_advance_question(self, student_id: str, assessment_id: str, question_id: str) -> None:
-        """Enforce sequential ordering: reject duplicates, out-of-order, and advance the index."""
+    def _validate_question_order(self, student_id: str, assessment_id: str, question_id: str) -> None:
+        """Check sequential ordering: reject duplicates and out-of-order. Does NOT advance the index."""
         enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
         enrollment = self.table.get_item(Key=enrollment_key).get("Item")
         if not enrollment:
@@ -262,7 +262,11 @@ class OralAssessmentService:
         if current_idx >= len(question_order) or question_order[current_idx] != question_id:
             raise OralAssessmentServiceError("Question submitted out of order")
 
-        # Advance index (conditional to prevent double-click race)
+    def _advance_question_index(self, student_id: str, assessment_id: str) -> None:
+        """Advance currentQuestionIdx after answer is successfully stored."""
+        enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
+        enrollment = self.table.get_item(Key=enrollment_key).get("Item", {})
+        current_idx = int(enrollment.get("currentQuestionIdx", 0))
         try:
             self.table.update_item(
                 Key=enrollment_key,
@@ -271,7 +275,7 @@ class OralAssessmentService:
                 ExpressionAttributeValues={":new_idx": current_idx + 1, ":old_idx": current_idx},
             )
         except self.table.meta.client.exceptions.ConditionalCheckFailedException:
-            raise OralAssessmentServiceError("Answer already submitted for this question")
+            pass  # Concurrent request already advanced — answer is stored, so this is safe
 
     def submit_answer(
         self,
@@ -305,7 +309,7 @@ class OralAssessmentService:
         """
         try:
             self._check_assessment_window(assessment_id)
-            self._validate_and_advance_question(student_id, assessment_id, question_id)
+            self._validate_question_order(student_id, assessment_id, question_id)
             result = self.answer_submission.submit_answer(
                 student_id=student_id,
                 question_id=question_id,
@@ -316,6 +320,7 @@ class OralAssessmentService:
                 text_content=text_content,
                 video_url=video_url,
             )
+            self._advance_question_index(student_id, assessment_id)
             logger.info(f"Recorded answer for question {question_id} from student {student_id}")
             return result
         except ValueError as e:

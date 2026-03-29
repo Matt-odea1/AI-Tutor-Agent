@@ -115,6 +115,7 @@ interface AssessmentStore {
   // Submission
   submitCurrentAnswer: () => Promise<void>;
   submitCurrentTextAnswer: () => Promise<void>;
+  skipCurrentQuestion: () => Promise<void>;
   submitCompleteAssessment: () => Promise<void>;
 
   // Results
@@ -177,6 +178,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       return;
     }
 
+    if (get().isLoading) return; // prevent concurrent fetches (race guard)
     set({ isLoading: true, error: null });
 
     try {
@@ -500,6 +502,26 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       set({ isUploading: false, textAnswer: '', answeredQuestionIds: newAnsweredIds });
 
       // Re-fetch: server has advanced currentQuestionIdx
+      await get().loadQuestions();
+      await get().loadProgress();
+    } catch (error) {
+      set({ error: error as ApiError, isUploading: false });
+    }
+  },
+
+  skipCurrentQuestion: async () => {
+    const { studentId, assessmentId, questions, currentQuestionIndex } = get();
+    if (!studentId || !assessmentId) return;
+
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return;
+
+    set({ isUploading: true, error: null });
+    try {
+      await submitTextAnswer(studentId, currentQuestion.id, assessmentId, '(time expired)');
+      const newAnsweredIds = new Set(get().answeredQuestionIds);
+      newAnsweredIds.add(currentQuestion.id);
+      set({ isUploading: false, answeredQuestionIds: newAnsweredIds });
       await get().loadQuestions();
       await get().loadProgress();
     } catch (error) {
