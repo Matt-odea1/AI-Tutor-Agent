@@ -161,9 +161,13 @@ class OralAssessmentService:
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
             )
             assessment_meta = meta_resp.get("Item", {})
-            # timeLimit is stored in seconds (create_assessment converts minutes → seconds)
+            # timeLimit is stored in seconds (create_assessment converts minutes → seconds).
+            # Legacy assessments created before the conversion was added store raw minutes
+            # (values 1–30). Normalize: values ≤ 30 are minutes, > 30 are already seconds.
             raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
-            assessment_time_limit = raw_time_limit  # already in seconds
+            if raw_time_limit is not None and raw_time_limit <= 30:
+                raw_time_limit = raw_time_limit * 60
+            assessment_time_limit = raw_time_limit
 
             student_items = self.question_access.get_student_questions(student_id, assessment_id)
             bank_items = self.question_access.get_bank_questions(assessment_id)
