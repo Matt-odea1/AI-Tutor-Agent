@@ -54,7 +54,7 @@ export default function StudentResultDetail() {
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overrideStates, setOverrideStates] = useState<Record<string, { score: string; comment: string; saving: boolean }>>({});
+  const [overrideStates, setOverrideStates] = useState<Record<string, { score: string; comment: string; saving: boolean; scoreError?: string }>>({});
   const [expandedQuestion, setExpandedQuestion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -77,8 +77,16 @@ export default function StudentResultDetail() {
   const handleOverride = async (questionId: string, maxScore: number) => {
     const state = overrideStates[questionId];
     if (!state) return;
-    const score = parseInt(state.score);
-    if (isNaN(score) || score < 0 || score > maxScore) return;
+    const trimmed = state.score.trim();
+    if (trimmed === '' || !/^\d+$/.test(trimmed)) {
+      setOverrideStates(prev => ({ ...prev, [questionId]: { ...prev[questionId], scoreError: 'Score must be a number' } }));
+      return;
+    }
+    const score = parseInt(trimmed, 10);
+    if (score < 0 || score > maxScore) {
+      setOverrideStates(prev => ({ ...prev, [questionId]: { ...prev[questionId], scoreError: `Score must be between 0 and ${maxScore}` } }));
+      return;
+    }
 
     setOverrideStates(prev => ({ ...prev, [questionId]: { ...prev[questionId], saving: true } }));
     try {
@@ -279,14 +287,15 @@ export default function StudentResultDetail() {
                     <div className="border-t border-slate-700 pt-3">
                       <p className="text-xs font-medium text-slate-300 mb-2">Override Score</p>
                       {override ? (
+                        <div>
                         <div className="flex items-center gap-2">
                           <input
                             type="number"
                             min={0}
                             max={q.maxScore}
                             value={override.score}
-                            onChange={e => setOverrideStates(prev => ({ ...prev, [q.questionId]: { ...prev[q.questionId], score: e.target.value } }))}
-                            className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm"
+                            onChange={e => setOverrideStates(prev => ({ ...prev, [q.questionId]: { ...prev[q.questionId], score: e.target.value, scoreError: undefined } }))}
+                            className={`w-20 px-2 py-1 bg-slate-700 border rounded text-slate-100 text-sm ${override.scoreError ? 'border-red-500' : 'border-slate-600'}`}
                             placeholder={`0-${q.maxScore}`}
                           />
                           <input
@@ -309,6 +318,8 @@ export default function StudentResultDetail() {
                           >
                             Cancel
                           </button>
+                        </div>
+                        {override.scoreError && <p className="mt-1 text-xs text-red-400">{override.scoreError}</p>}
                         </div>
                       ) : (
                         <button

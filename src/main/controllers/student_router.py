@@ -90,14 +90,14 @@ async def get_student_questions(
         question_dtos = [
             QuestionResponse(
                 id=q["id"],
-                text=q["text"],
+                text=q.get("text", ""),
                 codeContext=q.get("codeContext"),
-                assessmentId=q["assessmentId"],
-                studentId=q["studentId"],
+                assessmentId=q.get("assessmentId", assessment_id),
+                studentId=q.get("studentId", student_id),
                 difficulty=q.get("difficulty"),
                 topic=q.get("topic"),
                 timeLimit=q.get("timeLimit"),
-                createdAt=q["createdAt"],
+                createdAt=q.get("createdAt", ""),
             )
             for q in raw_questions
         ]

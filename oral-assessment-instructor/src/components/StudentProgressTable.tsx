@@ -31,7 +31,13 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [reminderSent, setReminderSent] = useState<string | null>(null);
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
-  const STUDENT_APP_URL = import.meta.env.VITE_STUDENT_APP_URL || 'https://student.chat9021.org';
+  const STUDENT_APP_URL = (() => {
+    const envUrl = import.meta.env.VITE_STUDENT_APP_URL;
+    if (!envUrl) {
+      console.warn('VITE_STUDENT_APP_URL is not set — falling back to window.location.origin for student links');
+    }
+    return envUrl || window.location.origin;
+  })();
   const EVAL_DONE_KEY = `evalDone:${assessmentId}`;
   const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>(() => {
     // Restore completed evaluations from localStorage
@@ -59,12 +65,18 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     loadStudents();
   }, [assessmentId]);
 
-  // Start polling for progress updates
+  // Start polling for progress updates with adaptive backoff
+  const pollingStartTime = useRef(Date.now());
+  const lastDataHash = useRef('');
+
   useEffect(() => {
+    pollingStartTime.current = Date.now();
+    lastDataHash.current = '';
     startPolling();
     return () => {
       if (pollingInterval) {
         clearInterval(pollingInterval);
+        setPollingInterval(null);
       }
     };
   }, [assessmentId]);
@@ -106,21 +118,43 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     }
   };
 
-  const startPolling = () => {
-    if (pollingInterval) return;
+  const getPollingInterval = (): number => {
+    const elapsed = Date.now() - pollingStartTime.current;
+    if (elapsed > 5 * 60 * 1000) return 60_000;  // After 5 min: poll every 60s
+    if (elapsed > 2 * 60 * 1000) return 30_000;  // After 2 min: poll every 30s
+    return 10_000;                                 // Default: every 10s
+  };
 
+  const schedulePoll = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+    const delay = getPollingInterval();
     const interval = setInterval(async () => {
       try {
         const progressData = await apiService.getAssessmentProgress(assessmentId);
-        setProgress(Array.isArray(progressData) ? progressData : []);
+        const arr = Array.isArray(progressData) ? progressData : [];
+        const hash = JSON.stringify(arr.map(p => `${p.studentId}:${p.status}:${p.questionsAnswered}`));
+        if (hash !== lastDataHash.current) {
+          lastDataHash.current = hash;
+          pollingStartTime.current = Date.now(); // Reset backoff on actual changes
+        }
+        setProgress(arr);
         setLastUpdated(new Date());
         setSecondsSinceUpdate(0);
+        // Re-schedule with potentially updated interval
+        const newDelay = getPollingInterval();
+        if (newDelay !== delay) schedulePoll();
       } catch (err) {
         console.error('Error polling progress:', err);
       }
-    }, 10000); // Poll every 10 seconds
-
+    }, delay);
     setPollingInterval(interval);
+  };
+
+  const startPolling = () => {
+    schedulePoll();
   };
 
   const applyFilters = () => {
@@ -181,6 +215,11 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     es.onerror = () => {
       es.close();
       delete evalStreams.current[studentId];
+      // Re-open the stream after a brief delay if evaluation was still in progress
+      const lastProgress = evalProgress[studentId];
+      if (lastProgress && lastProgress.status === 'evaluating') {
+        setTimeout(() => openEvalProgressStream(studentId), 3000);
+      }
     };
   };
 

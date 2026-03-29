@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
@@ -23,6 +23,21 @@ export default function CreateAssessmentForm() {
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest | string, string>>>({});
+  const initialFormData = useRef(formData);
+  const hasSubmitted = useRef(false);
+
+  // Warn on unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasSubmitted.current) return;
+      const isDirty = JSON.stringify(formData) !== JSON.stringify(initialFormData.current);
+      if (isDirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [formData]);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof CreateAssessmentRequest, string>> = {};
@@ -39,8 +54,12 @@ export default function CreateAssessmentForm() {
       newErrors.dueDate = 'Due date is required';
     } else {
       const dueDate = new Date(formData.dueDate);
-      if (dueDate < new Date()) {
-        newErrors.dueDate = 'Due date must be in the future';
+      const today = new Date();
+      // Compare date portions only (strip time) so selecting tomorrow never fails
+      const dueDateOnly = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+      const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      if (dueDateOnly < todayOnly) {
+        newErrors.dueDate = 'Due date must be today or in the future';
       }
     }
 
@@ -90,6 +109,7 @@ export default function CreateAssessmentForm() {
       setSelectedAssessment(assessment);
 
       // Navigate to upload students with success message
+      hasSubmitted.current = true;
       navigate(`/assessments/${assessment.id}/upload`, { state: { created: assessment.title } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create assessment');
@@ -339,7 +359,7 @@ export default function CreateAssessmentForm() {
             className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
           />
           <p className="mt-1 text-sm text-slate-400">
-            Time students have to read the question before recording begins. Set to 0 to start recording immediately.
+            0-300 seconds (0-5 minutes). Time students have to read the question before recording begins. Set to 0 to start recording immediately.
           </p>
         </div>
       )}
@@ -360,7 +380,7 @@ export default function CreateAssessmentForm() {
           placeholder="No limit"
           className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
-        <p className="mt-1 text-sm text-slate-400">Optional: Leave blank for no time limit</p>
+        <p className="mt-1 text-sm text-slate-400">Optional: 1-30 minutes per question. Leave blank for no time limit.</p>
         {errors.timeLimit && <p className="mt-1 text-sm text-red-400">{errors.timeLimit}</p>}
       </div>
 

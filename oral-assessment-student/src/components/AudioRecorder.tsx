@@ -278,10 +278,27 @@ export default function AudioRecorder({
         )}
       </div>
 
+      {/* Auto-stop notification */}
+      {autoStopped && isRecordedState && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm text-yellow-800">
+            Recording stopped automatically — time limit reached ({formatDuration(timeLimit)}).
+          </p>
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
           <p className="text-sm text-red-800">{error.message}</p>
+          {recordedBlob && !isUploading && (
+            <button
+              onClick={handleSubmit}
+              className="ml-3 flex-shrink-0 bg-red-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              Retry Upload
+            </button>
+          )}
         </div>
       )}
 

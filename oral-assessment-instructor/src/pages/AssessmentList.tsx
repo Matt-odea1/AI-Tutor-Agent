@@ -15,6 +15,17 @@ export default function AssessmentList() {
     loadAssessments();
   }, []);
 
+  // Auto-refresh stats when page regains focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAssessments();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   const loadAssessments = async () => {
     try {
       setLoading(true);
@@ -88,6 +99,14 @@ export default function AssessmentList() {
               Oral Assessments
             </h1>
             <div className="flex items-center space-x-3">
+              <button
+                onClick={() => loadAssessments()}
+                disabled={isLoading}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
+                title="Refresh assessments"
+              >
+                {isLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
               <Link
                 to="/assessments/create"
                 className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
@@ -134,14 +153,19 @@ export default function AssessmentList() {
                     </span>
                   </div>
                   <div className="flex items-center space-x-4 text-sm text-slate-400 mb-2">
-                    <span>📚 {assessment.course}</span>
-                    <span>📅 Due: {format(new Date(assessment.dueDate), 'MMM dd, yyyy')}</span>
-                    <span>🔢 {assessment.totalQuestions} questions</span>
+                    <span>Course: {assessment.course}</span>
+                    <span>Due: {format(new Date(assessment.dueDate), 'MMM dd, yyyy')}</span>
+                    <span>{assessment.totalQuestions} questions</span>
                   </div>
-                  {statsCache[assessment.id] && (
+                  {statsCache[assessment.id] ? (
                     <div className="flex items-center space-x-4 text-xs text-slate-500 mb-2">
-                      <span>👥 {statsCache[assessment.id].enrolled} enrolled</span>
-                      <span>✅ {statsCache[assessment.id].completed} completed</span>
+                      <span>{statsCache[assessment.id].enrolled} enrolled</span>
+                      <span>{statsCache[assessment.id].completed} completed</span>
+                    </div>
+                  ) : isLoading ? null : (
+                    <div className="flex items-center space-x-2 text-xs text-slate-500 mb-2">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b border-slate-500"></div>
+                      <span>Loading stats...</span>
                     </div>
                   )}
                 </div>

@@ -43,9 +43,9 @@ export default function PreAssessmentOverview({ assessment, questionCount, onSta
         )}
 
         <ul className="text-sm text-gray-600 space-y-1 mb-8">
-          <li>• Answer each question using audio, video, or text</li>
-          <li>• You can navigate between questions freely</li>
-          <li>• Submit when you have answered all questions</li>
+          <li>• Answer each question using {assessment.answerMode === 'written' ? 'text' : 'audio'}</li>
+          <li>• Questions are presented one at a time in order</li>
+          <li>• Submit each answer before moving to the next question</li>
         </ul>
 
         <button

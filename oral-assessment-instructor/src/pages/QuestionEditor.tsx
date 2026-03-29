@@ -59,7 +59,7 @@ export default function QuestionEditor() {
   });
   const [adding, setAdding] = useState(false);
 
-  const isLocked = assessment && !['draft', 'scheduled'].includes(assessment.status);
+  const isLocked = assessment != null && ['active', 'completed'].includes(assessment.status);
 
   useEffect(() => {
     if (assessmentId && studentId) {
@@ -105,7 +105,9 @@ export default function QuestionEditor() {
     setSaving(true);
     setError(null);
     try {
-      const tl = editState.timeLimit ? parseInt(editState.timeLimit, 10) : null;
+      const parsed = editState.timeLimit.trim() !== '' ? parseInt(editState.timeLimit, 10) : NaN;
+      const currentQ = questions.find(q => q.id === questionId);
+      const tl = !isNaN(parsed) ? parsed : (currentQ?.timeLimit ?? null);
       const resp = await apiService.updateStudentQuestion(
         assessmentId!,
         studentId!,
@@ -231,6 +233,7 @@ export default function QuestionEditor() {
                         rows={4}
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
                       />
+                      <p className="text-xs text-slate-500">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
                       <div className="flex items-center gap-3">
                         <label className="text-xs text-slate-400">Time limit (min)</label>
                         <input
@@ -331,6 +334,7 @@ export default function QuestionEditor() {
                 placeholder="Enter question text (min 10 characters)…"
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
               />
+              <p className="text-xs text-slate-500">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Type</label>

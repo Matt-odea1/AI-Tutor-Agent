@@ -47,6 +47,20 @@ export async function uploadAudio(
     return await uploadMedia(audioBlob, filename, onProgress);
   } catch (error) {
     console.error('Failed to upload audio:', error);
+    if (error instanceof Error) {
+      if (error.message.includes('too large') || error.message.includes('Maximum size')) {
+        throw error; // Already a descriptive validation error
+      }
+      if (error.message.includes('Network Error') || error.message.includes('ERR_NETWORK') || error.message === 'Failed to fetch') {
+        throw new Error('Network error: please check your internet connection and try again.');
+      }
+      if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+        throw new Error('Upload timed out. Please check your connection and try again.');
+      }
+      if (error.message.includes('403') || error.message.includes('Forbidden')) {
+        throw new Error('Upload authorization expired. Please try again.');
+      }
+    }
     throw new Error('Failed to upload audio file. Please try again.');
   }
 }

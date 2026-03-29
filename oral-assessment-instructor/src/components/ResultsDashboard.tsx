@@ -114,6 +114,14 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     }
   };
 
+  const escapeCsvField = (value: unknown): string => {
+    const str = String(value ?? '');
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
   const exportToCSV = () => {
     const headers = ['Student ID', 'Name', 'Email', 'Total Score', 'Max Score', 'Percentage', 'Grade', 'Completed At'];
     const rows = filteredResults.map(r => [
@@ -126,7 +134,7 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       r.grade,
       new Date(r.completedAt).toLocaleString(),
     ]);
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(v => `"${v}"`).join(','))].join('\n');
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(v => escapeCsvField(v)).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -183,7 +191,7 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       Developing: 'bg-yellow-600 text-white',
       Unsatisfactory: 'bg-red-600 text-white',
     };
-    return colors[grade] || 'bg-slate-600 text-slate-200';
+    return colors[grade] || 'bg-purple-600 text-white';
   };
 
   if (isLoading && results.length === 0) {

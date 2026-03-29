@@ -43,8 +43,7 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-40 shadow-xl rounded-lg overflow-hidden border-2 border-gray-800"
-      style={{ width: 160, height: 120 }}
+      className="fixed bottom-4 right-4 z-40 shadow-xl rounded-lg overflow-hidden border-2 border-gray-800 w-[120px] h-[90px] sm:w-[160px] sm:h-[120px]"
       title="Proctoring camera — your session is being recorded"
     >
       <video

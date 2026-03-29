@@ -37,14 +37,14 @@ export default function GenerateQuestions() {
 
   const handleSaveBrief = async () => {
     if (!assessmentId) return;
-    if (brief.trim().length < 50) {
+    if ((brief ?? '').trim().length < 50) {
       setBriefError('Brief must be at least 50 characters.');
       return;
     }
     setIsSavingBrief(true);
     setBriefError(null);
     try {
-      await apiService.updateBrief(assessmentId, brief.trim());
+      await apiService.updateBrief(assessmentId, (brief ?? '').trim());
       setBriefSaved(true);
       setTimeout(() => setBriefSaved(false), 3000);
     } catch (err) {
@@ -90,7 +90,7 @@ export default function GenerateQuestions() {
                 Describe the assignment so the AI can generate relevant questions. Minimum 50 characters.
               </p>
             </div>
-            {!brief.trim() && (
+            {!(brief ?? '').trim() && (
               <span className="px-2.5 py-1 text-xs font-medium bg-yellow-900/40 text-yellow-300 border border-yellow-700 rounded">
                 No brief set
               </span>
@@ -104,15 +104,15 @@ export default function GenerateQuestions() {
             className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-y text-sm"
           />
           <div className="flex items-center justify-between mt-2">
-            <span className={`text-xs ${brief.trim().length < 50 ? 'text-slate-500' : 'text-green-400'}`}>
-              {brief.trim().length} / 50 characters minimum
+            <span className={`text-xs ${(brief ?? '').trim().length < 50 ? 'text-slate-500' : 'text-green-400'}`}>
+              {(brief ?? '').trim().length} / 50 characters minimum
             </span>
             <div className="flex items-center gap-3">
               {briefSaved && <span className="text-xs text-green-400">Saved ✓</span>}
               {briefError && <span className="text-xs text-red-400">{briefError}</span>}
               <button
                 onClick={handleSaveBrief}
-                disabled={isSavingBrief || brief.trim().length < 50}
+                disabled={isSavingBrief || (brief ?? '').trim().length < 50}
                 className="bg-primary-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSavingBrief ? 'Saving…' : 'Save Brief'}
