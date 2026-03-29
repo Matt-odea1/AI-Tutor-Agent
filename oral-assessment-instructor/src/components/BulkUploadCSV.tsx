@@ -80,22 +80,47 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
               return;
             }
 
-            // Map to ParsedStudent[]
-            const students: ParsedStudent[] = normalizedData.map((row, index) => {
-              // Validate email
-              const email = row.email?.trim();
-              if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                throw new Error(`Row ${index + 2}: Invalid email address "${email}"`);
-              }
+            // Map to ParsedStudent[] with validation
+            const seenIds = new Set<string>();
+            const students: ParsedStudent[] = [];
+            const validationErrors: string[] = [];
 
-              return {
-                name: row.name?.trim() || '',
-                email,
-                studentId: row.studentid?.trim() || '',
-                code: row.code || '',
-                assignmentFile: row.assignmentfile?.trim(),
-              };
-            });
+            for (let index = 0; index < normalizedData.length; index++) {
+              const row = normalizedData[index];
+
+              const name = row.name?.trim() || '';
+              const email = row.email?.trim() || '';
+              const studentId = row.studentid?.trim() || '';
+
+              if (!studentId) {
+                validationErrors.push(`Row ${index + 2}: Missing studentId`);
+              }
+              if (!name) {
+                validationErrors.push(`Row ${index + 2}: Missing name`);
+              }
+              if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                validationErrors.push(`Row ${index + 2}: Invalid email address "${email}"`);
+              }
+              if (studentId && seenIds.has(studentId)) {
+                validationErrors.push(`Row ${index + 2}: Duplicate studentId "${studentId}"`);
+              }
+              if (studentId) seenIds.add(studentId);
+
+              if (validationErrors.length === 0) {
+                students.push({
+                  name,
+                  email,
+                  studentId,
+                  code: row.code || '',
+                  assignmentFile: row.assignmentfile?.trim(),
+                });
+              }
+            }
+
+            if (validationErrors.length > 0) {
+              reject(new Error(validationErrors.join('\n')));
+              return;
+            }
 
             resolve(students);
           } catch (err) {
@@ -113,6 +138,10 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
     setParseError(null);
 
     if (acceptedFiles.length === 0) return;
+
+    if (acceptedFiles.length > 1) {
+      setParseError('Multiple files detected. Only the first file will be used.');
+    }
 
     const file = acceptedFiles[0];
     const reader = new FileReader();
@@ -274,7 +303,15 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
             </svg>
             <div>
               <h4 className="text-sm font-medium text-red-300 mb-1">CSV Parse Error</h4>
-              <p className="text-sm text-red-200">{parseError}</p>
+              {parseError.includes('\n') ? (
+                <ul className="text-sm text-red-200 list-disc list-inside space-y-1">
+                  {parseError.split('\n').map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-red-200">{parseError}</p>
+              )}
             </div>
           </div>
         </div>

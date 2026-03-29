@@ -35,15 +35,22 @@ export default function AudioRecorder({
   } = useAssessmentStore();
 
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [autoStopped, setAutoStopped] = useState(false);
 
   // Initialize recorder on mount
   useEffect(() => {
     const init = async () => {
       try {
+        setInitError(null);
         await initializeRecorder();
         setIsInitialized(true);
       } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to access microphone';
+        setInitError(msg.includes('Permission') || msg.includes('NotAllowed')
+          ? 'Microphone access denied. Please allow microphone access in your browser settings and reload.'
+          : `Microphone error: ${msg}`);
         console.error('Failed to initialize recorder:', err);
       }
     };
@@ -57,21 +64,26 @@ export default function AudioRecorder({
   useEffect(() => {
     if (isRecording && recordingDuration >= timeLimit) {
       stopRecording();
+      setAutoStopped(true);
     }
   }, [isRecording, recordingDuration, timeLimit, stopRecording]);
 
-  // Create audio URL when blob is available
+  // Create audio URL when blob is available; revoke previous URL to prevent memory leak
   useEffect(() => {
     if (recordedBlob) {
       const url = URL.createObjectURL(recordedBlob);
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAudioUrl(url);
+      setAudioUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
       return () => URL.revokeObjectURL(url);
     }
   }, [recordedBlob]);
 
   const handleStartRecording = () => {
     if (error) clearError();
+    setAutoStopped(false);
     startRecording();
   };
 
@@ -102,11 +114,11 @@ export default function AudioRecorder({
         Record Your Answer
       </h3>
 
-      {/* Browser Support Warning */}
+      {/* Browser Support Warning / Error */}
       {!isInitialized && !disabled && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-yellow-800">
-            Initializing microphone... Please allow microphone access when prompted.
+        <div className={`mb-4 p-4 rounded-lg ${initError ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          <p className={`text-sm ${initError ? 'text-red-800' : 'text-yellow-800'}`}>
+            {initError || 'Initializing microphone... Please allow microphone access when prompted.'}
           </p>
         </div>
       )}

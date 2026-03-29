@@ -92,6 +92,10 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   }, [generationJob?.status]);
 
   const handleStartGeneration = async () => {
+    // Prevent duplicate generation if a job is already in progress
+    if (generationJob && (generationJob.status === 'pending' || generationJob.status === 'running')) {
+      return;
+    }
     try {
       setIsGenerating(true);
       setLoading(true);
@@ -99,7 +103,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
 
       const job = await apiService.generateQuestions({ assessmentId });
       setGenerationJob(job);
-      
+
       // Start polling for status updates
       startPolling();
     } catch (err) {

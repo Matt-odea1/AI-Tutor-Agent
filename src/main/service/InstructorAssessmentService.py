@@ -132,7 +132,7 @@ class InstructorAssessmentService:
                 'description': description,
                 'dueDate': due_date,
                 'totalQuestions': total_questions,
-                'timeLimit': time_limit,
+                'timeLimit': (time_limit * 60) if time_limit is not None else None,
                 'accessMode': access_mode,
                 'scheduledWindowStart': scheduled_window_start,
                 'scheduledWindowEnd': scheduled_window_end,

@@ -48,7 +48,7 @@ export default function QuestionDisplay({
       {/* Question Text */}
       <div className="prose prose-sm max-w-none mb-4">
         <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-          {question.text}
+          {question.text || '*Question text not yet available.*'}
         </ReactMarkdown>
       </div>
 
@@ -69,8 +69,7 @@ export default function QuestionDisplay({
       {/* Instructions */}
       <div className="mt-4 p-3 bg-primary-50 rounded-lg">
         <p className="text-sm text-primary-800">
-          <span className="font-semibold">Instructions:</span> Answer this question using the oral or written
-          mode below. Explain your reasoning clearly.
+          <span className="font-semibold">Instructions:</span> Answer this question below. Explain your reasoning clearly.
         </p>
       </div>
     </div>

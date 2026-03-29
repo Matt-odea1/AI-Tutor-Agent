@@ -143,13 +143,25 @@ class TestGetStudentQuestions:
         svc = _create_service(table)
 
         result = svc.get_student_questions("s-1", "a-1")
-        # When no questions exist, returns empty list directly
-        assert result == []
+        # Returns dict with empty questions list
+        assert result["questions"] == []
+        assert result["currentQuestionIndex"] == 0
 
 
 # ─────────────────────────────────────────────────────────────
 # submit_answer
 # ─────────────────────────────────────────────────────────────
+
+def _seed_question_order(table, student_id="s-1", assessment_id="a-1", question_ids=None):
+    """Set questionOrder and currentQuestionIdx on the enrollment record so submit_answer passes ordering validation."""
+    if question_ids is None:
+        question_ids = ["q-1"]
+    table.update_item(
+        Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"},
+        UpdateExpression="SET questionOrder = :qo, currentQuestionIdx = :ci",
+        ExpressionAttributeValues={":qo": question_ids, ":ci": 0},
+    )
+
 
 class TestSubmitAnswer:
     def test_submit_audio_answer(self, dynamo_env):
@@ -157,6 +169,7 @@ class TestSubmitAnswer:
         _seed_assessment(table)
         _seed_enrollment(table)
         _seed_questions(table, count=2)
+        _seed_question_order(table, question_ids=["q-1", "q-2"])
         svc = _create_service(table)
 
         result = svc.submit_answer(
@@ -184,6 +197,7 @@ class TestSubmitAnswer:
         _seed_assessment(table)
         _seed_enrollment(table)
         _seed_questions(table, count=1)
+        _seed_question_order(table, question_ids=["q-1"])
         svc = _create_service(table)
 
         result = svc.submit_answer(
@@ -208,6 +222,7 @@ class TestSubmitAnswer:
         _seed_assessment(table)
         _seed_enrollment(table)
         _seed_questions(table, count=1)
+        _seed_question_order(table, question_ids=["q-1"])
         svc = _create_service(table)
 
         result = svc.submit_answer(

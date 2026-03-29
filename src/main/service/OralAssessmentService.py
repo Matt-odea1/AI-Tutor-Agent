@@ -129,8 +129,8 @@ class OralAssessmentService:
         except OralAssessmentServiceError:
             raise
         except Exception as e:
-            logger.warning(f"Window check failed for assessment {assessment_id}: {e}")
-            # Fail open — don't block students if the check itself errors
+            logger.error(f"Window check failed for assessment {assessment_id}: {e}")
+            raise OralAssessmentServiceError(f"Unable to verify assessment availability. Please try again.")
 
     def get_student_questions(
         self,
@@ -323,6 +323,8 @@ class OralAssessmentService:
             self._advance_question_index(student_id, assessment_id)
             logger.info(f"Recorded answer for question {question_id} from student {student_id}")
             return result
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            raise OralAssessmentServiceError("Answer already submitted for this question")
         except ValueError as e:
             raise OralAssessmentServiceError(str(e))
         except OralAssessmentServiceError:
@@ -427,20 +429,24 @@ class OralAssessmentService:
                     f"Student {student_id} not enrolled in assessment {assessment_id}"
                 )
             
-            # Update status
-            self.table.update_item(
-                Key={
-                    'PK': f"ASSESSMENT#{assessment_id}",
-                    'SK': f"STUDENT#{student_id}"
-                },
-                UpdateExpression='SET #status = :status, submittedAt = :submitted, completedAt = :completed',
-                ExpressionAttributeNames={'#status': 'status'},
-                ExpressionAttributeValues={
-                    ':status': 'submitted',
-                    ':submitted': submitted_at,
-                    ':completed': submitted_at
-                }
-            )
+            # Update status (idempotent: reject if already submitted)
+            try:
+                self.table.update_item(
+                    Key={
+                        'PK': f"ASSESSMENT#{assessment_id}",
+                        'SK': f"STUDENT#{student_id}"
+                    },
+                    UpdateExpression='SET #status = :status, submittedAt = :submitted, completedAt = :completed',
+                    ConditionExpression='attribute_not_exists(submittedAt)',
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues={
+                        ':status': 'submitted',
+                        ':submitted': submitted_at,
+                        ':completed': submitted_at
+                    }
+                )
+            except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+                raise OralAssessmentServiceError("Assessment already submitted")
             
             # Get assessment title
             assessment_response = self.table.get_item(

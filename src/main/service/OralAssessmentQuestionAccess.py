@@ -106,8 +106,10 @@ class OralAssessmentQuestionAccess:
         future questions get only metadata (id, questionNumber, assessmentId, studentId).
         """
         gated: List[Dict[str, Any]] = []
+        # Clamp index to valid range to prevent corrupted index from ungating everything
+        safe_idx = min(current_question_idx, len(questions) - 1) if questions else -1
         for idx, q in enumerate(questions):
-            if idx <= current_question_idx:
+            if idx <= safe_idx:
                 gated.append(q)
             else:
                 gated.append({

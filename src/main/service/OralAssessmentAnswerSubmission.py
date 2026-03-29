@@ -21,6 +21,12 @@ class OralAssessmentAnswerSubmission:
         text_content: Optional[str] = None,
         video_url: Optional[str] = None,
     ) -> Dict[str, Any]:
+        # Validate required fields per answer type
+        if answer_type == "text" and not (text_content and text_content.strip()):
+            raise ValueError("Text answer cannot be empty")
+        if answer_type == "audio" and not audio_url:
+            raise ValueError("Audio URL is required for audio answers")
+
         pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
         submitted_at = datetime.now(timezone.utc).isoformat()
 
@@ -41,7 +47,12 @@ class OralAssessmentAnswerSubmission:
             dynamo_item["audioUrl"] = audio_url or ""
             dynamo_item["duration"] = duration or 0
 
-        self.table.put_item(Item=dynamo_item)
+        # Conditional put to prevent duplicate submissions (atomic check-and-store)
+        from boto3.dynamodb.conditions import Attr
+        self.table.put_item(
+            Item=dynamo_item,
+            ConditionExpression=Attr("SK").not_exists(),
+        )
 
         self.progress_updater(student_id, assessment_id)
 

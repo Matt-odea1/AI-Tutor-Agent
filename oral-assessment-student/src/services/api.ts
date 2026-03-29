@@ -19,7 +19,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 60000, // 60 second timeout (accommodates large audio uploads on slow networks)
 });
 
 // Attach student session token to every request if present
@@ -32,6 +32,46 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor: auto-refresh token on 401/403
+let isRefreshing = false;
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as typeof error.config & { _retried?: boolean };
+    if (
+      originalRequest &&
+      !originalRequest._retried &&
+      !isRefreshing &&
+      (error.response?.status === 401 || error.response?.status === 403) &&
+      !originalRequest.url?.includes('/student/token')
+    ) {
+      // Try to re-fetch a fresh token using stored student/assessment info
+      const studentId = sessionStorage.getItem('studentId');
+      const assessmentId = sessionStorage.getItem('assessmentId');
+      if (studentId && assessmentId) {
+        isRefreshing = true;
+        originalRequest._retried = true;
+        try {
+          const resp = await apiClient.post('/api/student/token', {
+            student_id: studentId,
+            assessment_id: assessmentId,
+          });
+          const token: string = resp.data.access_token;
+          sessionStorage.setItem('studentToken', token);
+          originalRequest.headers = originalRequest.headers ?? {};
+          originalRequest.headers['Authorization'] = `Bearer ${token}`;
+          return apiClient(originalRequest);
+        } catch {
+          // Token refresh also failed — fall through to normal error handling
+        } finally {
+          isRefreshing = false;
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Error handler
 const handleApiError = (error: AxiosError): never => {
   if (error.response) {
@@ -43,7 +83,7 @@ const handleApiError = (error: AxiosError): never => {
     if (error.response.status === 404 && !responseData?.detail) {
       message = 'Assessment not found — please check your link or contact your instructor.';
     } else if (error.response.status === 403) {
-      message = 'Access denied — this assessment link may have expired.';
+      message = 'Access denied — this assessment link may have expired. Retrying...';
     }
 
     const apiError: ApiError = {

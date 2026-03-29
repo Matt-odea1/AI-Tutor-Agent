@@ -21,11 +21,13 @@ export default function TakeAssessment() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [assessmentStarted, setAssessmentStartedRaw] = useState(false);
   // Preparation countdown for oral mode (counts down from preparationTime → 0)
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
+  const [prepElapsed, setPrepElapsed] = useState(0); // seconds elapsed in prep phase
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Wrapper to persist assessmentStarted to sessionStorage
@@ -53,6 +55,8 @@ export default function TakeAssessment() {
     cameraRevoked,
     consentGiven,
     answeredQuestionIds,
+    proctoringWarning,
+    lastFailedAction,
     setStudentInfo,
     loadQuestions,
     loadProgress,
@@ -66,6 +70,8 @@ export default function TakeAssessment() {
     startProctoring,
     restoreProctoring,
     clearError,
+    clearProctoringWarning,
+    retryLastAction,
   } = useAssessmentStore();
 
   // Initialize assessment on mount
@@ -121,9 +127,22 @@ export default function TakeAssessment() {
     }
   }, []);
 
+  // Block browser back button during assessment
+  useEffect(() => {
+    if (!assessmentStarted) return;
+    // Push a dummy history entry so back button triggers popstate instead of navigating away
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [assessmentStarted]);
+
   // Reset per-question state whenever the question changes
   useEffect(() => {
     setPrepDone(false);
+    clearError(); // clear errors from previous question
     if (prepTimerRef.current) clearInterval(prepTimerRef.current);
 
     if (answerMode === 'oral' && preparationTime && preparationTime > 0 && assessmentStarted) {
@@ -267,6 +286,25 @@ export default function TakeAssessment() {
   }
 
   const currentQuestion = questions[currentQuestionIndex];
+
+  // Safety: if currentQuestionIndex is out of bounds, show a fallback
+  if (!currentQuestion) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Assessment Complete</h2>
+          <p className="text-gray-600 mb-4">All questions have been answered.</p>
+          <button
+            onClick={() => navigate(`/${studentId}/results/${assessmentId}`)}
+            className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700"
+          >
+            View Results
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
   const currentAnswered = currentQuestion ? answeredQuestionIds.has(currentQuestion.id) : false;

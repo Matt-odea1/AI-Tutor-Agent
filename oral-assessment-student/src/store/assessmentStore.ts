@@ -78,6 +78,12 @@ interface AssessmentStore {
   // Per-question answered tracking
   answeredQuestionIds: Set<string>;
 
+  // Proctoring warning (non-blocking)
+  proctoringWarning: string | null;
+
+  // Last failed action (for retry)
+  lastFailedAction: string | null;
+
   // Loading and error states
   isLoading: boolean;
   error: ApiError | null;
@@ -123,6 +129,8 @@ interface AssessmentStore {
 
   // Utility
   clearError: () => void;
+  clearProctoringWarning: () => void;
+  retryLastAction: () => Promise<void>;
   reset: () => void;
 }
 
@@ -155,10 +163,15 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   results: null,
   isResultsReady: false,
   answeredQuestionIds: new Set<string>(),
+  proctoringWarning: null,
+  lastFailedAction: null,
   isLoading: false,
   error: null,
 
   setStudentInfo: (studentId: string, assessmentId: string) => {
+    // Persist for token refresh interceptor
+    sessionStorage.setItem('studentId', studentId);
+    sessionStorage.setItem('assessmentId', assessmentId);
     set({ studentId, assessmentId, error: null });
   },
 
@@ -388,7 +401,11 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     } catch (error) {
       console.warn('Failed to start proctoring:', error);
       // Non-blocking — assessment can still proceed if camera request fails here
-      // (the consent modal already obtained permissions; this is a re-request edge case)
+      // Surface a visible warning so the student knows proctoring is inactive
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      set({
+        proctoringWarning: `Camera/proctoring could not be started: ${msg}. The assessment will continue without proctoring.`,
+      });
     }
   },
 
@@ -460,6 +477,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
       await submitAnswer(studentId, currentQuestion.id, assessmentId, audioUrl, recordingDuration);
 
+      // Only clear blob AFTER successful submission (preserves blob for retry on failure)
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
       set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
@@ -468,7 +486,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       await get().loadQuestions();
       await get().loadProgress();
     } catch (error) {
-      set({ error: error as ApiError, isUploading: false, uploadProgress: 0 });
+      // Keep recordedBlob intact so student can retry without re-recording
+      set({ error: error as ApiError, isUploading: false, uploadProgress: 0, lastFailedAction: 'submitCurrentAnswer' });
     }
   },
 
@@ -505,7 +524,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       await get().loadQuestions();
       await get().loadProgress();
     } catch (error) {
-      set({ error: error as ApiError, isUploading: false });
+      set({ error: error as ApiError, isUploading: false, lastFailedAction: 'submitCurrentTextAnswer' });
     }
   },
 
@@ -562,7 +581,21 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   },
 
   clearError: () => {
-    set({ error: null });
+    set({ error: null, lastFailedAction: null });
+  },
+
+  clearProctoringWarning: () => {
+    set({ proctoringWarning: null });
+  },
+
+  retryLastAction: async () => {
+    const { lastFailedAction } = get();
+    set({ error: null, lastFailedAction: null });
+    if (lastFailedAction === 'submitCurrentAnswer') {
+      await get().submitCurrentAnswer();
+    } else if (lastFailedAction === 'submitCurrentTextAnswer') {
+      await get().submitCurrentTextAnswer();
+    }
   },
 
   reset: () => {
@@ -599,6 +632,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       results: null,
       isResultsReady: false,
       answeredQuestionIds: new Set<string>(),
+      proctoringWarning: null,
+      lastFailedAction: null,
       isLoading: false,
       error: null,
     });
