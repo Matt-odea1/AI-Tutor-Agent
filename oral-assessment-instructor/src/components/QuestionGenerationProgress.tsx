@@ -42,7 +42,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
       if (!generationJob?.jobId) return;
 
       try {
-        const updatedJob = await apiService.getGenerationJobStatus(generationJob.jobId);
+        const updatedJob = await apiService.getQuestionGenerationStatus(assessmentId, generationJob.jobId);
         setGenerationJob(updatedJob);
 
         // Stop polling if job is complete or failed
@@ -57,7 +57,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
     }, 3000); // Poll every 3 seconds
 
     setPollingInterval(interval);
-  }, [generationJob?.jobId, pollingInterval]);
+  }, [assessmentId, generationJob?.jobId, pollingInterval]);
 
   // Load students when job completes so we can show per-student question links
   useEffect(() => {
