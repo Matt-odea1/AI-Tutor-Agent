@@ -136,7 +136,8 @@ async def get_upload_url(
     2. Client uploads file directly to S3 using PUT request to uploadUrl
     3. Client stores fileUrl in database for later playback
     """
-    _assert_instructor_access(_principal)
+    # Both instructors and students need upload URLs (students for audio answers)
+    # Auth is already enforced by require_auth_principal above
 
     try:
         return s3_service.generate_upload_url(filename=filename, content_type=content_type)
