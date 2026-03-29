@@ -197,7 +197,11 @@ class OralAssessmentService:
             )
             
             logger.info(f"Retrieved {len(questions)} questions for student {student_id}")
-            return self._convert_decimals(questions)
+            return {
+                "questions": self._convert_decimals(questions),
+                "answerMode": assessment_meta.get("answerMode", "oral"),
+                "preparationTime": assessment_meta.get("preparationTime"),
+            }
             
         except ValueError as e:
             raise OralAssessmentServiceError(str(e))

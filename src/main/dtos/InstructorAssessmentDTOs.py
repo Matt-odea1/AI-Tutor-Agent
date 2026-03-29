@@ -22,6 +22,8 @@ class CreateAssessmentRequest(BaseModel):
     scheduledWindowEnd: Optional[str] = Field(None, description="ISO datetime for window end (scheduled mode)")
     autoEvaluate: bool = Field(False, description="Automatically trigger evaluation when all students submit")
     rubric: Optional[str] = Field(None, description="Custom grading rubric injected into the evaluation prompt")
+    answerMode: str = Field("oral", description="'oral' or 'written' — controls student answer interface")
+    preparationTime: Optional[int] = Field(None, description="Seconds of prep time shown before oral recording starts (0 = start immediately)", ge=0, le=300)
 
 
 class UploadedStudent(BaseModel):
@@ -83,6 +85,8 @@ class AssessmentResponse(BaseModel):
     assignmentBrief: Optional[str] = None
     autoEvaluate: bool = False
     rubric: Optional[str] = None
+    answerMode: str = "oral"
+    preparationTime: Optional[int] = None
     resultsReleased: bool = False
     status: str
     createdAt: str

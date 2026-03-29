@@ -82,7 +82,10 @@ async def get_student_questions(
 ):
     try:
         _assert_student_access(_principal, student_id)
-        questions = svc.get_student_questions(student_id, assessment_id)
+        result = svc.get_student_questions(student_id, assessment_id)
+
+        # result is now {"questions": [...], "answerMode": ..., "preparationTime": ...}
+        raw_questions = result.get("questions", []) if isinstance(result, dict) else result
 
         question_dtos = [
             QuestionResponse(
@@ -96,7 +99,7 @@ async def get_student_questions(
                 timeLimit=q.get("timeLimit"),
                 createdAt=q["createdAt"],
             )
-            for q in questions
+            for q in raw_questions
         ]
 
         return StudentQuestionsResponse(
@@ -104,6 +107,8 @@ async def get_student_questions(
             assessmentId=assessment_id,
             questions=question_dtos,
             totalQuestions=len(question_dtos),
+            answerMode=result.get("answerMode", "oral") if isinstance(result, dict) else "oral",
+            preparationTime=result.get("preparationTime") if isinstance(result, dict) else None,
         )
 
     except OralAssessmentServiceError as error:

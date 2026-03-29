@@ -69,15 +69,25 @@ const handleApiError = (error: AxiosError): never => {
 /**
  * Get all questions for a student's assessment
  */
+export interface QuestionsResponse {
+  questions: Question[];
+  answerMode: 'oral' | 'written';
+  preparationTime?: number;
+}
+
 export async function getQuestions(
   studentId: string,
   assessmentId: string
-): Promise<Question[]> {
+): Promise<QuestionsResponse> {
   try {
     const response = await apiClient.get(
       `/api/student/${studentId}/assessment/${assessmentId}/questions`
     );
-    return response.data.questions || [];
+    return {
+      questions: response.data.questions || [],
+      answerMode: response.data.answerMode || 'oral',
+      preparationTime: response.data.preparationTime,
+    };
   } catch (error) {
     return handleApiError(error as AxiosError);
   }

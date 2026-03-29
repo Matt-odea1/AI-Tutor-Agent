@@ -18,6 +18,8 @@ export default function CreateAssessmentForm() {
     accessMode: 'open',
     scheduledWindowStart: undefined,
     scheduledWindowEnd: undefined,
+    answerMode: 'oral',
+    preparationTime: 60,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest | string, string>>>({});
@@ -100,7 +102,7 @@ export default function CreateAssessmentForm() {
       ...prev,
       [name]: name === 'totalQuestions'
         ? Number(value)
-        : name === 'timeLimit'
+        : name === 'timeLimit' || name === 'preparationTime'
         ? (value === '' ? undefined : Number(value))
         : value,
     }));
@@ -280,6 +282,63 @@ export default function CreateAssessmentForm() {
           <p className="mt-1 text-sm text-red-400">{errors.totalQuestions}</p>
         )}
       </div>
+
+      {/* Answer Mode */}
+      <div>
+        <label className="block text-sm font-medium text-slate-200 mb-2">
+          Answer Mode *
+        </label>
+        <div className="flex space-x-4">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="answerMode"
+              checked={formData.answerMode === 'oral'}
+              onChange={() => setFormData(prev => ({ ...prev, answerMode: 'oral', preparationTime: 60 }))}
+              className="text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-slate-200 text-sm font-medium">Oral (voice recording)</span>
+          </label>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="answerMode"
+              checked={formData.answerMode === 'written'}
+              onChange={() => setFormData(prev => ({ ...prev, answerMode: 'written', preparationTime: undefined }))}
+              className="text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-slate-200 text-sm font-medium">Written (typed text)</span>
+          </label>
+        </div>
+        <p className="mt-1 text-sm text-slate-400">
+          {formData.answerMode === 'oral'
+            ? 'Students record an audio answer. A preparation countdown is shown before recording starts.'
+            : 'Students type their answer. The answer timer starts immediately when the question is shown.'}
+        </p>
+      </div>
+
+      {/* Preparation Time (oral only) */}
+      {formData.answerMode === 'oral' && (
+        <div>
+          <label htmlFor="preparationTime" className="block text-sm font-medium text-slate-200 mb-2">
+            Preparation Time (seconds)
+          </label>
+          <input
+            type="number"
+            id="preparationTime"
+            name="preparationTime"
+            value={formData.preparationTime ?? ''}
+            onChange={handleChange}
+            min={0}
+            max={300}
+            placeholder="60"
+            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          />
+          <p className="mt-1 text-sm text-slate-400">
+            Time students have to read the question before recording begins. Set to 0 to start recording immediately.
+          </p>
+        </div>
+      )}
 
       {/* Time Limit */}
       <div>

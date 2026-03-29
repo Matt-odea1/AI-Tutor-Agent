@@ -125,6 +125,8 @@ export interface CreateAssessmentRequest {
   accessMode?: 'open' | 'scheduled';
   scheduledWindowStart?: string;
   scheduledWindowEnd?: string;
+  answerMode?: 'oral' | 'written';
+  preparationTime?: number;
 }
 
 export interface UploadStudentsRequest {

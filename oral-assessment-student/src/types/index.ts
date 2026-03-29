@@ -72,6 +72,8 @@ export interface Assessment {
   totalQuestions: number;
   timeLimit?: number;
   status: string;
+  answerMode?: 'oral' | 'written';
+  preparationTime?: number;
 }
 
 export interface UploadUrlResponse {

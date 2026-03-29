@@ -13,6 +13,7 @@ import type {
 import {
   getStudentToken,
   getQuestions,
+  type QuestionsResponse,
   submitAnswer,
   submitVideoAnswer,
   submitTextAnswer,
@@ -60,8 +61,9 @@ interface AssessmentStore {
   isUploading: boolean;
   uploadProgress: number;
 
-  // Answer mode
-  answerMode: 'audio' | 'text' | 'video';
+  // Answer mode — set by instructor, not student
+  answerMode: 'oral' | 'written';
+  preparationTime: number | null; // seconds of prep time for oral mode (null = no prep phase)
   textAnswer: string;
 
   // Video recording state
@@ -92,7 +94,7 @@ interface AssessmentStore {
   setStudentInfo: (studentId: string, assessmentId: string) => void;
   loadQuestions: () => Promise<void>;
   loadProgress: () => Promise<void>;
-  setAnswerMode: (mode: 'audio' | 'text' | 'video') => void;
+  setAnswerMode: (mode: 'oral' | 'written') => void;
   setTextAnswer: (text: string) => void;
 
   // Recording actions (audio)
@@ -158,7 +160,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   playbackUrl: null,
   isUploading: false,
   uploadProgress: 0,
-  answerMode: 'audio',
+  answerMode: 'oral' as 'oral' | 'written',
+  preparationTime: null,
   textAnswer: '',
   videoRecorder: null,
   videoLiveStream: null,
@@ -179,7 +182,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ studentId, assessmentId, error: null });
   },
 
-  setAnswerMode: (mode: 'audio' | 'text' | 'video') => {
+  setAnswerMode: (mode: 'oral' | 'written') => {
     set({ answerMode: mode });
   },
 
@@ -199,8 +202,13 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
     try {
       await ensureStudentToken(studentId, assessmentId);
-      const questions = await getQuestions(studentId, assessmentId);
-      set({ questions, isLoading: false });
+      const result: QuestionsResponse = await getQuestions(studentId, assessmentId);
+      set({
+        questions: result.questions,
+        answerMode: result.answerMode,
+        preparationTime: result.preparationTime ?? null,
+        isLoading: false,
+      });
     } catch (error) {
       set({ error: error as ApiError, isLoading: false });
     }
@@ -778,7 +786,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       playbackUrl: null,
       isUploading: false,
       uploadProgress: 0,
-      answerMode: 'audio',
+      answerMode: 'oral' as 'oral' | 'written',
+      preparationTime: null,
       textAnswer: '',
       videoRecorder: null,
       videoLiveStream: null,

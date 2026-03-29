@@ -1,10 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import QuestionDisplay from '../components/QuestionDisplay';
 import ProgressTracker from '../components/ProgressTracker';
 import AudioRecorder from '../components/AudioRecorder';
-import VideoRecorder from '../components/VideoRecorder';
 import TextAnswerInput from '../components/TextAnswerInput';
 import QuestionTimer from '../components/QuestionTimer';
 import ConsentModal from '../components/ConsentModal';
@@ -24,7 +23,12 @@ export default function TakeAssessment() {
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [assessmentStarted, setAssessmentStarted] = useState(false);
-  const [pendingNavIndex, setPendingNavIndex] = useState<number | null>(null);
+  // Preparation countdown for oral mode (counts down from preparationTime → 0)
+  const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
+  const [prepDone, setPrepDone] = useState(false);
+  const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether current question has been answered (for sequential enforcement)
+  const [currentAnswered, setCurrentAnswered] = useState(false);
 
   const {
     studentId,
@@ -37,9 +41,9 @@ export default function TakeAssessment() {
     isUploading,
     error,
     answerMode,
+    preparationTime,
     textAnswer,
     recordedBlob,
-    videoBlob,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
@@ -51,15 +55,12 @@ export default function TakeAssessment() {
     nextQuestion,
     submitCurrentAnswer,
     submitCurrentTextAnswer,
-    submitCurrentVideoAnswer,
     submitCompleteAssessment,
-    setAnswerMode,
     setTextAnswer,
     setConsentGiven,
     startProctoring,
     restoreProctoring,
     clearError,
-    goToQuestion,
   } = useAssessmentStore();
 
   // Initialize assessment on mount
@@ -89,6 +90,41 @@ export default function TakeAssessment() {
     }
   }, []);
 
+  // Reset per-question state whenever the question changes
+  useEffect(() => {
+    setCurrentAnswered(false);
+    setPrepDone(false);
+    if (prepTimerRef.current) clearInterval(prepTimerRef.current);
+
+    if (answerMode === 'oral' && preparationTime && preparationTime > 0 && assessmentStarted) {
+      setPrepSecondsLeft(preparationTime);
+    } else {
+      setPrepSecondsLeft(null);
+      setPrepDone(true);
+    }
+  }, [currentQuestionIndex, assessmentStarted, answerMode, preparationTime]);
+
+  // Prep countdown tick
+  useEffect(() => {
+    if (prepSecondsLeft === null || prepDone) return;
+    if (prepSecondsLeft <= 0) {
+      setPrepDone(true);
+      setPrepSecondsLeft(null);
+      return;
+    }
+    prepTimerRef.current = setInterval(() => {
+      setPrepSecondsLeft(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(prepTimerRef.current!);
+          setPrepDone(true);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (prepTimerRef.current) clearInterval(prepTimerRef.current); };
+  }, [prepSecondsLeft, prepDone]);
+
   const handleConsentAccepted = async () => {
     setIsRequestingPermission(true);
     try {
@@ -115,33 +151,24 @@ export default function TakeAssessment() {
 
   const handleTimerExpire = async () => {
     const store = useAssessmentStore.getState();
-    const { answerMode, isRecording, recordedBlob, videoBlob, textAnswer, currentQuestionIndex, questions } = store;
+    const { answerMode, isRecording, recordedBlob, textAnswer, currentQuestionIndex, questions } = store;
 
-    // If recording is still active, stop it first to capture the blob
     if (isRecording) {
-      if (answerMode === 'audio') {
-        await store.stopRecording();
-      } else if (answerMode === 'video') {
-        await store.stopVideoRecording();
-      }
+      await store.stopRecording();
     }
 
-    // Re-read blobs after potential stop
     const state = useAssessmentStore.getState();
 
-    if (answerMode === 'audio' && (recordedBlob || state.recordedBlob)) {
+    if (answerMode === 'oral' && (recordedBlob || state.recordedBlob)) {
       addToast('Time\'s up! Submitting your audio answer.', 'warning');
-      await submitCurrentAnswer();
-    } else if (answerMode === 'video' && (videoBlob || state.videoBlob)) {
-      addToast('Time\'s up! Submitting your video answer.', 'warning');
-      await submitCurrentVideoAnswer();
-    } else if (answerMode === 'text' && textAnswer.trim().length >= 20) {
+      await handleSubmitAudioAnswer();
+    } else if (answerMode === 'written' && textAnswer.trim().length >= 20) {
       addToast('Time\'s up! Submitting your written answer.', 'warning');
-      await submitCurrentTextAnswer();
+      await handleSubmitTextAnswer();
     } else {
-      // Nothing to submit — just advance
       if (currentQuestionIndex < questions.length - 1) {
         addToast('Time\'s up! Moving to the next question.', 'warning');
+        setCurrentAnswered(true);
         nextQuestion();
       }
     }
@@ -149,47 +176,17 @@ export default function TakeAssessment() {
 
   const handleSubmitAudioAnswer = async () => {
     await submitCurrentAnswer();
+    setCurrentAnswered(true);
   };
 
   const handleSubmitTextAnswer = async () => {
     await submitCurrentTextAnswer();
-  };
-
-  const handleSubmitVideoAnswer = async () => {
-    await submitCurrentVideoAnswer();
-  };
-
-  const hasUnsavedAnswer =
-    (answerMode === 'audio' && recordedBlob !== null) ||
-    (answerMode === 'video' && videoBlob !== null) ||
-    (answerMode === 'text' && textAnswer.trim().length > 0);
-
-  const navigateTo = (index: number) => {
-    if (index === currentQuestionIndex) return;
-    if (hasUnsavedAnswer) {
-      setPendingNavIndex(index);
-    } else {
-      goToQuestion(index);
-    }
+    setCurrentAnswered(true);
   };
 
   const handleNext = () => {
-    navigateTo(currentQuestionIndex + 1);
-  };
-
-  const handlePrevious = () => {
-    navigateTo(currentQuestionIndex - 1);
-  };
-
-  const handleNavigate = (index: number) => {
-    navigateTo(index);
-  };
-
-  const confirmNav = () => {
-    if (pendingNavIndex !== null) {
-      goToQuestion(pendingNavIndex);
-      setPendingNavIndex(null);
-    }
+    nextQuestion();
+    // currentAnswered resets via the useEffect on currentQuestionIndex
   };
 
   const handleSubmitAssessment = async () => {
@@ -241,7 +238,6 @@ export default function TakeAssessment() {
   }
 
   const currentQuestion = questions[currentQuestionIndex];
-  const isFirstQuestion = currentQuestionIndex === 0;
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
   const allAnswered = answeredCount >= questions.length;
@@ -291,19 +287,6 @@ export default function TakeAssessment() {
         </div>
       )}
 
-      {/* Unsaved answer navigation warning */}
-      {pendingNavIndex !== null && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6">
-            <p className="text-gray-900 font-medium mb-4">You have an unsaved answer. Leave this question anyway?</p>
-            <div className="flex space-x-3">
-              <button onClick={() => setPendingNavIndex(null)} className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Stay</button>
-              <button onClick={confirmNav} className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700">Leave</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Camera revoked overlay */}
       {cameraRevoked && (
         <CameraRevokedOverlay
@@ -329,12 +312,14 @@ export default function TakeAssessment() {
               <div className="text-sm font-medium text-gray-700">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </div>
-              {/* Per-question countdown timer */}
-              <QuestionTimer
-                timeLimitSeconds={currentQuestion.timeLimit}
-                resetKey={currentQuestion.id}
-                onExpire={handleTimerExpire}
-              />
+              {/* Per-question countdown timer — for oral, only starts after prep phase */}
+              {(answerMode === 'written' || prepDone) && (
+                <QuestionTimer
+                  timeLimitSeconds={currentQuestion.timeLimit}
+                  resetKey={`${currentQuestion.id}-${prepDone}`}
+                  onExpire={handleTimerExpire}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -349,20 +334,7 @@ export default function TakeAssessment() {
             </div>
           )}
 
-          {/* All-answered submit banner */}
-          {allAnswered && (
-            <div className="mb-4 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-              <span className="text-green-800 text-sm font-medium">All questions answered — ready to submit?</span>
-              <button
-                onClick={() => { if (pendingNavIndex === null) setShowSubmitModal(true); }}
-                className="ml-4 bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                Submit Assessment
-              </button>
-            </div>
-          )}
-
-          {/* Progress Tracker */}
+          {/* Progress Tracker — display only, no navigation */}
           <div className="mb-4">
             <ProgressTracker
               currentIndex={currentQuestionIndex}
@@ -370,7 +342,6 @@ export default function TakeAssessment() {
               answeredCount={answeredCount}
               questionIds={questions.map((q) => q.id)}
               answeredQuestionIds={answeredQuestionIds}
-              onNavigate={handleNavigate}
             />
           </div>
 
@@ -383,75 +354,35 @@ export default function TakeAssessment() {
             />
           </div>
 
-          {/* Answer Mode Tabs */}
+          {/* Answer Panel — mode set by instructor */}
           <div className="mb-4">
-            <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
-              {/* Oral Answer tab */}
-              <button
-                onClick={() => setAnswerMode('audio')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  answerMode === 'audio'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd"
-                    d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
-                    clipRule="evenodd" />
-                </svg>
-                <span>Oral Answer</span>
-              </button>
-
-              {/* Video Answer tab */}
-              <button
-                onClick={() => setAnswerMode('video')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  answerMode === 'video'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M15 10l4.553-2.069A1 1 0 0121 8.868V15.13a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span>Video Answer</span>
-              </button>
-
-              {/* Written Answer tab */}
-              <button
-                onClick={() => setAnswerMode('text')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  answerMode === 'text'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>Written Answer</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Answer Panel */}
-          <div className="mb-4">
-            {answerMode === 'audio' && (
-              <AudioRecorder
-                onSubmit={handleSubmitAudioAnswer}
-                timeLimit={currentQuestion.timeLimit ?? 300}
-              />
-            )}
-            {answerMode === 'video' && (
-              <VideoRecorder
-                onSubmit={handleSubmitVideoAnswer}
-                timeLimit={currentQuestion.timeLimit ?? 300}
-              />
-            )}
-            {answerMode === 'text' && (
+            {answerMode === 'oral' ? (
+              prepDone ? (
+                <AudioRecorder
+                  onSubmit={handleSubmitAudioAnswer}
+                  timeLimit={currentQuestion.timeLimit ?? 300}
+                />
+              ) : (
+                /* Preparation countdown */
+                <div className="bg-primary-50 border border-primary-200 rounded-xl p-8 text-center">
+                  <p className="text-sm font-medium text-primary-700 mb-2">Preparation Time</p>
+                  <div className="text-6xl font-bold text-primary-600 mb-4 tabular-nums">
+                    {prepSecondsLeft !== null
+                      ? `${Math.floor(prepSecondsLeft / 60)}:${String(prepSecondsLeft % 60).padStart(2, '0')}`
+                      : '—'}
+                  </div>
+                  <p className="text-sm text-primary-600 mb-6">
+                    Read the question carefully. Recording will start automatically when the timer ends.
+                  </p>
+                  <button
+                    onClick={() => { setPrepDone(true); setPrepSecondsLeft(null); if (prepTimerRef.current) clearInterval(prepTimerRef.current); }}
+                    className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                  >
+                    I'm ready — Start Recording
+                  </button>
+                </div>
+              )
+            ) : (
               <TextAnswerInput
                 value={textAnswer}
                 onChange={setTextAnswer}
@@ -461,25 +392,13 @@ export default function TakeAssessment() {
             )}
           </div>
 
-          {/* Navigation */}
-          <div className={`flex justify-between items-center ${isProctoringActive ? 'pb-32' : 'pb-6'}`}>
-            <button
-              onClick={handlePrevious}
-              disabled={isFirstQuestion}
-              className="flex items-center space-x-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd"
-                  d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                  clipRule="evenodd" />
-              </svg>
-              <span>Previous</span>
-            </button>
-
-            {isLastQuestion && !allAnswered ? (
+          {/* Navigation — sequential only, no going back */}
+          <div className={`flex justify-end items-center ${isProctoringActive ? 'pb-32' : 'pb-6'}`}>
+            {isLastQuestion ? (
               <button
-                onClick={() => pendingNavIndex === null && setShowSubmitModal(true)}
-                className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                onClick={() => setShowSubmitModal(true)}
+                disabled={!currentAnswered}
+                className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 <span>Submit Assessment</span>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -488,19 +407,20 @@ export default function TakeAssessment() {
                     clipRule="evenodd" />
                 </svg>
               </button>
-            ) : !isLastQuestion ? (
+            ) : (
               <button
                 onClick={handleNext}
-                className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
+                disabled={!currentAnswered}
+                className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <span>Next</span>
+                <span>Next Question</span>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd"
                     d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
                     clipRule="evenodd" />
                 </svg>
               </button>
-            ) : null}
+            )}
           </div>
         </div>
       </main>

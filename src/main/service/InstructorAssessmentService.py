@@ -97,6 +97,8 @@ class InstructorAssessmentService:
         scheduled_window_end: Optional[str] = None,
         auto_evaluate: bool = False,
         rubric: Optional[str] = None,
+        answer_mode: str = "oral",
+        preparation_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Create a new assessment.
@@ -136,6 +138,8 @@ class InstructorAssessmentService:
                 'scheduledWindowEnd': scheduled_window_end,
                 'autoEvaluate': auto_evaluate,
                 'rubric': rubric,
+                'answerMode': answer_mode,
+                'preparationTime': preparation_time,
                 'status': 'draft',
                 'createdAt': created_at,
                 'updatedAt': created_at

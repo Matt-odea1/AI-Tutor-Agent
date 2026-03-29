@@ -105,6 +105,8 @@ async def create_assessment(
             scheduled_window_end=request.scheduledWindowEnd,
             auto_evaluate=request.autoEvaluate,
             rubric=request.rubric,
+            answer_mode=request.answerMode,
+            preparation_time=request.preparationTime,
         )
         return AssessmentResponse(**result)
 

@@ -50,6 +50,8 @@ class StudentQuestionsResponse(BaseModel):
     assessmentId: str
     questions: List[QuestionResponse]
     totalQuestions: int
+    answerMode: str = "oral"
+    preparationTime: Optional[int] = None
 
 
 class SubmitAnswerResponse(BaseModel):
