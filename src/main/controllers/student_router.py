@@ -81,7 +81,7 @@ async def get_student_questions(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, assessment_id)
         result = svc.get_student_questions(student_id, assessment_id)
 
         # result is now {"questions": [...], "answerMode": ..., "preparationTime": ...}
@@ -134,7 +134,7 @@ async def submit_answer(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, request.assessment_id)
         result = svc.submit_answer(
             student_id=student_id,
             question_id=request.question_id,
@@ -169,39 +169,43 @@ async def submit_assessment(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, request.assessment_id)
         result = svc.submit_assessment(
             student_id=student_id,
             assessment_id=request.assessment_id,
         )
 
-        # Auto-evaluate: if assessment has autoEvaluate=True and all students have submitted,
-        # enqueue a batch evaluation job via SQS.
-        try:
-            assessment = instructor_svc.get_assessment(request.assessment_id)
-            if assessment.get("autoEvaluate"):
+        # Auto-evaluate in background so the last student's response isn't delayed
+        def _maybe_auto_evaluate():
+            try:
+                assessment = instructor_svc.get_assessment(request.assessment_id)
+                if not assessment.get("autoEvaluate"):
+                    return
                 submitted, total = instructor_svc.count_submitted_students(request.assessment_id)
-                if total > 0 and submitted >= total:
-                    all_students = instructor_svc.get_assessment_students(request.assessment_id)
-                    job_manager = get_batch_job_manager()
-                    job_id = job_manager.create_job(
-                        job_type=JobType.EVALUATION,
-                        assessment_id=request.assessment_id,
-                        total_items=len(all_students),
-                        metadata={"assessment_title": assessment.get("title", ""), "trigger": "auto"},
-                    )
-                    dispatcher.enqueue_evaluation_batch(
-                        job_id=job_id,
-                        assessment_id=request.assessment_id,
-                        students=all_students,
-                    )
-                    logger.info(
-                        "[AutoEval] Triggered evaluation job %s for assessment %s (%d students)",
-                        job_id, request.assessment_id, len(all_students),
-                    )
-        except Exception as auto_err:
-            # Auto-eval failure must not fail the submission
-            logger.error("[AutoEval] Failed to trigger auto-evaluation: %s", auto_err)
+                if total <= 0 or submitted < total:
+                    return
+                all_students = instructor_svc.get_assessment_students(request.assessment_id)
+                job_manager = get_batch_job_manager()
+                job_id = job_manager.create_job(
+                    job_type=JobType.EVALUATION,
+                    assessment_id=request.assessment_id,
+                    total_items=len(all_students),
+                    metadata={"assessment_title": assessment.get("title", ""), "trigger": "auto"},
+                )
+                dispatcher.enqueue_evaluation_batch(
+                    job_id=job_id,
+                    assessment_id=request.assessment_id,
+                    students=all_students,
+                )
+                logger.info(
+                    "[AutoEval] Triggered evaluation job %s for assessment %s (%d students)",
+                    job_id, request.assessment_id, len(all_students),
+                )
+            except Exception as auto_err:
+                logger.error("[AutoEval] Failed to trigger auto-evaluation: %s", auto_err)
+
+        import threading
+        threading.Thread(target=_maybe_auto_evaluate, daemon=True).start()
 
         return SubmitAssessmentResponse(**result)
 
@@ -224,7 +228,7 @@ async def get_student_progress(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, assessment_id)
         progress = svc.get_student_progress(student_id, assessment_id)
         return StudentProgressResponse(**progress)
 
@@ -247,7 +251,7 @@ async def get_student_results(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, assessment_id)
         results = svc.get_student_results(student_id, assessment_id)
         return StudentResultsResponse(**results)
 
@@ -270,7 +274,7 @@ async def submit_proctor_chunk(
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, request.assessment_id)
         result = svc.submit_proctor_chunk(
             student_id=student_id,
             assessment_id=request.assessment_id,
@@ -304,7 +308,7 @@ async def get_student_results_pdf(
 ):
     """EPIC-6-3: Generate a PDF results report for a student."""
     try:
-        _assert_student_access(_principal, student_id)
+        _assert_student_access(_principal, student_id, assessment_id)
         results = svc.get_student_results(student_id, assessment_id)
 
         try:

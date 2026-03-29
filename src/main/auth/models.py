@@ -10,3 +10,4 @@ class AuthPrincipal:
     email: Optional[str] = None
     roles: List[str] = field(default_factory=list)
     source: str = "unknown"
+    assessment_id: Optional[str] = None

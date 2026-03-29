@@ -84,6 +84,14 @@ export default function TakeAssessment() {
     }
   }, [studentId, assessmentId, questions.length, loadQuestions, loadProgress]);
 
+  // Warn before accidental tab close mid-assessment
+  useEffect(() => {
+    if (!assessmentStarted) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [assessmentStarted]);
+
   // Restore consent/started state from server + sessionStorage on refresh
   useEffect(() => {
     if (questions.length === 0) return; // not loaded yet

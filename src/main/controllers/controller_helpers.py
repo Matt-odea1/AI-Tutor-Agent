@@ -77,8 +77,11 @@ def _assert_instructor_access(principal: AuthPrincipal) -> None:
     raise HTTPException(status_code=403, detail="Instructor access required")
 
 
-def _assert_student_access(principal: AuthPrincipal, student_id: str) -> None:
+def _assert_student_access(principal: AuthPrincipal, student_id: str, assessment_id: str | None = None) -> None:
     if principal.user_id == student_id:
+        # If the token is scoped to an assessment, verify it matches
+        if assessment_id and principal.assessment_id and principal.assessment_id != assessment_id:
+            raise HTTPException(status_code=403, detail="Token not valid for this assessment")
         return
 
     if _has_role(principal, {"instructor", "admin"}):

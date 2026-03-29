@@ -223,11 +223,15 @@ class AuthService:
         email_value = payload.get("email")
         email = str(email_value).strip().lower() if isinstance(email_value, str) else None
 
+        assessment_id_value = payload.get("assessment_id")
+        assessment_id = str(assessment_id_value).strip() if assessment_id_value else None
+
         return AuthPrincipal(
             user_id=str(user_id),
             email=email,
             roles=self._extract_roles(payload),
             source="jwt",
+            assessment_id=assessment_id,
         )
 
     @staticmethod

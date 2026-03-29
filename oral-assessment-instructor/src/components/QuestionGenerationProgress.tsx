@@ -15,6 +15,29 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   const [isGenerating, setIsGenerating] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const JOB_KEY = `genJob:${assessmentId}`;
+
+  // Restore job from localStorage on mount (survives page refresh)
+  useEffect(() => {
+    if (!generationJob) {
+      try {
+        const stored = localStorage.getItem(JOB_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.status === 'pending' || parsed.status === 'running') {
+            setGenerationJob(parsed);
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  }, []);
+
+  // Persist job to localStorage whenever it changes
+  useEffect(() => {
+    if (generationJob) {
+      localStorage.setItem(JOB_KEY, JSON.stringify(generationJob));
+    }
+  }, [generationJob]);
 
   // Clean up polling on unmount
   useEffect(() => {
