@@ -318,23 +318,3 @@ class ConversationMemory:
         self.clear_session(session_id)
 
 
-# Extension point: plug in Redis or other stores here
-# Example:
-# class RedisConversationMemory(ConversationMemory):
-#     def __init__(self, redis_client):
-#         self.redis = redis_client
-#     # Override methods to use Redis...
-"""
-LlmProvider.py
-Abstract base/protocol for LLM operations.
-"""
-from typing import Protocol, Generator, List, Dict, Union
-
-class LlmProvider(Protocol):
-    def generate(self, prompt: str, **kwargs) -> Union[str, Generator[str, None, None]]:
-        ...
-    def chat(self, messages: List[Dict], **kwargs) -> Union[str, Generator[str, None, None]]:
-        ...
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        ...
-

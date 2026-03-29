@@ -1,0 +1,378 @@
+"""
+Tests for AuthService covering:
+- Registration (signup)
+- Email/password login
+- JWT issuance, decoding, and validation
+- Refresh token flow
+- Student invite token generation and exchange
+- Principal resolution from headers
+- Google OAuth (mocked)
+- Password hashing
+"""
+from __future__ import annotations
+
+import time
+from unittest.mock import MagicMock, patch
+
+import jwt as pyjwt
+import pytest
+from fastapi import HTTPException
+
+from src.main.auth.models import AuthPrincipal
+from src.main.auth.service import AuthService
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────
+
+def _build_service(monkeypatch, **overrides) -> AuthService:
+    """Create an AuthService with sensible test defaults (no real AWS calls)."""
+    monkeypatch.setenv("AUTH_JWT_SECRET", overrides.get("jwt_secret", "test-secret-key"))
+    monkeypatch.setenv("AUTH_JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("AUTH_ACCESS_TOKEN_MINUTES", "60")
+    monkeypatch.setenv("AUTH_SIGNUP_DEFAULT_ROLES", "student")
+    monkeypatch.setenv("AUTH_ALLOW_HEADER_FALLBACK", overrides.get("header_fallback", "false"))
+    monkeypatch.setenv("USE_DYNAMODB", "false")
+    monkeypatch.setenv("AUTH_USERS_JSON", overrides.get("users_json", "[]"))
+    monkeypatch.setenv("AUTH_PASSWORD_RESET_BASE_URL", "http://localhost:5173/?reset=1")
+    monkeypatch.setenv("AUTH_PASSWORD_RESET_FROM_EMAIL", "noreply@test.com")
+
+    ses_mock = MagicMock()
+    monkeypatch.setattr("src.main.auth.service.boto3.client", lambda *a, **kw: ses_mock)
+
+    svc = AuthService()
+    svc.auth_users_table = None
+    svc.persist_users = False
+    return svc
+
+
+# ─────────────────────────────────────────────────────────────
+# Registration
+# ─────────────────────────────────────────────────────────────
+
+class TestRegistration:
+    def test_register_returns_principal(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        principal = svc.register_user("New@Example.COM", "securepassword123")
+
+        assert isinstance(principal, AuthPrincipal)
+        assert principal.email == "new@example.com"
+        assert principal.source == "signup"
+        assert "student" in principal.roles
+
+    def test_register_rejects_short_password(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc.register_user("user@example.com", "short")
+        assert exc_info.value.status_code == 400
+
+    def test_register_rejects_invalid_email(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc.register_user("notanemail", "securepassword123")
+        assert exc_info.value.status_code == 400
+
+    def test_register_rejects_duplicate_email(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.register_user("dupe@example.com", "securepassword123")
+        with pytest.raises(HTTPException) as exc_info:
+            svc.register_user("dupe@example.com", "anotherpassword123")
+        assert exc_info.value.status_code == 409
+
+
+# ─────────────────────────────────────────────────────────────
+# Email/password authentication
+# ─────────────────────────────────────────────────────────────
+
+class TestEmailPasswordAuth:
+    def test_login_success(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.register_user("alice@example.com", "correctpassword")
+
+        principal = svc.authenticate_credentials("alice@example.com", "correctpassword")
+        assert principal.email == "alice@example.com"
+        assert principal.source == "password"
+
+    def test_login_wrong_password(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.register_user("bob@example.com", "correctpassword")
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc.authenticate_credentials("bob@example.com", "wrongpassword")
+        assert exc_info.value.status_code == 401
+
+    def test_login_nonexistent_user(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc.authenticate_credentials("nobody@example.com", "anything")
+        assert exc_info.value.status_code == 401
+
+    def test_login_with_env_configured_user(self, monkeypatch):
+        users_json = '[{"email":"admin@test.com","password":"admin123","user_id":"admin-1","roles":["instructor"]}]'
+        svc = _build_service(monkeypatch, users_json=users_json)
+
+        principal = svc.authenticate_credentials("admin@test.com", "admin123")
+        assert principal.user_id == "admin-1"
+        assert "instructor" in principal.roles
+
+
+# ─────────────────────────────────────────────────────────────
+# Password hashing
+# ─────────────────────────────────────────────────────────────
+
+class TestPasswordHashing:
+    def test_hash_and_verify(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        hashed = svc._hash_password("my_secret")
+
+        assert hashed.startswith("pbkdf2_sha256$")
+        assert svc._verify_hashed_password("my_secret", hashed) is True
+        assert svc._verify_hashed_password("wrong", hashed) is False
+
+    def test_hashed_password_detection(self):
+        assert AuthService._is_hashed_password("pbkdf2_sha256$200000$abc$def") is True
+        assert AuthService._is_hashed_password("plaintext") is False
+
+
+# ─────────────────────────────────────────────────────────────
+# JWT access tokens
+# ─────────────────────────────────────────────────────────────
+
+class TestAccessTokens:
+    def test_issue_and_decode(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        principal = AuthPrincipal(user_id="u-1", email="u@test.com", roles=["student"], source="test")
+
+        token_data = svc.issue_access_token(principal)
+        assert "access_token" in token_data
+        assert token_data["token_type"] == "bearer"
+        assert token_data["user_id"] == "u-1"
+
+        payload = svc._decode_jwt(token_data["access_token"])
+        assert payload["sub"] == "u-1"
+        assert payload["email"] == "u@test.com"
+        assert payload["roles"] == ["student"]
+
+    def test_decode_expired_token_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        payload = {
+            "sub": "u-1",
+            "iat": int(time.time()) - 7200,
+            "exp": int(time.time()) - 3600,
+        }
+        token = pyjwt.encode(payload, "test-secret-key", algorithm="HS256")
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc._decode_jwt(token)
+        assert exc_info.value.status_code == 401
+        assert "expired" in exc_info.value.detail.lower()
+
+    def test_decode_invalid_token_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc._decode_jwt("garbage.token.value")
+        assert exc_info.value.status_code == 401
+
+    def test_issue_token_without_secret_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch, jwt_secret="")
+        principal = AuthPrincipal(user_id="u-1", source="test")
+        with pytest.raises(HTTPException) as exc_info:
+            svc.issue_access_token(principal)
+        assert exc_info.value.status_code == 503
+
+
+# ─────────────────────────────────────────────────────────────
+# Refresh tokens
+# ─────────────────────────────────────────────────────────────
+
+class TestRefreshTokens:
+    def test_issue_and_exchange(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.register_user("refresh@test.com", "securepassword")
+        principal = AuthPrincipal(user_id="refresh@test.com", email="refresh@test.com", roles=["student"], source="test")
+
+        refresh_token = svc.issue_refresh_token(principal)
+        assert isinstance(refresh_token, str)
+
+        new_access = svc.exchange_refresh_token(refresh_token)
+        assert "access_token" in new_access
+        assert new_access["user_id"] == "refresh@test.com"
+
+    def test_exchange_expired_refresh_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        payload = {
+            "sub": "u-1",
+            "purpose": "refresh",
+            "iat": int(time.time()) - 700000,
+            "exp": int(time.time()) - 3600,
+        }
+        token = pyjwt.encode(payload, "test-secret-key", algorithm="HS256")
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc.exchange_refresh_token(token)
+        assert exc_info.value.status_code == 401
+
+    def test_exchange_non_refresh_token_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        payload = {
+            "sub": "u-1",
+            "purpose": "access",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+        }
+        token = pyjwt.encode(payload, "test-secret-key", algorithm="HS256")
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc.exchange_refresh_token(token)
+        assert exc_info.value.status_code == 401
+
+
+# ─────────────────────────────────────────────────────────────
+# Student invite tokens
+# ─────────────────────────────────────────────────────────────
+
+class TestStudentInviteTokens:
+    def test_generate_invite_token(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc._assessment_table_cache = None  # skip DynamoDB
+
+        token = svc.generate_student_invite_token("s-1", "a-1")
+        assert isinstance(token, str)
+
+        payload = pyjwt.decode(token, "test-secret-key", algorithms=["HS256"])
+        assert payload["student_id"] == "s-1"
+        assert payload["assessment_id"] == "a-1"
+        assert payload["purpose"] == "student_invite"
+
+    def test_exchange_invite_token(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc._assessment_table_cache = None  # skip jti check
+
+        token = svc.generate_student_invite_token("s-1", "a-1")
+        result = svc.exchange_student_invite_token(token)
+
+        assert result["student_id"] == "s-1"
+        assert result["assessment_id"] == "a-1"
+        assert "access_token" in result
+
+    def test_issue_student_session_token(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        result = svc.issue_student_session_token("s-1", "a-1")
+
+        assert result["student_id"] == "s-1"
+        assert result["expires_in"] == 12 * 3600
+
+        payload = pyjwt.decode(result["access_token"], "test-secret-key", algorithms=["HS256"])
+        assert payload["roles"] == ["student"]
+        assert payload["purpose"] == "student_session"
+
+
+# ─────────────────────────────────────────────────────────────
+# Principal resolution
+# ─────────────────────────────────────────────────────────────
+
+class TestPrincipalResolution:
+    def test_resolve_from_bearer_token(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        principal = AuthPrincipal(user_id="u-1", email="u@test.com", roles=["student"], source="test")
+        token_data = svc.issue_access_token(principal)
+
+        resolved = svc.resolve_principal(f"Bearer {token_data['access_token']}", None)
+        assert resolved.user_id == "u-1"
+        assert resolved.source == "jwt"
+
+    def test_resolve_from_x_user_id_when_allowed(self, monkeypatch):
+        svc = _build_service(monkeypatch, header_fallback="true")
+        resolved = svc.resolve_principal(None, "fallback-user")
+        assert resolved.user_id == "fallback-user"
+        assert resolved.source == "x-user-id"
+
+    def test_resolve_rejects_x_user_id_when_not_allowed(self, monkeypatch):
+        svc = _build_service(monkeypatch, header_fallback="false")
+        with pytest.raises(HTTPException) as exc_info:
+            svc.resolve_principal(None, "fallback-user")
+        assert exc_info.value.status_code == 401
+
+    def test_resolve_no_auth_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc.resolve_principal(None, None)
+        assert exc_info.value.status_code == 401
+
+    def test_resolve_malformed_bearer_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        with pytest.raises(HTTPException) as exc_info:
+            svc.resolve_principal("Basic dXNlcjpwYXNz", None)
+        assert exc_info.value.status_code == 401
+
+
+# ─────────────────────────────────────────────────────────────
+# Google OAuth (mocked)
+# ─────────────────────────────────────────────────────────────
+
+class TestGoogleOAuth:
+    def test_google_auth_not_configured_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.google_oauth_client_id = ""
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc.authenticate_google_id_token("some-id-token")
+        assert exc_info.value.status_code == 503
+
+    def test_google_auth_empty_token_raises(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.google_oauth_client_id = "test-client-id"
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc.authenticate_google_id_token("  ")
+        assert exc_info.value.status_code == 400
+
+    def test_google_auth_success(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.google_oauth_client_id = "test-client-id"
+
+        mock_payload = {
+            "email": "google@example.com",
+            "email_verified": True,
+            "sub": "google-sub-123",
+        }
+        mock_request_class = MagicMock()
+        mock_verify = MagicMock(return_value=mock_payload)
+
+        with patch.dict("sys.modules", {
+            "google.auth.transport.requests": MagicMock(Request=mock_request_class),
+            "google.oauth2.id_token": MagicMock(verify_oauth2_token=mock_verify),
+        }):
+            principal = svc.authenticate_google_id_token("valid-token")
+
+        assert principal.email == "google@example.com"
+        assert principal.source == "google"
+        assert principal.user_id == "google-sub-123"
+
+
+# ─────────────────────────────────────────────────────────────
+# Edge cases
+# ─────────────────────────────────────────────────────────────
+
+class TestEdgeCases:
+    def test_extract_bearer_token(self):
+        assert AuthService._extract_bearer_token("Bearer abc123") == "abc123"
+        assert AuthService._extract_bearer_token("bearer  xyz ") == "xyz"
+        assert AuthService._extract_bearer_token("Basic abc123") is None
+        assert AuthService._extract_bearer_token("") is None
+        assert AuthService._extract_bearer_token(None) is None
+
+    def test_extract_roles_from_payload(self):
+        assert AuthService._extract_roles({"roles": ["a", "b"]}) == ["a", "b"]
+        assert AuthService._extract_roles({"role": "admin"}) == ["admin"]
+        assert AuthService._extract_roles({}) == []
+
+    def test_normalize_email(self):
+        assert AuthService._normalize_email("  Alice@Example.COM  ") == "alice@example.com"
+
+    def test_parse_positive_int(self):
+        assert AuthService._parse_positive_int("42", default=10) == 42
+        assert AuthService._parse_positive_int("-1", default=10) == 10
+        assert AuthService._parse_positive_int("abc", default=10) == 10
+        assert AuthService._parse_positive_int(None, default=10) == 10

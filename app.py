@@ -19,12 +19,9 @@ logger = logging.getLogger(__name__)
 from src.main.config import get_settings
 from src.main.controllers.api_errors import register_exception_handlers
 from src.main.controllers.InternalEndpoints import router as context_router, s3_router
-from src.main.controllers.chat_router import chat_router
 from src.main.controllers.analytics_router import analytics_router
 from src.main.controllers.auth_router import auth_router
 from src.main.controllers.history_router import history_router
-from src.main.controllers.questions_router import questions_router
-from src.main.controllers.evaluations_router import evaluations_router
 from src.main.controllers.student_router import student_router
 from src.main.controllers.assessment_router import assessment_router
 from src.main.controllers.controller_dependencies import get_evaluation_service, get_sqs_job_dispatcher, get_question_service
@@ -108,11 +105,8 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(context_router)
-    app.include_router(chat_router)
     app.include_router(analytics_router)
     app.include_router(history_router)
-    app.include_router(questions_router)
-    app.include_router(evaluations_router)
     app.include_router(student_router)
     app.include_router(assessment_router)
     app.include_router(s3_router)

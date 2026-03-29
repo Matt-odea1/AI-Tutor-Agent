@@ -438,17 +438,12 @@ class TestWorkflowRunnerTranscriptionPrePass:
         repository.read_answers.return_value = [{"questionId": "q-1", "answerType": "audio", "transcript": "ans"}]
         repository.table = MagicMock()
         repository.table.get_item.return_value = {"Item": {}}
-        job_store = MagicMock()
-        from pathlib import Path
         runner = EvaluationWorkflowRunner(
             engine=engine,
             repository=repository,
-            report_writer=MagicMock(),
-            job_store=job_store,
-            base_output_dir=Path("/tmp"),
             transcription_service=transcription_service,
         )
-        return runner, engine, repository, job_store
+        return runner, engine, repository, MagicMock()
 
     def test_transcription_service_called_before_evaluation(self):
         transcription_svc = MagicMock()

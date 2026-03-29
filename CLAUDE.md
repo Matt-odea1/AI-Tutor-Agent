@@ -47,9 +47,9 @@ docker-compose up -d   # Start Neo4j locally (ports 7474, 7687)
 
 **RAG Chat**: User message → `/internal/history/views/{id}/message` → `ChatService` → `ContextVectorService` (Neo4j vector search) → Bedrock Nova Lite → response with sources
 
-**Question Generation**: Instructor uploads code/brief → `/internal/questions/generate` → `QuestionGenerationService` → Bedrock → CSV of questions
+**Question Generation**: Instructor triggers batch → `/api/assessment/{id}/questions/generate` → SQS → `QuestionGenerationService` → Bedrock → questions stored in DynamoDB
 
-**Oral Assessment**: Student records audio → uploads to S3 (presigned URL) → `/internal/assessment/submit` → `SpeechToTextService` (Deepgram) → `ResponseEvaluationService` → scores + feedback
+**Oral Assessment**: Student records audio → uploads to S3 (presigned URL) → `/api/student/{id}/assessment/{aid}/answer` → `SpeechToTextService` (Deepgram) → `ResponseEvaluationService` → scores + feedback
 
 **Code Assistant**: Code + prompt → `/internal/history/threads/{id}/message` → `ChatService` → edit proposals returned
 
@@ -74,10 +74,7 @@ JWT-based auth with optional Google OAuth. Backend auth logic in `src/main/auth/
 
 ### Async Jobs
 
-Two job systems are in use:
-
-- **`BatchJobManager` → `DynamoDBJobStore`** (DynamoDB-backed, persists across restarts) — used for batch evaluation and question generation jobs. Job items stored as `JOB#` records in the assessment table.
-- **`EvaluationJobStore`** (in-memory, volatile) — used for the legacy CSV-based evaluation workflow only. Job status polled via `/internal/evaluations/{job_id}/status`.
+**`SQSJobDispatcher` → `DynamoDBJobStore`** (DynamoDB-backed, persists across restarts) — used for batch evaluation and question generation jobs. Job items stored as `JOB#` records in the assessment table. SQS consumer thread starts at app boot.
 
 ## Environment Variables — How They Work
 
@@ -110,4 +107,4 @@ Copy `.env.example` to `.env`. Required vars:
 
 ## Documentation
 
-Active docs in `docs/`: `ARCHITECTURE.md`, `QUICKSTART.md`, `DYNAMODB_SCHEMA.md`, `AUTH_CURRENT_STATE_AND_PLAN.md`, `DEPLOYMENT_PLAN.md`, `ANALYTICS_LOGGING.md`. Per `ARCHITECTURE.md`: **code is source of truth over docs**.
+Active docs in `docs/`: `ARCHITECTURE.md`, `QUICKSTART.md`, `ONBOARDING.md`, `DYNAMODB_SCHEMA.md`, `AUTH_CURRENT_STATE_AND_PLAN.md`, `ORAL_ASSESSMENT_DEPLOYMENT.md`, `PLATFORM_PLAN.md`, `ANALYTICS_LOGGING.md`. Per `ARCHITECTURE.md`: **code is source of truth over docs**.
