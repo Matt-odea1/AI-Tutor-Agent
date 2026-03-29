@@ -31,7 +31,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [reminderSent, setReminderSent] = useState<string | null>(null);
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
-  const STUDENT_APP_URL = import.meta.env.VITE_STUDENT_APP_URL || 'http://localhost:5176';
+  const STUDENT_APP_URL = import.meta.env.VITE_STUDENT_APP_URL || 'https://student.chat9021.org';
   const EVAL_DONE_KEY = `evalDone:${assessmentId}`;
   const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>(() => {
     // Restore completed evaluations from localStorage
