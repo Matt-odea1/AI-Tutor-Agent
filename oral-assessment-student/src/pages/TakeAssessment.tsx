@@ -246,6 +246,20 @@ export default function TakeAssessment() {
   const answeredCount = progress?.answeredQuestions || 0;
   const allAnswered = answeredCount >= questions.length;
 
+  // Derive a minimal assessment object for the overview screen.
+  // The store's `assessment` field is only populated if the backend returns metadata;
+  // fall back to what we can derive from the loaded questions.
+  const assessmentInfo = assessment ?? {
+    id: assessmentId ?? '',
+    title: 'Oral Assessment',
+    course: '',
+    description: '',
+    dueDate: '',
+    totalQuestions: questions.length,
+    timeLimit: questions[0]?.timeLimit,
+    status: 'open',
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Consent modal — only shown once questions have loaded successfully */}
@@ -259,21 +273,15 @@ export default function TakeAssessment() {
 
       {/* Pre-assessment overview — shown after consent, before question 1 */}
       {consentGiven && !assessmentStarted && (
-        assessment ? (
-          <PreAssessmentOverview
-            assessment={assessment}
-            questionCount={questions.length}
-            onStart={() => setAssessmentStarted(true)}
-          />
-        ) : (
-          <div className="fixed inset-0 bg-gray-50 flex items-center justify-center z-40">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
-          </div>
-        )
+        <PreAssessmentOverview
+          assessment={assessmentInfo}
+          questionCount={questions.length}
+          onStart={() => setAssessmentStarted(true)}
+        />
       )}
 
-      {/* Main assessment UI — hidden from AT while consent modal is active */}
-      <div aria-hidden={!consentGiven || undefined}>
+      {/* Main assessment UI — only rendered after the student clicks Start */}
+      {assessmentStarted && <div>
 
       {/* Browser support error banner */}
       {browserError && (
@@ -536,7 +544,7 @@ export default function TakeAssessment() {
         </div>
       )}
 
-      </div>{/* end aria-hidden wrapper */}
+      </div>}{/* end assessmentStarted wrapper */}
     </div>
   );
 }
