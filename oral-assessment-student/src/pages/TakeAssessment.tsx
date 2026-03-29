@@ -43,7 +43,6 @@ export default function TakeAssessment() {
     answerMode,
     preparationTime,
     textAnswer,
-    recordedBlob,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
@@ -240,7 +239,6 @@ export default function TakeAssessment() {
   const currentQuestion = questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
-  const allAnswered = answeredCount >= questions.length;
 
   // Derive a minimal assessment object for the overview screen.
   // The store's `assessment` field is only populated if the backend returns metadata;
