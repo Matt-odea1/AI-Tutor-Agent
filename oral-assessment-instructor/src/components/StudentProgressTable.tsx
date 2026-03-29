@@ -30,6 +30,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [evaluatingSingle, setEvaluatingSingle] = useState<Record<string, boolean>>({});
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [reminderSent, setReminderSent] = useState<string | null>(null);
+  const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
+  const STUDENT_APP_URL = import.meta.env.VITE_STUDENT_APP_URL || 'http://localhost:5176';
   const EVAL_DONE_KEY = `evalDone:${assessmentId}`;
   const [evalProgress, setEvalProgress] = useState<Record<string, EvalProgress>>(() => {
     // Restore completed evaluations from localStorage
@@ -228,6 +230,25 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     } finally {
       setEvaluatingSingle(prev => ({ ...prev, [studentId]: false }));
     }
+  };
+
+  const handleCopyLink = async (studentId: string) => {
+    const link = `${STUDENT_APP_URL}/${studentId}/${assessmentId}`;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      // Fallback for browsers that block clipboard
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedStudentId(studentId);
+    setTimeout(() => setCopiedStudentId(null), 2000);
   };
 
   const handleSendReminder = async (studentId: string) => {
@@ -500,6 +521,17 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         >
                           Edit Questions
                         </Link>
+                        <button
+                          onClick={() => handleCopyLink(p.studentId)}
+                          title={`${STUDENT_APP_URL}/${p.studentId}/${assessmentId}`}
+                          className="text-slate-400 hover:text-blue-300 text-xs font-medium transition-colors"
+                        >
+                          {copiedStudentId === p.studentId ? (
+                            <span className="text-green-400">Copied ✓</span>
+                          ) : (
+                            'Copy Link'
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>
