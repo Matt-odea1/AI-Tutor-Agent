@@ -49,7 +49,6 @@ export default function TakeAssessment() {
     answerMode,
     preparationTime,
     textAnswer,
-    recordedBlob,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
@@ -60,7 +59,6 @@ export default function TakeAssessment() {
     setStudentInfo,
     loadQuestions,
     loadProgress,
-    nextQuestion,
     submitCurrentAnswer,
     submitCurrentTextAnswer,
     skipCurrentQuestion,
@@ -101,20 +99,30 @@ export default function TakeAssessment() {
   // Restore consent/started state from server + sessionStorage on refresh
   useEffect(() => {
     if (questions.length === 0) return; // not loaded yet
-    // If server says we're past Q1, we've already started
-    if (currentQuestionIndex > 0) {
+    if (!assessmentId) return;
+
+    // Multiple signals that the assessment is already in-progress:
+    // 1. Server says we're past Q1 (currentQuestionIndex > 0)
+    // 2. We have answered questions tracked locally
+    // 3. The progress endpoint reports answered questions
+    const serverInProgress = currentQuestionIndex > 0;
+    const hasAnswered = answeredQuestionIds.size > 0 || (progress?.answeredQuestions ?? 0) > 0;
+    const sessionConsent = sessionStorage.getItem(`consent_${assessmentId}`) === 'true';
+    const sessionStarted = sessionStorage.getItem(`started_${assessmentId}`) === 'true';
+
+    if (serverInProgress || hasAnswered) {
       if (!consentGiven) setConsentGiven(true);
       if (!assessmentStarted) setAssessmentStarted(true);
-    } else if (assessmentId) {
+    } else {
       // Q1 but check sessionStorage (consented + started but haven't answered Q1 yet)
-      if (sessionStorage.getItem(`consent_${assessmentId}`) === 'true' && !consentGiven) {
+      if (sessionConsent && !consentGiven) {
         setConsentGiven(true);
       }
-      if (sessionStorage.getItem(`started_${assessmentId}`) === 'true' && !assessmentStarted) {
+      if (sessionStarted && !assessmentStarted) {
         setAssessmentStartedRaw(true);
       }
     }
-  }, [questions.length, currentQuestionIndex, assessmentId]);
+  }, [questions.length, currentQuestionIndex, assessmentId, answeredQuestionIds.size, progress]);
 
   // Check browser support
   useEffect(() => {
@@ -142,8 +150,13 @@ export default function TakeAssessment() {
   // Reset per-question state whenever the question changes
   useEffect(() => {
     setPrepDone(false);
+    setPrepElapsed(0);
+    setIsSubmittingAnswer(false);
     clearError(); // clear errors from previous question
-    if (prepTimerRef.current) clearInterval(prepTimerRef.current);
+    if (prepTimerRef.current) {
+      clearInterval(prepTimerRef.current);
+      prepTimerRef.current = null;
+    }
 
     if (answerMode === 'oral' && preparationTime && preparationTime > 0 && assessmentStarted) {
       setPrepSecondsLeft(preparationTime);
@@ -151,6 +164,13 @@ export default function TakeAssessment() {
       setPrepSecondsLeft(null);
       setPrepDone(true);
     }
+
+    return () => {
+      if (prepTimerRef.current) {
+        clearInterval(prepTimerRef.current);
+        prepTimerRef.current = null;
+      }
+    };
   }, [currentQuestionIndex, assessmentStarted, answerMode, preparationTime]);
 
   // Prep countdown tick
@@ -164,22 +184,33 @@ export default function TakeAssessment() {
     prepTimerRef.current = setInterval(() => {
       setPrepSecondsLeft(prev => {
         if (prev === null || prev <= 1) {
-          clearInterval(prepTimerRef.current!);
+          if (prepTimerRef.current) {
+            clearInterval(prepTimerRef.current);
+            prepTimerRef.current = null;
+          }
           setPrepDone(true);
           return null;
         }
         return prev - 1;
       });
+      setPrepElapsed(prev => prev + 1);
     }, 1000);
-    return () => { if (prepTimerRef.current) clearInterval(prepTimerRef.current); };
+    return () => {
+      if (prepTimerRef.current) {
+        clearInterval(prepTimerRef.current);
+        prepTimerRef.current = null;
+      }
+    };
   }, [prepSecondsLeft, prepDone]);
 
   const handleConsentAccepted = async () => {
+    // Persist consent BEFORE camera request so refresh won't re-show modal
+    setConsentGiven(true);
+    if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
+
     setIsRequestingPermission(true);
     try {
       await startProctoring();
-      setConsentGiven(true);
-      if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
     } finally {
       setIsRequestingPermission(false);
     }
@@ -202,7 +233,10 @@ export default function TakeAssessment() {
 
   const handleTimerExpire = async () => {
     const store = useAssessmentStore.getState();
-    const { answerMode, isRecording, recordedBlob, textAnswer } = store;
+    const { answerMode, isRecording, isUploading, recordedBlob, textAnswer } = store;
+
+    // If an upload/submission is already in-flight, don't double-submit
+    if (isUploading || isSubmittingAnswer) return;
 
     if (isRecording) {
       await store.stopRecording();
@@ -224,17 +258,33 @@ export default function TakeAssessment() {
   };
 
   const handleSubmitAudioAnswer = async () => {
-    await submitCurrentAnswer();
-    // Store re-fetches questions after submit — server advances the index
+    setIsSubmittingAnswer(true);
+    try {
+      await submitCurrentAnswer();
+      // Store re-fetches questions after submit — server advances the index
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
   };
 
   const handleSubmitTextAnswer = async () => {
-    await submitCurrentTextAnswer();
+    setIsSubmittingAnswer(true);
+    try {
+      await submitCurrentTextAnswer();
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
   };
 
-  const handleNext = () => {
-    // No-op: store already re-fetches after submit and auto-advances via server index.
-    // This button exists only as a visual affordance; the store drives navigation.
+  const handleNext = async () => {
+    // Re-fetch from server in case auto-advance hasn't completed yet
+    setIsSubmittingAnswer(true);
+    try {
+      await loadQuestions();
+      await loadProgress();
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
   };
 
   const handleSubmitAssessment = async () => {
@@ -354,6 +404,14 @@ export default function TakeAssessment() {
         </div>
       )}
 
+      {/* Proctoring warning banner */}
+      {proctoringWarning && (
+        <div className="bg-yellow-50 border-b border-yellow-200 text-yellow-800 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm">{proctoringWarning}</span>
+          <button onClick={clearProctoringWarning} className="ml-4 text-yellow-600 hover:text-yellow-800 text-lg leading-none">&times;</button>
+        </div>
+      )}
+
       {/* Camera revoked overlay */}
       {cameraRevoked && (
         <CameraRevokedOverlay
@@ -398,6 +456,25 @@ export default function TakeAssessment() {
           {error && (
             <div className="mb-4">
               <ErrorMessage error={error} onDismiss={clearError} />
+              {lastFailedAction && (
+                <button
+                  onClick={retryLastAction}
+                  className="mt-2 bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 text-sm"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Submitting indicator */}
+          {isSubmittingAnswer && !error && (
+            <div className="mb-4 flex items-center space-x-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+              <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-sm text-blue-700 font-medium">Submitting answer and loading next question...</span>
             </div>
           )}
 
@@ -442,8 +519,10 @@ export default function TakeAssessment() {
                     Read the question carefully. Recording will start automatically when the timer ends.
                   </p>
                   <button
-                    onClick={() => { setPrepDone(true); setPrepSecondsLeft(null); if (prepTimerRef.current) clearInterval(prepTimerRef.current); }}
-                    className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                    onClick={() => { setPrepDone(true); setPrepSecondsLeft(null); if (prepTimerRef.current) { clearInterval(prepTimerRef.current); prepTimerRef.current = null; } }}
+                    disabled={prepElapsed < 2}
+                    className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title={prepElapsed < 2 ? 'Please read the question first' : undefined}
                   >
                     I'm ready — Start Recording
                   </button>
@@ -464,7 +543,7 @@ export default function TakeAssessment() {
             {isLastQuestion ? (
               <button
                 onClick={() => setShowSubmitModal(true)}
-                disabled={!currentAnswered}
+                disabled={!currentAnswered || isSubmittingAnswer}
                 className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 <span>Submit Assessment</span>
@@ -477,15 +556,27 @@ export default function TakeAssessment() {
             ) : (
               <button
                 onClick={handleNext}
-                disabled={!currentAnswered}
+                disabled={!currentAnswered || isSubmittingAnswer}
                 className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <span>Next Question</span>
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd"
-                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                    clipRule="evenodd" />
-                </svg>
+                {isSubmittingAnswer ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Loading next...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next Question</span>
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd"
+                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                        clipRule="evenodd" />
+                    </svg>
+                  </>
+                )}
               </button>
             )}
           </div>

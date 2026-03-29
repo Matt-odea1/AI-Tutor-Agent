@@ -161,8 +161,9 @@ class OralAssessmentService:
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
             )
             assessment_meta = meta_resp.get("Item", {})
+            # timeLimit is stored in seconds (create_assessment converts minutes → seconds)
             raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
-            assessment_time_limit = (raw_time_limit * 60) if raw_time_limit is not None else None
+            assessment_time_limit = raw_time_limit  # already in seconds
 
             student_items = self.question_access.get_student_questions(student_id, assessment_id)
             bank_items = self.question_access.get_bank_questions(assessment_id)

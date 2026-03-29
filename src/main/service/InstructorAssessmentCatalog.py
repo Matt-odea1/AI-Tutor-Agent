@@ -19,7 +19,8 @@ class InstructorAssessmentCatalog:
             "description": item.get("description", ""),
             "dueDate": item["dueDate"],
             "totalQuestions": int(item["totalQuestions"]),
-            "timeLimit": int(item["timeLimit"]) if item.get("timeLimit") else None,
+            # timeLimit is stored in seconds; convert back to minutes for instructor display
+            "timeLimit": int(int(item["timeLimit"]) / 60) if item.get("timeLimit") else None,
             "status": item.get("status", "draft"),
             "createdAt": item["createdAt"],
             "updatedAt": item.get("updatedAt", item["createdAt"]),
@@ -27,6 +28,7 @@ class InstructorAssessmentCatalog:
             "scheduledWindowStart": item.get("scheduledWindowStart"),
             "scheduledWindowEnd": item.get("scheduledWindowEnd"),
             "assignmentBrief": item.get("assignmentBrief"),
+            "activeGenerationJobId": item.get("activeGenerationJobId"),
         }
 
     def list_assessments(self, owner_user_id: Optional[str] = None) -> List[Dict[str, Any]]:

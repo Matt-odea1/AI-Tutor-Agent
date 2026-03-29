@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
@@ -15,6 +15,9 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   const [isGenerating, setIsGenerating] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [jobStartTime, setJobStartTime] = useState<number | null>(null);
+  const [elapsedDisplay, setElapsedDisplay] = useState('');
+  const pollDelayRef = useRef(3000);
   const JOB_KEY = `genJob:${assessmentId}`;
 
   // Restore job from localStorage on mount (survives page refresh)
@@ -43,44 +46,74 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   useEffect(() => {
     return () => {
       if (pollingInterval) {
-        clearInterval(pollingInterval);
+        clearTimeout(pollingInterval);
       }
     };
   }, [pollingInterval]);
+
+  // Track elapsed time while job is running
+  useEffect(() => {
+    if (generationJob && (generationJob.status === 'pending' || generationJob.status === 'running')) {
+      if (!jobStartTime) setJobStartTime(Date.now());
+      const timer = setInterval(() => {
+        if (jobStartTime) {
+          const seconds = Math.floor((Date.now() - jobStartTime) / 1000);
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          setElapsedDisplay(mins > 0 ? `${mins}m ${secs}s` : `${secs}s`);
+        }
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      if (generationJob?.status === 'completed' || generationJob?.status === 'failed') {
+        // Keep final elapsed display, reset start time
+        setJobStartTime(null);
+      }
+    }
+  }, [generationJob?.status, jobStartTime]);
 
   // Start polling when job is in progress
   useEffect(() => {
     if (generationJob && (generationJob.status === 'pending' || generationJob.status === 'running')) {
       startPolling();
     } else if (pollingInterval) {
-      clearInterval(pollingInterval);
+      clearTimeout(pollingInterval);
       setPollingInterval(null);
+      pollDelayRef.current = 3000; // reset backoff
     }
   }, [generationJob?.status]);
 
-  const startPolling = useCallback(() => {
-    if (pollingInterval) return; // Already polling
+  const scheduleNextPoll = useCallback(() => {
+    if (!generationJob?.jobId) return;
 
-    const interval = setInterval(async () => {
-      if (!generationJob?.jobId) return;
-
+    const timeout = setTimeout(async () => {
       try {
         const updatedJob = await apiService.getQuestionGenerationStatus(assessmentId, generationJob.jobId);
         setGenerationJob(updatedJob);
 
         // Stop polling if job is complete or failed
         if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
-          clearInterval(interval);
           setPollingInterval(null);
+          pollDelayRef.current = 3000;
+          return;
         }
       } catch (err) {
         console.error('Error polling job status:', err);
-        // Continue polling despite errors
       }
-    }, 3000); // Poll every 3 seconds
 
-    setPollingInterval(interval);
-  }, [assessmentId, generationJob?.jobId, pollingInterval]);
+      // Exponential backoff: 3s -> 5s -> 10s -> 20s -> 30s (max)
+      pollDelayRef.current = Math.min(pollDelayRef.current * 1.5, 30000);
+      scheduleNextPoll();
+    }, pollDelayRef.current);
+
+    setPollingInterval(timeout);
+  }, [assessmentId, generationJob?.jobId]);
+
+  const startPolling = useCallback(() => {
+    if (pollingInterval) return; // Already polling
+    pollDelayRef.current = 3000; // reset on fresh start
+    scheduleNextPoll();
+  }, [pollingInterval, scheduleNextPoll]);
 
   // Load students when job completes so we can show per-student question links
   useEffect(() => {
@@ -112,6 +145,20 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
       setIsGenerating(false);
       setLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    // No server-side cancel endpoint exists; reset client-side state
+    if (pollingInterval) {
+      clearTimeout(pollingInterval);
+      setPollingInterval(null);
+    }
+    pollDelayRef.current = 3000;
+    setJobStartTime(null);
+    setElapsedDisplay('');
+    localStorage.removeItem(JOB_KEY);
+    setGenerationJob(null);
+    setIsGenerating(false);
   };
 
   const handleContinue = () => {
@@ -162,8 +209,10 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
     }
   };
 
-  const progressPercentage = generationJob 
-    ? Math.round((generationJob.processedCount / generationJob.totalStudents) * 100)
+  const progressPercentage = generationJob
+    ? generationJob.totalStudents > 0
+      ? Math.round((generationJob.processedCount / generationJob.totalStudents) * 100)
+      : 0
     : 0;
 
   return (
@@ -268,13 +317,18 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
-            <div className="flex justify-center mt-2">
-              <span className="text-2xl font-bold text-slate-200">{progressPercentage}%</span>
+            <div className="flex justify-center items-center gap-4 mt-2">
+              <span className="text-2xl font-bold text-slate-200">
+                {generationJob.totalStudents === 0 ? 'No students' : `${progressPercentage}%`}
+              </span>
+              {elapsedDisplay && (
+                <span className="text-sm text-slate-400">Elapsed: {elapsedDisplay}</span>
+              )}
             </div>
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className={`grid ${generationJob.failedCount > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-4 mb-6`}>
             <div className="bg-slate-900 rounded-lg p-4">
               <div className="text-sm text-slate-400 mb-1">Total Students</div>
               <div className="text-2xl font-bold text-slate-100">
@@ -287,7 +341,32 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                 {generationJob.processedCount}
               </div>
             </div>
+            {generationJob.failedCount > 0 && (
+              <div className="bg-slate-900 rounded-lg p-4">
+                <div className="text-sm text-red-400 mb-1">Failed</div>
+                <div className="text-2xl font-bold text-red-400">
+                  {generationJob.failedCount}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Partial failure warning */}
+          {generationJob.status === 'completed' && generationJob.failedCount > 0 && (
+            <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <svg className="h-5 w-5 text-yellow-400 mr-3 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
+                  <h4 className="text-sm font-medium text-yellow-300 mb-1">Partial Failure</h4>
+                  <p className="text-sm text-yellow-200">
+                    {generationJob.failedCount} student(s) failed question generation. You can retry generation for those students.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error Display */}
           {generationJob.status === 'failed' && generationJob.error && (
@@ -317,14 +396,30 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
           {/* Status Message */}
           <div className="text-center">
             {generationJob.status === 'pending' && (
-              <p className="text-slate-400 text-sm">
-                Waiting to start... Your job is in the queue.
-              </p>
+              <div className="space-y-3">
+                <p className="text-slate-400 text-sm">
+                  Waiting to start... Your job is in the queue.
+                </p>
+                <button
+                  onClick={handleCancel}
+                  className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
             )}
             {generationJob.status === 'running' && (
-              <p className="text-slate-400 text-sm">
-                Generating questions... This may take a few minutes.
-              </p>
+              <div className="space-y-3">
+                <p className="text-slate-400 text-sm">
+                  Generating questions... This may take a few minutes.
+                </p>
+                <button
+                  onClick={handleCancel}
+                  className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
             )}
             {generationJob.status === 'completed' && (
               <div className="space-y-4">

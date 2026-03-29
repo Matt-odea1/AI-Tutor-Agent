@@ -168,6 +168,7 @@ class QuestionGenerationJobResponse(BaseModel):
     status: str  # pending, running, completed, failed
     totalStudents: int
     processedCount: int
+    failedCount: int = 0
     message: str
 
 
@@ -178,6 +179,7 @@ class QuestionGenerationStatusResponse(BaseModel):
     status: str
     totalStudents: int
     processedCount: int
+    failedCount: int = 0
     startedAt: str
     completedAt: Optional[str] = None
     error: Optional[str] = None

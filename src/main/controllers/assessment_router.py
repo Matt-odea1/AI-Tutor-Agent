@@ -619,6 +619,22 @@ async def generate_questions_batch(
         if not students_to_process:
             raise ApiError(status_code=400, code="no_students_to_process", message="No students found to process")
 
+        # Prevent duplicate generation: check if a job is already running for this assessment
+        job_manager = get_batch_job_manager()
+        existing_job_id = assessment.get("activeGenerationJobId")
+        if existing_job_id:
+            existing_job = job_manager.get_job(existing_job_id)
+            if existing_job and existing_job.get("status") in ("pending", "running"):
+                return QuestionGenerationJobResponse(
+                    ok=True,
+                    jobId=existing_job_id,
+                    assessmentId=id,
+                    status=existing_job["status"],
+                    totalStudents=int(existing_job.get("total_items", 0)),
+                    processedCount=int(existing_job.get("processed_count", 0)),
+                    message="Question generation is already in progress",
+                )
+
         # Prefer the dedicated assignmentBrief field; fall back to description
         assignment_brief = (
             assessment.get("assignmentBrief")
@@ -626,12 +642,18 @@ async def generate_questions_batch(
             or "No assignment brief provided"
         )
 
-        job_manager = get_batch_job_manager()
         job_id = job_manager.create_job(
             job_type=JobType.QUESTION_GENERATION,
             assessment_id=id,
             total_items=len(students_to_process),
             metadata={"assessment_title": assessment["title"]},
+        )
+
+        # Persist active job ID on assessment so duplicate requests are blocked server-side
+        instructor_svc.table.update_item(
+            Key={"PK": f"ASSESSMENT#{id}", "SK": "METADATA"},
+            UpdateExpression="SET activeGenerationJobId = :jid",
+            ExpressionAttributeValues={":jid": job_id},
         )
 
         enqueued = dispatcher.enqueue_question_generation(
@@ -781,6 +803,7 @@ async def get_generation_status(
             status=job["status"],
             totalStudents=job["total_items"],
             processedCount=job["processed_count"],
+            failedCount=int(job.get("failed_count", 0)),
             startedAt=job["started_at"],
             completedAt=job.get("completed_at"),
             error=job.get("error"),

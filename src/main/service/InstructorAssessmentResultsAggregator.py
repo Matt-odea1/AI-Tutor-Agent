@@ -30,7 +30,29 @@ class InstructorAssessmentResultsAggregator:
                 KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#")
             )
             evaluations = evaluations_response.get("Items", [])
+
+            enrollment_response = self.table.get_item(
+                Key={
+                    "PK": f"ASSESSMENT#{assessment_id}",
+                    "SK": f"STUDENT#{student_id}",
+                }
+            )
+            enrollment = enrollment_response.get("Item", {})
+
             if not evaluations:
+                # Include student with no evaluations so instructor sees the full roster
+                results_list.append(
+                    {
+                        "studentId": student_id,
+                        "name": student["name"],
+                        "email": student["email"],
+                        "totalScore": 0,
+                        "maxScore": 0,
+                        "percentage": 0,
+                        "grade": "Not Evaluated",
+                        "completedAt": enrollment.get("submittedAt"),
+                    }
+                )
                 continue
 
             total_score = 0
@@ -51,14 +73,6 @@ class InstructorAssessmentResultsAggregator:
                 grade = "Developing"
             else:
                 grade = "Unsatisfactory"
-
-            enrollment_response = self.table.get_item(
-                Key={
-                    "PK": f"ASSESSMENT#{assessment_id}",
-                    "SK": f"STUDENT#{student_id}",
-                }
-            )
-            enrollment = enrollment_response.get("Item", {})
 
             results_list.append(
                 {

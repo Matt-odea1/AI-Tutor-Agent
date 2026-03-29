@@ -112,17 +112,25 @@ class TestResultsAggregator:
         agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
         results = agg.get_assessment_results(ASSESSMENT_ID)
 
-        # Only s-1 has evaluations
-        assert len(results) == 1
-        assert results[0]["studentId"] == "s-1"
-        assert results[0]["totalScore"] == 14
-        assert results[0]["percentage"] == 70.0
-        assert results[0]["grade"] == "Developing"
+        # Both students returned; s-1 has evaluations, s-2 is "Not Evaluated"
+        assert len(results) == 2
+        evaluated = [r for r in results if r["grade"] != "Not Evaluated"]
+        assert len(evaluated) == 1
+        assert evaluated[0]["studentId"] == "s-1"
+        assert evaluated[0]["totalScore"] == 14
+        assert evaluated[0]["percentage"] == 70.0
+        assert evaluated[0]["grade"] == "Developing"
+
+        not_evaluated = [r for r in results if r["grade"] == "Not Evaluated"]
+        assert len(not_evaluated) == 1
+        assert not_evaluated[0]["studentId"] == "s-2"
 
     def test_get_assessment_results_empty(self, table):
         agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
         results = agg.get_assessment_results(ASSESSMENT_ID)
-        assert results == []
+        # All students returned as "Not Evaluated" when no evaluations exist
+        assert len(results) == 2
+        assert all(r["grade"] == "Not Evaluated" for r in results)
 
     def test_get_student_detail(self, table):
         _seed_enrollments(table)

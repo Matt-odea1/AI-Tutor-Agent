@@ -430,8 +430,22 @@ class InstructorAssessmentService:
             raise InstructorAssessmentServiceError(f"Failed to override score: {e}")
 
     def release_results(self, assessment_id: str) -> Dict[str, Any]:
-        """Set resultsReleased=True on the assessment metadata item."""
+        """Set resultsReleased=True on the assessment metadata item.
+        Warns if not all submitted students have evaluations."""
         try:
+            # Check how many submitted students have evaluations
+            students = self.enrollment.get_assessment_students(assessment_id)
+            submitted = [s for s in students if s.get("status") == "submitted"]
+            evaluated_count = 0
+            for s in submitted:
+                pk = f"STUDENT#{s['studentId']}#ASSESSMENT#{assessment_id}"
+                eval_resp = self.table.query(
+                    KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#"),
+                    Select="COUNT",
+                )
+                if eval_resp.get("Count", 0) > 0:
+                    evaluated_count += 1
+
             self.table.update_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
                 UpdateExpression="SET resultsReleased = :r, updatedAt = :ua",
@@ -441,7 +455,12 @@ class InstructorAssessmentService:
                 },
             )
             logger.info("Released results for assessment %s", assessment_id)
-            return {"assessmentId": assessment_id, "resultsReleased": True}
+            warning = None
+            if evaluated_count < len(submitted):
+                warning = f"Only {evaluated_count}/{len(submitted)} submitted students have been evaluated"
+            return {"assessmentId": assessment_id, "resultsReleased": True, "warning": warning}
+        except InstructorAssessmentServiceError:
+            raise
         except Exception as e:
             logger.error(f"Failed to release results: {e}")
             raise InstructorAssessmentServiceError(f"Failed to release results: {e}")

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import ResultsCard from '../components/ResultsCard';
@@ -10,6 +10,7 @@ import {
 } from '../utils/helpers';
 
 export default function ViewResults() {
+  const navigate = useNavigate();
   const { studentId: urlStudentId, assessmentId: urlAssessmentId } = useParams<{
     studentId: string;
     assessmentId: string;
@@ -18,12 +19,14 @@ export default function ViewResults() {
   const {
     studentId,
     assessmentId,
+    progress,
     results,
     isResultsReady,
     isLoading,
     error,
     setStudentInfo,
     loadResults,
+    loadProgress,
     clearError,
   } = useAssessmentStore();
 
@@ -34,11 +37,42 @@ export default function ViewResults() {
     }
   }, [urlStudentId, urlAssessmentId, setStudentInfo]);
 
+  // Load progress first to check submission status
+  useEffect(() => {
+    if (studentId && assessmentId && !progress) {
+      loadProgress();
+    }
+  }, [studentId, assessmentId, progress, loadProgress]);
+
   useEffect(() => {
     if (studentId && assessmentId && !isResultsReady) {
-      loadResults();
+      // Only load results if student has submitted (or we don't have progress yet — let backend handle it)
+      if (!progress || progress.status === 'submitted') {
+        loadResults();
+      }
     }
-  }, [studentId, assessmentId, isResultsReady, loadResults]);
+  }, [studentId, assessmentId, isResultsReady, progress, loadResults]);
+
+  // Guard: if progress loaded and assessment not submitted, redirect to assessment
+  if (progress && progress.status !== 'submitted') {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center">
+          <svg className="mx-auto h-12 w-12 text-yellow-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Assessment Not Submitted</h2>
+          <p className="text-sm text-gray-600 mb-4">You need to complete and submit the assessment before viewing results.</p>
+          <button
+            onClick={() => navigate(`/${studentId}/${assessmentId}`)}
+            className="bg-primary-600 text-white px-6 py-2 rounded-md hover:bg-primary-700"
+          >
+            Return to Assessment
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Loading state
   if (isLoading) {
@@ -51,8 +85,9 @@ export default function ViewResults() {
 
   // Error state
   if (error) {
-    const isNotReleased = error.message?.toLowerCase().includes('not released');
-    const isPending = error.message?.toLowerCase().includes('not ready') || error.message?.toLowerCase().includes('not available');
+    const errorMsg = (error.message ?? '').toLowerCase();
+    const isNotReleased = error.status === 403 || errorMsg.includes('not released') || errorMsg.includes('pending release');
+    const isPending = error.status === 202 || errorMsg.includes('not ready') || errorMsg.includes('not available') || errorMsg.includes('pending') || errorMsg.includes('being evaluated');
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="max-w-md w-full">
@@ -111,7 +146,7 @@ export default function ViewResults() {
 
   const handleDownloadPdf = () => {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-    const token = sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
+    const token = sessionStorage.getItem('studentToken');
     const url = `${API_BASE_URL}/api/student/${studentId}/assessment/${assessmentId}/results/pdf${token ? `?token=${token}` : ''}`;
     window.open(url, '_blank');
   };
