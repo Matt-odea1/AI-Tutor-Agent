@@ -184,6 +184,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       const result: QuestionsResponse = await getQuestions(studentId, assessmentId);
       set({
         questions: result.questions,
+        currentQuestionIndex: result.currentQuestionIndex,
         answerMode: result.answerMode,
         preparationTime: result.preparationTime ?? null,
         assessment: {
@@ -406,48 +407,18 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     await get().startProctoring();
   },
 
-  // ─── Navigation ────────────────────────────────────────────────
+  // ─── Navigation (server-driven — no client-side jumping) ────────
 
   nextQuestion: () => {
-    const { currentQuestionIndex, questions } = get();
-    if (currentQuestionIndex < questions.length - 1) {
-      set({
-        currentQuestionIndex: currentQuestionIndex + 1,
-        recordedBlob: null,
-        recordingDuration: 0,
-        playbackUrl: null,
-        textAnswer: '',
-        error: null,
-      });
-    }
+    // No-op: advancement is handled by re-fetching after submit
   },
 
   previousQuestion: () => {
-    const { currentQuestionIndex } = get();
-    if (currentQuestionIndex > 0) {
-      set({
-        currentQuestionIndex: currentQuestionIndex - 1,
-        recordedBlob: null,
-        recordingDuration: 0,
-        playbackUrl: null,
-        textAnswer: '',
-        error: null,
-      });
-    }
+    // No-op: going back is not allowed
   },
 
-  goToQuestion: (index: number) => {
-    const { questions } = get();
-    if (index >= 0 && index < questions.length) {
-      set({
-        currentQuestionIndex: index,
-        recordedBlob: null,
-        recordingDuration: 0,
-        playbackUrl: null,
-        textAnswer: '',
-        error: null,
-      });
-    }
+  goToQuestion: () => {
+    // No-op: jumping is not allowed
   },
 
   // ─── Submission ────────────────────────────────────────────────
@@ -486,13 +457,14 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       );
 
       await submitAnswer(studentId, currentQuestion.id, assessmentId, audioUrl, recordingDuration);
-      await get().loadProgress();
 
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
       set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
 
-      if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
+      // Re-fetch: server has advanced currentQuestionIdx, next question content is now available
+      await get().loadQuestions();
+      await get().loadProgress();
     } catch (error) {
       set({ error: error as ApiError, isUploading: false, uploadProgress: 0 });
     }
@@ -522,13 +494,14 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
     try {
       await submitTextAnswer(studentId, currentQuestion.id, assessmentId, textAnswer.trim());
-      await get().loadProgress();
 
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
       set({ isUploading: false, textAnswer: '', answeredQuestionIds: newAnsweredIds });
 
-      if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
+      // Re-fetch: server has advanced currentQuestionIdx
+      await get().loadQuestions();
+      await get().loadProgress();
     } catch (error) {
       set({ error: error as ApiError, isUploading: false });
     }

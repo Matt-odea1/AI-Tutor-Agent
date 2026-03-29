@@ -94,3 +94,27 @@ class OralAssessmentQuestionAccess:
             questions.append(_to_view(item, idx, is_bank=True))
 
         return questions
+
+    @staticmethod
+    def gate_question_content(
+        questions: List[Dict[str, Any]],
+        current_question_idx: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Strip content from future questions so students cannot read ahead.
+        Questions at index <= current_question_idx get full content;
+        future questions get only metadata (id, questionNumber, assessmentId, studentId).
+        """
+        gated: List[Dict[str, Any]] = []
+        for idx, q in enumerate(questions):
+            if idx <= current_question_idx:
+                gated.append(q)
+            else:
+                gated.append({
+                    "id": q["id"],
+                    "questionNumber": q.get("questionNumber"),
+                    "assessmentId": q.get("assessmentId"),
+                    "studentId": q.get("studentId"),
+                    "createdAt": q.get("createdAt", ""),
+                })
+        return gated

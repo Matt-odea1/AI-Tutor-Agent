@@ -107,6 +107,7 @@ async def get_student_questions(
             assessmentId=assessment_id,
             questions=question_dtos,
             totalQuestions=len(question_dtos),
+            currentQuestionIndex=result.get("currentQuestionIndex", 0) if isinstance(result, dict) else 0,
             answerMode=result.get("answerMode", "oral") if isinstance(result, dict) else "oral",
             preparationTime=result.get("preparationTime") if isinstance(result, dict) else None,
             assessmentTitle=result.get("assessmentTitle") if isinstance(result, dict) else None,

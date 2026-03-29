@@ -156,27 +156,11 @@ class OralAssessmentService:
             self.question_access.ensure_student_enrollment(student_id, assessment_id)
             self._check_assessment_window(assessment_id)
 
-            # Record startedAt on first access (no-op on subsequent calls)
-            try:
-                self.table.update_item(
-                    Key={
-                        "PK": f"ASSESSMENT#{assessment_id}",
-                        "SK": f"STUDENT#{student_id}",
-                    },
-                    UpdateExpression="SET startedAt = :t",
-                    ConditionExpression="attribute_not_exists(startedAt)",
-                    ExpressionAttributeValues={":t": datetime.now(timezone.utc).isoformat()},
-                )
-            except self.table.meta.client.exceptions.ConditionalCheckFailedException:
-                pass  # Already set on a previous access
-
             # Fetch assessment metadata to get time limit for question view
             meta_resp = self.table.get_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
             )
             assessment_meta = meta_resp.get("Item", {})
-            # timeLimit is stored in minutes at the assessment level; convert to seconds
-            # for the student-facing question view.
             raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
             assessment_time_limit = (raw_time_limit * 60) if raw_time_limit is not None else None
 
@@ -184,21 +168,64 @@ class OralAssessmentService:
             bank_items = self.question_access.get_bank_questions(assessment_id)
 
             if not student_items and not bank_items:
-                # No questions generated yet
                 logger.warning(f"No questions found for assessment {assessment_id}")
-                return []
+                return {"questions": [], "currentQuestionIndex": 0,
+                        "answerMode": assessment_meta.get("answerMode", "oral"),
+                        "preparationTime": assessment_meta.get("preparationTime"),
+                        "assessmentTitle": assessment_meta.get("title"),
+                        "assessmentCourse": assessment_meta.get("course"),
+                        "assessmentDescription": assessment_meta.get("description")}
 
-            questions = self.question_access.to_student_question_view(
+            # Build the full ordered question list (always same sort)
+            all_questions = self.question_access.to_student_question_view(
                 student_items,
                 bank_items,
                 student_id=student_id,
                 assessment_id=assessment_id,
                 assessment_time_limit=assessment_time_limit,
             )
-            
-            logger.info(f"Retrieved {len(questions)} questions for student {student_id}")
+            question_ids = [q["id"] for q in all_questions]
+
+            # Read enrollment to get/set questionOrder and currentQuestionIdx
+            enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
+            enrollment_resp = self.table.get_item(Key=enrollment_key)
+            enrollment = enrollment_resp.get("Item", {})
+
+            # First access: freeze question order and record startedAt
+            if "questionOrder" not in enrollment:
+                # Count existing answers for legacy students who started before this deploy
+                answers_resp = self.table.query(
+                    KeyConditionExpression=Key("PK").eq(f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}")
+                        & Key("SK").begins_with("ANSWER#"),
+                    Select="COUNT",
+                )
+                existing_answers = answers_resp.get("Count", 0)
+                try:
+                    self.table.update_item(
+                        Key=enrollment_key,
+                        UpdateExpression="SET questionOrder = :qo, currentQuestionIdx = :ci, startedAt = if_not_exists(startedAt, :t)",
+                        ConditionExpression="attribute_not_exists(questionOrder)",
+                        ExpressionAttributeValues={
+                            ":qo": question_ids,
+                            ":ci": existing_answers,
+                            ":t": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    current_idx = existing_answers
+                except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+                    # Race: another request set it first — re-read
+                    enrollment = self.table.get_item(Key=enrollment_key).get("Item", {})
+                    current_idx = int(enrollment.get("currentQuestionIdx", 0))
+            else:
+                current_idx = int(enrollment.get("currentQuestionIdx", 0))
+
+            # Gate: only return full content for answered + current question
+            gated_questions = self.question_access.gate_question_content(all_questions, current_idx)
+
+            logger.info(f"Retrieved {len(gated_questions)} questions for student {student_id} (current={current_idx})")
             return {
-                "questions": self._convert_decimals(questions),
+                "questions": self._convert_decimals(gated_questions),
+                "currentQuestionIndex": current_idx,
                 "answerMode": assessment_meta.get("answerMode", "oral"),
                 "preparationTime": assessment_meta.get("preparationTime"),
                 "assessmentTitle": assessment_meta.get("title"),
@@ -214,6 +241,38 @@ class OralAssessmentService:
             logger.error(f"Failed to get questions: {e}")
             raise OralAssessmentServiceError(f"Database error: {e}")
     
+    def _validate_and_advance_question(self, student_id: str, assessment_id: str, question_id: str) -> None:
+        """Enforce sequential ordering: reject duplicates, out-of-order, and advance the index."""
+        enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
+        enrollment = self.table.get_item(Key=enrollment_key).get("Item")
+        if not enrollment:
+            raise OralAssessmentServiceError("Student not enrolled in this assessment")
+
+        question_order = enrollment.get("questionOrder", [])
+        current_idx = int(enrollment.get("currentQuestionIdx", 0))
+
+        # Reject duplicate submission
+        existing = self.table.get_item(
+            Key={"PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}", "SK": f"ANSWER#{question_id}"}
+        )
+        if "Item" in existing:
+            raise OralAssessmentServiceError("Answer already submitted for this question")
+
+        # Reject out-of-order submission
+        if current_idx >= len(question_order) or question_order[current_idx] != question_id:
+            raise OralAssessmentServiceError("Question submitted out of order")
+
+        # Advance index (conditional to prevent double-click race)
+        try:
+            self.table.update_item(
+                Key=enrollment_key,
+                UpdateExpression="SET currentQuestionIdx = :new_idx",
+                ConditionExpression="currentQuestionIdx = :old_idx",
+                ExpressionAttributeValues={":new_idx": current_idx + 1, ":old_idx": current_idx},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            raise OralAssessmentServiceError("Answer already submitted for this question")
+
     def submit_answer(
         self,
         student_id: str,
@@ -246,6 +305,7 @@ class OralAssessmentService:
         """
         try:
             self._check_assessment_window(assessment_id)
+            self._validate_and_advance_question(student_id, assessment_id, question_id)
             result = self.answer_submission.submit_answer(
                 student_id=student_id,
                 question_id=question_id,

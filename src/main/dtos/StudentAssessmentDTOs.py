@@ -31,9 +31,9 @@ class SubmitAssessmentRequest(BaseModel):
 # --- Response Models ---
 
 class QuestionResponse(BaseModel):
-    """Individual question data"""
+    """Individual question data (text is None for gated future questions)"""
     id: str
-    text: str
+    text: Optional[str] = None
     codeContext: Optional[str] = None
     assessmentId: str
     studentId: str
@@ -50,6 +50,7 @@ class StudentQuestionsResponse(BaseModel):
     assessmentId: str
     questions: List[QuestionResponse]
     totalQuestions: int
+    currentQuestionIndex: int = 0
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
     assessmentTitle: Optional[str] = None

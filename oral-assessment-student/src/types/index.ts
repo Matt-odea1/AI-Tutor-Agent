@@ -4,7 +4,7 @@
 
 export interface Question {
   id: string;
-  text: string;
+  text?: string;
   codeContext?: string;
   assessmentId: string;
   studentId: string;

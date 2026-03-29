@@ -71,6 +71,7 @@ const handleApiError = (error: AxiosError): never => {
  */
 export interface QuestionsResponse {
   questions: Question[];
+  currentQuestionIndex: number;
   answerMode: 'oral' | 'written';
   preparationTime?: number;
   assessmentTitle?: string;
@@ -88,6 +89,7 @@ export async function getQuestions(
     );
     return {
       questions: response.data.questions || [],
+      currentQuestionIndex: response.data.currentQuestionIndex ?? 0,
       answerMode: response.data.answerMode || 'oral',
       preparationTime: response.data.preparationTime,
       assessmentTitle: response.data.assessmentTitle,

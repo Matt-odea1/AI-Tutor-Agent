@@ -27,8 +27,6 @@ export default function TakeAssessment() {
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track whether current question has been answered (for sequential enforcement)
-  const [currentAnswered, setCurrentAnswered] = useState(false);
 
   const {
     studentId,
@@ -43,6 +41,7 @@ export default function TakeAssessment() {
     answerMode,
     preparationTime,
     textAnswer,
+    recordedBlob,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
@@ -91,7 +90,6 @@ export default function TakeAssessment() {
 
   // Reset per-question state whenever the question changes
   useEffect(() => {
-    setCurrentAnswered(false);
     setPrepDone(false);
     if (prepTimerRef.current) clearInterval(prepTimerRef.current);
 
@@ -150,7 +148,7 @@ export default function TakeAssessment() {
 
   const handleTimerExpire = async () => {
     const store = useAssessmentStore.getState();
-    const { answerMode, isRecording, recordedBlob, textAnswer, currentQuestionIndex, questions } = store;
+    const { answerMode, isRecording, recordedBlob, textAnswer } = store;
 
     if (isRecording) {
       await store.stopRecording();
@@ -165,27 +163,24 @@ export default function TakeAssessment() {
       addToast('Time\'s up! Submitting your written answer.', 'warning');
       await handleSubmitTextAnswer();
     } else {
-      if (currentQuestionIndex < questions.length - 1) {
-        addToast('Time\'s up! Moving to the next question.', 'warning');
-        setCurrentAnswered(true);
-        nextQuestion();
-      }
+      // Nothing to submit — auto-skip with a "skipped" marker
+      addToast('Time\'s up! Moving to the next question.', 'warning');
+      await submitCurrentTextAnswer();
     }
   };
 
   const handleSubmitAudioAnswer = async () => {
     await submitCurrentAnswer();
-    setCurrentAnswered(true);
+    // Store re-fetches questions after submit — server advances the index
   };
 
   const handleSubmitTextAnswer = async () => {
     await submitCurrentTextAnswer();
-    setCurrentAnswered(true);
   };
 
-  const handleNext = () => {
-    nextQuestion();
-    // currentAnswered resets via the useEffect on currentQuestionIndex
+  const handleNext = async () => {
+    // Re-fetch to advance — server already incremented currentQuestionIdx on submit
+    await loadQuestions();
   };
 
   const handleSubmitAssessment = async () => {
@@ -239,6 +234,7 @@ export default function TakeAssessment() {
   const currentQuestion = questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
+  const currentAnswered = currentQuestion ? answeredQuestionIds.has(currentQuestion.id) : false;
 
   // Derive a minimal assessment object for the overview screen.
   // The store's `assessment` field is only populated if the backend returns metadata;
