@@ -23,6 +23,7 @@ jobs:
 
     env:
       API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL || 'https://api.chat9021.org' }}
+      STUDENT_APP_URL: ${{ vars.STUDENT_APP_URL || 'https://student.chat9021.org' }}
       INSTRUCTOR_BUCKET: ${{ vars.INSTRUCTOR_APP_BUCKET || 'chat9021-instructor-app' }}
       STUDENT_BUCKET: ${{ vars.STUDENT_APP_BUCKET || 'chat9021-student-app' }}
       # Assessment S3 buckets are in us-east-1 per terraform/assessment
@@ -48,6 +49,7 @@ jobs:
         run: npm run build
         env:
           VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
+          VITE_STUDENT_APP_URL: ${{ env.STUDENT_APP_URL }}
 
       - name: Build student frontend
         working-directory: oral-assessment-student

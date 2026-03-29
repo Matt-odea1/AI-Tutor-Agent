@@ -79,7 +79,26 @@ Two job systems are in use:
 - **`BatchJobManager` → `DynamoDBJobStore`** (DynamoDB-backed, persists across restarts) — used for batch evaluation and question generation jobs. Job items stored as `JOB#` records in the assessment table.
 - **`EvaluationJobStore`** (in-memory, volatile) — used for the legacy CSV-based evaluation workflow only. Job status polled via `/internal/evaluations/{job_id}/status`.
 
-## Environment Setup
+## Environment Variables — How They Work
+
+**All `.env` files are gitignored and never pushed.** There are two separate systems:
+
+### Backend (EC2)
+Vars come from **AWS SSM Parameter Store** at `/ai-tutor/prod/`. `scripts/load-ssm-env.sh` pulls them and writes `.env` on the EC2 instance at deploy time. To add/change a backend var:
+```bash
+aws ssm put-parameter --region ap-southeast-2 \
+  --name /ai-tutor/prod/MY_VAR --value "value" --type SecureString --overwrite
+```
+Then redeploy or SSH + re-run the script + restart Docker.
+
+### Frontends (S3/CloudFront)
+`VITE_*` vars are **baked in at Vite build time** — there is no runtime config. They are set in `.github/workflows/assessment-frontend-deploy.yml` as `env:` blocks on each build step. The local `.env` files have no effect on production.
+
+**To add a new frontend env var to production:** add it to the workflow's build step `env:` block. Do NOT rely on `.env` files — they are local only and are never deployed.
+
+Currently wired in the workflow: `VITE_API_BASE_URL`. Student app URL is hardcoded as a fallback in source (`https://student.chat9021.org`) since it doesn't change between environments.
+
+## Environment Setup (Local Dev)
 
 Copy `.env.example` to `.env`. Required vars:
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`
