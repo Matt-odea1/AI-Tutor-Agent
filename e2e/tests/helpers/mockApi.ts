@@ -38,6 +38,15 @@ export async function setupMockApi(page: Page, ctx: MockContext): Promise<void> 
     });
   });
 
+  // Student: get scoped session token (called by ensureStudentToken in the store)
+  await page.route(`${G}/student/token`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ access_token: 'mock-session-jwt', student_id: studentId, assessment_id: assessmentId }),
+    });
+  });
+
   // Student: get assessment questions
   await page.route(`${G}/student/${studentId}/assessment/${assessmentId}/questions`, async (route) => {
     await route.fulfill({

@@ -22,6 +22,9 @@ const ASSESSMENT_ID = 'asmt-e2e-001';
 // as authenticated without needing the real auth exchange flow.
 async function injectSession(page: import('@playwright/test').Page) {
   await page.addInitScript(([sid, aid]) => {
+    // The student app checks 'studentToken' for API auth (api.ts interceptor)
+    // and 'authToken' as a fallback in some components.
+    sessionStorage.setItem('studentToken', 'mock-session-jwt');
     sessionStorage.setItem('authToken', 'mock-session-jwt');
     sessionStorage.setItem('studentId', sid);
     sessionStorage.setItem('assessmentId', aid);
@@ -81,7 +84,6 @@ test.describe('Instructor assessment dashboard', () => {
 
   test('assessment list page loads', async ({ page }) => {
     // Stub the assessments list endpoint.
-    // Use ** glob so it matches regardless of the API base URL (localhost vs EC2).
     await page.route('**/api/assessment/list', async (route) => {
       await route.fulfill({
         status: 200,
@@ -102,6 +104,23 @@ test.describe('Instructor assessment dashboard', () => {
           ],
           total: 1,
         }),
+      });
+    });
+
+    // Stub the per-assessment students and progress endpoints
+    // (AssessmentList fetches these for stats after loading the list)
+    await page.route(`**/api/assessment/${ASSESSMENT_ID}/students`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+    await page.route(`**/api/assessment/${ASSESSMENT_ID}/progress`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
       });
     });
 
