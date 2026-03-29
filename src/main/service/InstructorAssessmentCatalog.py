@@ -19,9 +19,8 @@ class InstructorAssessmentCatalog:
             "description": item.get("description", ""),
             "dueDate": item["dueDate"],
             "totalQuestions": int(item["totalQuestions"]),
-            # timeLimit is stored in seconds (new) or minutes (legacy, ≤ 30).
-            # Normalize to minutes for instructor display.
-            "timeLimit": (int(item["timeLimit"]) if int(item["timeLimit"]) <= 30 else int(int(item["timeLimit"]) / 60)) if item.get("timeLimit") else None,
+            # timeLimit is stored in seconds; convert back to minutes for instructor display
+            "timeLimit": int(int(item["timeLimit"]) / 60) if item.get("timeLimit") else None,
             "status": item.get("status", "draft"),
             "createdAt": item["createdAt"],
             "updatedAt": item.get("updatedAt", item["createdAt"]),
