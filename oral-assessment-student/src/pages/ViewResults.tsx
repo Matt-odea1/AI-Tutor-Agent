@@ -157,12 +157,7 @@ export default function ViewResults() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Assessment Results</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Student: {studentId}
-              </p>
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Assessment Results</h1>
             <button
               onClick={handleDownloadPdf}
               className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -198,10 +193,10 @@ export default function ViewResults() {
                 <div className="text-sm text-gray-600">Questions</div>
               </div>
               <div>
-                {results.completedAt && (
+                {(results.completedAt || results.submittedAt) && (
                   <>
-                    <div className="text-sm font-medium text-gray-700">{formatTimestamp(results.completedAt)}</div>
-                    <div className="text-sm text-gray-600">Completed</div>
+                    <div className="text-sm font-medium text-gray-700">{formatTimestamp(results.completedAt || results.submittedAt || '')}</div>
+                    <div className="text-sm text-gray-600">Submitted</div>
                   </>
                 )}
               </div>
@@ -224,16 +219,6 @@ export default function ViewResults() {
           </div>
         </div>
 
-        {/* Summary */}
-        <div className="mt-8 bg-primary-50 border border-primary-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-primary-900 mb-2">
-            What's Next?
-          </h3>
-          <p className="text-blue-800">
-            Review the feedback for each question to understand your strengths and areas for improvement.
-            Focus on the suggested improvements to enhance your understanding.
-          </p>
-        </div>
       </main>
     </div>
   );

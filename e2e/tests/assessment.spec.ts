@@ -86,7 +86,7 @@ test.describe('Student assessment-taking flow', () => {
     await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/${ASSESSMENT_ID}`);
 
     // 1. Consent modal appears first
-    await expect(page.getByText('Proctoring Consent')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Proctoring' })).toBeVisible({ timeout: 10_000 });
 
     // Decline proctoring to proceed without camera
     await page.getByRole('button', { name: /continue without recording/i }).click();
@@ -141,8 +141,8 @@ test.describe('Student assessment-taking flow', () => {
   test('consent modal shows proctoring info', async ({ page }) => {
     await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/${ASSESSMENT_ID}`);
 
-    await expect(page.getByText('Proctoring Consent')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/webcam and microphone/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Proctoring' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/webcam proctoring/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /i consent/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /continue without recording/i })).toBeVisible();
   });

@@ -31,16 +31,9 @@ export default function ResultsCard({ result }: ResultsCardProps) {
       >
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <div className="flex items-center space-x-3">
-              <span className="text-sm font-medium text-gray-500">
-                Question {result.questionNumber}
-              </span>
-              {result.questionType && (
-                <span className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-800 rounded">
-                  {result.questionType}
-                </span>
-              )}
-            </div>
+            <span className="text-sm font-medium text-gray-500">
+              Question {result.questionNumber}
+            </span>
             <p className="mt-1 text-sm text-gray-700 line-clamp-2">
               {result.questionText}
             </p>

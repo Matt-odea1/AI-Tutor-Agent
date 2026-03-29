@@ -27,7 +27,6 @@ export default function TakeAssessment() {
   // Preparation countdown for oral mode (counts down from preparationTime → 0)
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
-  const [prepElapsed, setPrepElapsed] = useState(0); // seconds elapsed in prep phase
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Wrapper to persist assessmentStarted to sessionStorage
@@ -150,7 +149,6 @@ export default function TakeAssessment() {
   // Reset per-question state whenever the question changes
   useEffect(() => {
     setPrepDone(false);
-    setPrepElapsed(0);
     setIsSubmittingAnswer(false);
     clearError(); // clear errors from previous question
     if (prepTimerRef.current) {
@@ -193,7 +191,6 @@ export default function TakeAssessment() {
         }
         return prev - 1;
       });
-      setPrepElapsed(prev => prev + 1);
     }, 1000);
     return () => {
       if (prepTimerRef.current) {
@@ -430,9 +427,7 @@ export default function TakeAssessment() {
             {assessment?.title ?? 'Oral Assessment'}
           </h1>
           <div className="flex items-center justify-between mt-2">
-            <p className="text-sm text-gray-600">
-              Student {studentId}
-            </p>
+            <div />
             <div className="flex items-center space-x-4">
               <div className="text-sm font-medium text-gray-700">
                 Question {currentQuestionIndex + 1} of {questions.length}
@@ -491,11 +486,7 @@ export default function TakeAssessment() {
 
           {/* Question Display */}
           <div className="mb-4">
-            <QuestionDisplay
-              question={currentQuestion}
-              questionNumber={currentQuestionIndex + 1}
-              totalQuestions={questions.length}
-            />
+            <QuestionDisplay question={currentQuestion} />
           </div>
 
           {/* Answer Panel — mode set by instructor */}
@@ -520,11 +511,9 @@ export default function TakeAssessment() {
                   </p>
                   <button
                     onClick={() => { setPrepDone(true); setPrepSecondsLeft(null); if (prepTimerRef.current) { clearInterval(prepTimerRef.current); prepTimerRef.current = null; } }}
-                    disabled={prepElapsed < 2}
-                    className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title={prepElapsed < 2 ? 'Please read the question first' : undefined}
+                    className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors"
                   >
-                    I'm ready — Start Recording
+                    I'm Ready
                   </button>
                 </div>
               )

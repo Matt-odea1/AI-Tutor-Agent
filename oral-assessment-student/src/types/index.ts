@@ -60,6 +60,7 @@ export interface Results {
   percentage: number;
   grade: string;
   completedAt?: string;
+  submittedAt?: string;
   questions: QuestionResult[];
 }
 

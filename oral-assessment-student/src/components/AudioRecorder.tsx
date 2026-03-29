@@ -301,13 +301,6 @@ export default function AudioRecorder({
         </div>
       )}
 
-      {/* Instructions */}
-      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-        <p className="text-xs text-gray-600">
-          <strong>Tips:</strong> Find a quiet place, speak clearly, and take your time.
-          You can pause and resume recording if needed.
-        </p>
-      </div>
     </div>
   );
 }

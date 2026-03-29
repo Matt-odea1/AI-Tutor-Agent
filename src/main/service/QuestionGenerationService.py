@@ -149,7 +149,7 @@ You must respond with ONLY a valid JSON array. Each question object must have th
   "question_type": "specific" or "general",
   "question": "<the question text>",
   "rationale": "<why this question tests important concepts>",
-  "code_reference": "<specific code snippet being examined, or empty string for general questions>"
+  "code_reference": "<the relevant code block (5-15 lines including surrounding context) being examined, or empty string for general questions>"
 }
 
 Output format example:
@@ -157,9 +157,9 @@ Output format example:
   {
     "question_number": 1,
     "question_type": "specific",
-    "question": "Can you explain how your for loop on line 5 iterates through the list?",
+    "question": "Can you explain how your for loop iterates through the list and why you chose this approach?",
     "rationale": "Tests understanding of loop mechanics and list iteration",
-    "code_reference": "for item in my_list:"
+    "code_reference": "def process_items(my_list):\n    results = []\n    for item in my_list:\n        if item > 0:\n            results.append(item * 2)\n    return results"
   },
   {
     "question_number": 6,
