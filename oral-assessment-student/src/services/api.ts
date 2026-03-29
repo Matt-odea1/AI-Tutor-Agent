@@ -22,6 +22,16 @@ const apiClient = axios.create({
   timeout: 30000, // 30 second timeout
 });
 
+// Attach student session token to every request if present
+apiClient.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('studentToken');
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Error handler
 const handleApiError = (error: AxiosError): never => {
   if (error.response) {
@@ -258,7 +268,30 @@ export async function uploadAudioToS3(
   }
 }
 
+/**
+ * Fetch a scoped student session JWT from the public token endpoint.
+ * The backend verifies enrollment before issuing the token.
+ * Stores the token in sessionStorage for the interceptor to pick up.
+ */
+export async function getStudentToken(
+  studentId: string,
+  assessmentId: string
+): Promise<string> {
+  try {
+    const response = await apiClient.post('/api/student/token', {
+      student_id: studentId,
+      assessment_id: assessmentId,
+    });
+    const token: string = response.data.access_token;
+    sessionStorage.setItem('studentToken', token);
+    return token;
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
 export default {
+  getStudentToken,
   getQuestions,
   submitAnswer,
   submitVideoAnswer,

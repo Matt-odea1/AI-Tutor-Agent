@@ -6,9 +6,11 @@ import io
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse as _StreamingResponse
+from pydantic import BaseModel
 
-from src.main.auth.dependencies import require_auth_principal
+from src.main.auth.dependencies import require_auth_principal, get_auth_service
 from src.main.auth.models import AuthPrincipal
+from src.main.auth.service import AuthService
 from src.main.controllers.api_errors import ApiError
 from src.main.controllers.controller_helpers import _assert_student_access
 from src.main.controllers.controller_dependencies import (
@@ -38,6 +40,37 @@ logger = logging.getLogger(__name__)
 
 
 student_router = APIRouter(prefix="/api/student", tags=["student"])
+
+
+class StudentTokenRequest(BaseModel):
+    student_id: str
+    assessment_id: str
+
+
+@student_router.post("/token")
+async def get_student_token(
+    request: StudentTokenRequest,
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """
+    Public endpoint — no prior auth required.
+    Verifies the student is enrolled in the assessment, then issues a
+    12-hour scoped JWT so the student can call protected student endpoints.
+    """
+    try:
+        svc.question_access.ensure_student_enrollment(request.student_id, request.assessment_id)
+    except (ValueError, OralAssessmentServiceError):
+        raise ApiError(
+            status_code=404,
+            code="student_not_enrolled",
+            message="Assessment not found or you are not enrolled. Please check your link.",
+        )
+    except Exception as error:
+        logger.error("Unexpected error verifying enrollment: %s", error)
+        raise ApiError(status_code=500, code="unexpected_error", message="Failed to verify enrollment")
+
+    return auth_service.issue_student_session_token(request.student_id, request.assessment_id)
 
 
 @student_router.get("/{student_id}/assessment/{assessment_id}/questions", response_model=StudentQuestionsResponse)

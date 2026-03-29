@@ -11,6 +11,7 @@ import type {
   ApiError,
 } from '../types';
 import {
+  getStudentToken,
   getQuestions,
   submitAnswer,
   submitVideoAnswer,
@@ -19,6 +20,12 @@ import {
   getProgress,
   getResults,
 } from '../services/api';
+
+const ensureStudentToken = async (studentId: string, assessmentId: string) => {
+  if (!sessionStorage.getItem('studentToken')) {
+    await getStudentToken(studentId, assessmentId);
+  }
+};
 import { uploadAudio, uploadVideo, validateAudioBlob } from '../services/s3';
 import AudioRecorder from '../services/audio';
 import VideoRecorder from '../services/video';
@@ -191,6 +198,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      await ensureStudentToken(studentId, assessmentId);
       const questions = await getQuestions(studentId, assessmentId);
       set({ questions, isLoading: false });
     } catch (error) {
@@ -731,6 +739,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      await ensureStudentToken(studentId, assessmentId);
       const results = await getResults(studentId, assessmentId);
       set({ results, isResultsReady: true, isLoading: false });
     } catch (error) {
