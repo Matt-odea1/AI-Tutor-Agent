@@ -98,6 +98,7 @@ export interface QuestionGenerationJob {
   status: 'pending' | 'running' | 'completed' | 'failed';
   totalStudents: number;
   processedCount: number;
+  failedCount: number;
   createdAt: Date;
   completedAt?: Date;
   error?: string;
