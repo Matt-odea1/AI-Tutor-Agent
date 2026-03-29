@@ -52,6 +52,9 @@ class StudentQuestionsResponse(BaseModel):
     totalQuestions: int
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
+    assessmentTitle: Optional[str] = None
+    assessmentCourse: Optional[str] = None
+    assessmentDescription: Optional[str] = None
 
 
 class SubmitAnswerResponse(BaseModel):
@@ -114,14 +117,20 @@ class StudentProgressResponse(BaseModel):
 class QuestionResultDetail(BaseModel):
     """Detailed result for a single question"""
     questionId: str
+    questionNumber: Optional[int] = None
     questionText: str
+    questionType: Optional[str] = None
     audioUrl: Optional[str] = None
+    transcript: Optional[str] = None
     duration: Optional[int] = None
-    score: Optional[int] = None
+    totalScore: Optional[int] = None
+    correctnessScore: Optional[int] = None
+    understandingScore: Optional[int] = None
     maxScore: Optional[int] = None
     feedback: Optional[str] = None
-    strengths: Optional[str] = None
-    improvements: Optional[str] = None
+    strengths: Optional[List[str]] = None
+    weaknesses: Optional[List[str]] = None
+    suggestedImprovements: Optional[List[str]] = None
     evaluatedAt: Optional[str] = None
 
 

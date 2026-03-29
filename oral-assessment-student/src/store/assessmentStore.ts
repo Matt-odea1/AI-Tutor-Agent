@@ -15,7 +15,6 @@ import {
   getQuestions,
   type QuestionsResponse,
   submitAnswer,
-  submitVideoAnswer,
   submitTextAnswer,
   submitAssessment,
   getProgress,
@@ -27,9 +26,8 @@ const ensureStudentToken = async (studentId: string, assessmentId: string) => {
     await getStudentToken(studentId, assessmentId);
   }
 };
-import { uploadAudio, uploadVideo, validateAudioBlob } from '../services/s3';
+import { uploadAudio, validateAudioBlob } from '../services/s3';
 import AudioRecorder from '../services/audio';
-import VideoRecorder from '../services/video';
 import ProctoringRecorder from '../services/proctoring';
 
 interface AssessmentStore {
@@ -65,12 +63,6 @@ interface AssessmentStore {
   answerMode: 'oral' | 'written';
   preparationTime: number | null; // seconds of prep time for oral mode (null = no prep phase)
   textAnswer: string;
-
-  // Video recording state
-  videoRecorder: VideoRecorder | null;
-  videoLiveStream: MediaStream | null;
-  videoBlob: Blob | null;
-  videoPreviewUrl: string | null;
 
   // Proctoring state
   proctorStream: MediaStream | null;
@@ -109,14 +101,6 @@ interface AssessmentStore {
   playRecording: () => void;
   stopPlayback: () => void;
 
-  // Video recording actions
-  initializeVideoRecorder: () => Promise<MediaStream | null>;
-  startVideoRecording: () => void;
-  stopVideoRecording: () => Promise<void>;
-  pauseVideoRecording: () => void;
-  resumeVideoRecording: () => void;
-  cancelVideoRecording: () => void;
-
   // Proctoring actions
   startProctoring: () => Promise<void>;
   stopProctoring: () => Promise<void>;
@@ -131,7 +115,6 @@ interface AssessmentStore {
   // Submission
   submitCurrentAnswer: () => Promise<void>;
   submitCurrentTextAnswer: () => Promise<void>;
-  submitCurrentVideoAnswer: () => Promise<void>;
   submitCompleteAssessment: () => Promise<void>;
 
   // Results
@@ -163,10 +146,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   answerMode: 'oral' as 'oral' | 'written',
   preparationTime: null,
   textAnswer: '',
-  videoRecorder: null,
-  videoLiveStream: null,
-  videoBlob: null,
-  videoPreviewUrl: null,
   proctorStream: null,
   proctoring: null,
   isProctoringActive: false,
@@ -207,6 +186,18 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         questions: result.questions,
         answerMode: result.answerMode,
         preparationTime: result.preparationTime ?? null,
+        assessment: {
+          id: assessmentId!,
+          title: result.assessmentTitle || 'Oral Assessment',
+          course: result.assessmentCourse || '',
+          description: result.assessmentDescription || '',
+          dueDate: '',
+          totalQuestions: result.questions.length,
+          timeLimit: result.questions[0]?.timeLimit,
+          status: 'open',
+          answerMode: result.answerMode,
+          preparationTime: result.preparationTime,
+        },
         isLoading: false,
       });
     } catch (error) {
@@ -355,124 +346,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ isPlaying: false });
   },
 
-  // ─── Video recording ───────────────────────────────────────────
-
-  initializeVideoRecorder: async () => {
-    try {
-      const recorder = new VideoRecorder();
-      // Reuse the proctoring stream when available — avoids a second getUserMedia
-      // call which can fail with NotReadableError on devices that don't allow two
-      // concurrent camera streams.
-      const { proctorStream } = get();
-      const stream = await recorder.initialize(proctorStream ?? undefined);
-      set({ videoRecorder: recorder, videoLiveStream: stream, error: null });
-      return stream;
-    } catch (error) {
-      set({
-        error: {
-          message: error instanceof Error ? error.message : 'Failed to initialize video recorder',
-        },
-      });
-      throw error;
-    }
-  },
-
-  startVideoRecording: () => {
-    const { videoRecorder } = get();
-    if (!videoRecorder) {
-      set({ error: { message: 'Video recorder not initialized' } });
-      return;
-    }
-
-    try {
-      videoRecorder.start();
-      set({
-        isRecording: true,
-        isPaused: false,
-        recordingStartTime: Date.now(),
-        videoBlob: null,
-        videoPreviewUrl: null,
-        error: null,
-      });
-
-      const interval = setInterval(() => {
-        const { isRecording, videoRecorder } = get();
-        if (!isRecording || !videoRecorder) {
-          clearInterval(interval);
-          return;
-        }
-        set({ recordingDuration: videoRecorder.getDuration() });
-      }, 1000);
-    } catch (error) {
-      set({
-        error: {
-          message: error instanceof Error ? error.message : 'Failed to start video recording',
-        },
-      });
-    }
-  },
-
-  stopVideoRecording: async () => {
-    const { videoRecorder } = get();
-    if (!videoRecorder) return;
-
-    try {
-      const blob = await videoRecorder.stop();
-      const duration = videoRecorder.getDuration();
-      const previewUrl = videoRecorder.createVideoUrl(blob);
-      set({
-        isRecording: false,
-        isPaused: false,
-        videoBlob: blob,
-        recordingDuration: duration,
-        videoPreviewUrl: previewUrl,
-      });
-    } catch (error) {
-      set({
-        error: {
-          message: error instanceof Error ? error.message : 'Failed to stop video recording',
-        },
-        isRecording: false,
-      });
-    }
-  },
-
-  pauseVideoRecording: () => {
-    const { videoRecorder } = get();
-    if (!videoRecorder) return;
-    videoRecorder.pause();
-    set({ isPaused: true });
-  },
-
-  resumeVideoRecording: () => {
-    const { videoRecorder } = get();
-    if (!videoRecorder) return;
-    videoRecorder.resume();
-    set({ isPaused: false });
-  },
-
-  cancelVideoRecording: () => {
-    const { videoRecorder, videoPreviewUrl } = get();
-    if (!videoRecorder) return;
-
-    try {
-      if (videoRecorder.getState() !== 'inactive') videoRecorder.stop();
-    } catch (error) {
-      console.error('Error stopping video recorder:', error);
-    }
-
-    if (videoPreviewUrl) videoRecorder.releaseVideoUrl(videoPreviewUrl);
-
-    set({
-      isRecording: false,
-      isPaused: false,
-      videoBlob: null,
-      recordingDuration: 0,
-      recordingStartTime: null,
-      videoPreviewUrl: null,
-    });
-  },
-
   // ─── Proctoring ────────────────────────────────────────────────
 
   setConsentGiven: (given: boolean) => {
@@ -543,8 +416,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         recordedBlob: null,
         recordingDuration: 0,
         playbackUrl: null,
-        videoBlob: null,
-        videoPreviewUrl: null,
         textAnswer: '',
         error: null,
       });
@@ -559,8 +430,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         recordedBlob: null,
         recordingDuration: 0,
         playbackUrl: null,
-        videoBlob: null,
-        videoPreviewUrl: null,
         textAnswer: '',
         error: null,
       });
@@ -575,8 +444,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         recordedBlob: null,
         recordingDuration: 0,
         playbackUrl: null,
-        videoBlob: null,
-        videoPreviewUrl: null,
         textAnswer: '',
         error: null,
       });
@@ -667,62 +534,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     }
   },
 
-  submitCurrentVideoAnswer: async () => {
-    const {
-      studentId,
-      assessmentId,
-      videoBlob,
-      recordingDuration,
-      questions,
-      currentQuestionIndex,
-      videoRecorder,
-      videoPreviewUrl,
-    } = get();
-
-    if (!studentId || !assessmentId || !videoBlob) {
-      set({ error: { message: 'No video recording to submit' } });
-      return;
-    }
-
-    const currentQuestion = questions[currentQuestionIndex];
-    if (!currentQuestion) {
-      set({ error: { message: 'Invalid question' } });
-      return;
-    }
-
-    set({ isUploading: true, uploadProgress: 0, error: null });
-
-    try {
-      const fileUrl = await uploadVideo(
-        videoBlob,
-        studentId,
-        currentQuestion.id,
-        (progress) => { set({ uploadProgress: progress.percentage }); }
-      );
-
-      await submitVideoAnswer(studentId, currentQuestion.id, assessmentId, fileUrl, recordingDuration);
-      await get().loadProgress();
-
-      // Release object URL
-      if (videoPreviewUrl && videoRecorder) videoRecorder.releaseVideoUrl(videoPreviewUrl);
-
-      const newAnsweredIds = new Set(get().answeredQuestionIds);
-      newAnsweredIds.add(currentQuestion.id);
-      set({
-        isUploading: false,
-        uploadProgress: 0,
-        videoBlob: null,
-        recordingDuration: 0,
-        videoPreviewUrl: null,
-        answeredQuestionIds: newAnsweredIds,
-      });
-
-      if (currentQuestionIndex < questions.length - 1) get().nextQuestion();
-    } catch (error) {
-      set({ error: error as ApiError, isUploading: false, uploadProgress: 0 });
-    }
-  },
-
   submitCompleteAssessment: async () => {
     const { studentId, assessmentId } = get();
     if (!studentId || !assessmentId) return;
@@ -760,12 +571,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   },
 
   reset: () => {
-    const { audioRecorder, videoRecorder, proctoring, proctorStream, videoPreviewUrl } = get();
+    const { audioRecorder, proctoring, proctorStream } = get();
     if (audioRecorder) audioRecorder.cleanup();
-    if (videoRecorder) {
-      if (videoPreviewUrl) videoRecorder.releaseVideoUrl(videoPreviewUrl);
-      videoRecorder.cleanup();
-    }
     if (proctoring) { proctoring.stop(); }
     if (proctorStream) proctorStream.getTracks().forEach((t) => t.stop());
 
@@ -789,10 +596,6 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       answerMode: 'oral' as 'oral' | 'written',
       preparationTime: null,
       textAnswer: '',
-      videoRecorder: null,
-      videoLiveStream: null,
-      videoBlob: null,
-      videoPreviewUrl: null,
       proctorStream: null,
       proctoring: null,
       isProctoringActive: false,

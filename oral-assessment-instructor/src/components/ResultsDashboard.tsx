@@ -226,7 +226,7 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
             <p className="text-xs text-slate-400">This will make scores and feedback visible to all students immediately and cannot be undone.</p>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => { setShowReleaseConfirm(false); handleReleaseResults(); }}
+                onClick={async () => { await handleReleaseResults(); setShowReleaseConfirm(false); }}
                 disabled={isReleasing}
                 className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
               >

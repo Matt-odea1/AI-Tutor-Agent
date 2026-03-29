@@ -73,6 +73,9 @@ export interface QuestionsResponse {
   questions: Question[];
   answerMode: 'oral' | 'written';
   preparationTime?: number;
+  assessmentTitle?: string;
+  assessmentCourse?: string;
+  assessmentDescription?: string;
 }
 
 export async function getQuestions(
@@ -87,6 +90,9 @@ export async function getQuestions(
       questions: response.data.questions || [],
       answerMode: response.data.answerMode || 'oral',
       preparationTime: response.data.preparationTime,
+      assessmentTitle: response.data.assessmentTitle,
+      assessmentCourse: response.data.assessmentCourse,
+      assessmentDescription: response.data.assessmentDescription,
     };
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -109,29 +115,6 @@ export async function submitAnswer(
       assessment_id: assessmentId,
       answer_type: 'audio',
       audio_url: audioUrl,
-      duration,
-    });
-  } catch (error) {
-    return handleApiError(error as AxiosError);
-  }
-}
-
-/**
- * Submit a video answer for a question
- */
-export async function submitVideoAnswer(
-  studentId: string,
-  questionId: string,
-  assessmentId: string,
-  videoUrl: string,
-  duration: number
-): Promise<void> {
-  try {
-    await apiClient.post(`/api/student/${studentId}/answer`, {
-      question_id: questionId,
-      assessment_id: assessmentId,
-      answer_type: 'video',
-      video_url: videoUrl,
       duration,
     });
   } catch (error) {
@@ -304,7 +287,6 @@ export default {
   getStudentToken,
   getQuestions,
   submitAnswer,
-  submitVideoAnswer,
   submitTextAnswer,
   submitProctorChunk,
   submitAssessment,

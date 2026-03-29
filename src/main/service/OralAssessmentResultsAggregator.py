@@ -62,12 +62,22 @@ class OralAssessmentResultsAggregator:
         total_score = 0
         max_score = 0
 
-        for question_id, question in questions_map.items():
+        for q_num, (question_id, question) in enumerate(questions_map.items(), start=1):
             answer = answers_map.get(question_id, {})
             evaluation = evaluations_map.get(question_id, {})
 
             score = int(evaluation.get("totalScore", 0)) if evaluation.get("totalScore") is not None else None
             q_max_score = int(evaluation.get("maxScore", 10)) if evaluation.get("maxScore") is not None else 10
+            correctness = int(evaluation.get("correctnessScore", 0)) if evaluation.get("correctnessScore") is not None else 0
+            understanding = int(evaluation.get("understandingScore", 0)) if evaluation.get("understandingScore") is not None else 0
+
+            # Ensure strengths/weaknesses/improvements are lists
+            raw_strengths = evaluation.get("strengths", [])
+            strengths = list(raw_strengths) if isinstance(raw_strengths, (list, set)) else ([raw_strengths] if raw_strengths else [])
+            raw_weaknesses = evaluation.get("weaknesses", [])
+            weaknesses = list(raw_weaknesses) if isinstance(raw_weaknesses, (list, set)) else ([raw_weaknesses] if raw_weaknesses else [])
+            raw_improvements = evaluation.get("suggestedImprovements", [])
+            suggested_improvements = list(raw_improvements) if isinstance(raw_improvements, (list, set)) else ([raw_improvements] if raw_improvements else [])
 
             if score is not None:
                 total_score += score
@@ -76,14 +86,20 @@ class OralAssessmentResultsAggregator:
             question_results.append(
                 {
                     "questionId": question_id,
+                    "questionNumber": q_num,
                     "questionText": question.get("text", ""),
+                    "questionType": question.get("questionType"),
                     "audioUrl": answer.get("audioUrl"),
+                    "transcript": answer.get("transcript"),
                     "duration": int(answer.get("duration", 0)) if answer.get("duration") else None,
-                    "score": score,
+                    "totalScore": score,
+                    "correctnessScore": correctness,
+                    "understandingScore": understanding,
                     "maxScore": q_max_score,
                     "feedback": evaluation.get("feedback"),
-                    "strengths": " ".join(evaluation["strengths"]) if isinstance(evaluation.get("strengths"), (list, set)) else evaluation.get("strengths"),
-                    "improvements": " ".join(evaluation["suggestedImprovements"]) if isinstance(evaluation.get("suggestedImprovements"), (list, set)) else evaluation.get("suggestedImprovements"),
+                    "strengths": strengths,
+                    "weaknesses": weaknesses,
+                    "suggestedImprovements": suggested_improvements,
                     "evaluatedAt": evaluation.get("evaluatedAt"),
                 }
             )

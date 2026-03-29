@@ -97,13 +97,6 @@ class ApiService {
     return response.data;
   }
 
-  async getGenerationJobStatus(jobId: string): Promise<QuestionGenerationJob> {
-    const response = await this.client.get<QuestionGenerationJob>(
-      `/api/jobs/generation/${jobId}`
-    );
-    return response.data;
-  }
-
   // S3 upload endpoints
   async getPresignedUploadUrl(data: GetPresignedUrlRequest): Promise<PresignedUrlResponse> {
     const response = await this.client.post<PresignedUrlResponse>('/api/s3/upload-url', data);

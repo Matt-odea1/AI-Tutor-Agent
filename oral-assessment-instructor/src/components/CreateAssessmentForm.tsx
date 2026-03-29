@@ -52,6 +52,10 @@ export default function CreateAssessmentForm() {
       newErrors.timeLimit = 'Time limit must be between 1 and 30 minutes';
     }
 
+    if (formData.answerMode === 'oral' && formData.preparationTime != null && (formData.preparationTime < 0 || formData.preparationTime > 300)) {
+      (newErrors as Record<string, string>).preparationTime = 'Preparation time must be between 0 and 300 seconds';
+    }
+
     if (formData.accessMode === 'scheduled') {
       if (!formData.scheduledWindowStart) {
         newErrors.scheduledWindowStart = 'Window start is required for scheduled access';

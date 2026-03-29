@@ -109,6 +109,9 @@ async def get_student_questions(
             totalQuestions=len(question_dtos),
             answerMode=result.get("answerMode", "oral") if isinstance(result, dict) else "oral",
             preparationTime=result.get("preparationTime") if isinstance(result, dict) else None,
+            assessmentTitle=result.get("assessmentTitle") if isinstance(result, dict) else None,
+            assessmentCourse=result.get("assessmentCourse") if isinstance(result, dict) else None,
+            assessmentDescription=result.get("assessmentDescription") if isinstance(result, dict) else None,
         )
 
     except OralAssessmentServiceError as error:

@@ -7,7 +7,7 @@ import SetupStepIndicator from '../components/SetupStepIndicator';
 
 export default function MonitorProgress() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
-  const { selectedAssessment, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
+  const { selectedAssessment, error, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
 
   useEffect(() => {
     if (assessmentId && assessmentId !== selectedAssessment?.id) {
@@ -27,6 +27,22 @@ export default function MonitorProgress() {
       setLoading(false);
     }
   };
+
+  if (error && !selectedAssessment) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 border border-red-500/50 rounded-lg p-6 max-w-md w-full text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <button
+            onClick={() => assessmentId && loadAssessment(assessmentId)}
+            className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!selectedAssessment || !assessmentId) {
     return (

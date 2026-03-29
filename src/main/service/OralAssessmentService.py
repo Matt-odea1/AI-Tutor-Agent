@@ -201,6 +201,9 @@ class OralAssessmentService:
                 "questions": self._convert_decimals(questions),
                 "answerMode": assessment_meta.get("answerMode", "oral"),
                 "preparationTime": assessment_meta.get("preparationTime"),
+                "assessmentTitle": assessment_meta.get("title"),
+                "assessmentCourse": assessment_meta.get("course"),
+                "assessmentDescription": assessment_meta.get("description"),
             }
             
         except ValueError as e:
@@ -422,39 +425,39 @@ class OralAssessmentService:
             OralAssessmentServiceError: If student or assessment not found
         """
         try:
-            # Get enrollment data
+            # Get enrollment data from primary record (has name, email, timestamps)
             enrollment_response = self.table.get_item(
                 Key={
-                    'PK': f"STUDENT#{student_id}",
-                    'SK': f"ASSESSMENT#{assessment_id}"
+                    'PK': f"ASSESSMENT#{assessment_id}",
+                    'SK': f"STUDENT#{student_id}"
                 }
             )
-            
+
             if 'Item' not in enrollment_response:
                 raise OralAssessmentServiceError(
                     f"Student {student_id} not enrolled in assessment {assessment_id}"
                 )
-            
+
             enrollment = enrollment_response['Item']
-            
+
             # Count total questions for this assessment
             questions_response = self.table.query(
                 KeyConditionExpression=Key('PK').eq(f"ASSESSMENT#{assessment_id}") & Key('SK').begins_with('QUESTION#')
             )
             total_questions = len(questions_response.get('Items', []))
-            
+
             # Count answered questions - query student answers
             answers_response = self.table.query(
                 KeyConditionExpression=Key('PK').eq(f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}") & Key('SK').begins_with('ANSWER#')
             )
             answered_questions = len(answers_response.get('Items', []))
-            
+
             # Calculate progress
             percentage = round((answered_questions / total_questions * 100), 1) if total_questions > 0 else 0
-            
+
             # Determine status from enrollment
             status = enrollment.get('status', 'not_started')
-            
+
             # Get assessment metadata
             assessment_response = self.table.get_item(
                 Key={
@@ -462,21 +465,21 @@ class OralAssessmentService:
                     'SK': 'METADATA'
                 }
             )
-            
-            assessment_title = assessment_response.get('Item', {}).get('Title', 'Unknown Assessment')
-            
+
+            assessment_title = assessment_response.get('Item', {}).get('title', 'Unknown Assessment')
+
             progress = {
                 "studentId": student_id,
-                "studentName": enrollment.get('StudentName', ''),
-                "studentEmail": enrollment.get('StudentEmail', ''),
+                "studentName": enrollment.get('name', ''),
+                "studentEmail": enrollment.get('email', ''),
                 "assessmentId": assessment_id,
                 "assessmentTitle": assessment_title,
                 "status": status,
                 "totalQuestions": total_questions,
                 "answeredQuestions": answered_questions,
                 "percentage": percentage,
-                "startedAt": enrollment.get('StartedAt'),
-                "submittedAt": enrollment.get('SubmittedAt')
+                "startedAt": enrollment.get('startedAt'),
+                "submittedAt": enrollment.get('submittedAt')
             }
             
             logger.info(f"Retrieved progress for student {student_id}: {answered_questions}/{total_questions} answered")
