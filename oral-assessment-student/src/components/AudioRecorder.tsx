@@ -63,8 +63,7 @@ export default function AudioRecorder({
   // Stop recording when time limit reached
   useEffect(() => {
     if (isRecording && recordingDuration >= timeLimit) {
-      stopRecording();
-      setAutoStopped(true);
+      stopRecording().then(() => setAutoStopped(true));
     }
   }, [isRecording, recordingDuration, timeLimit, stopRecording]);
 

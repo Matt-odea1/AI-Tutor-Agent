@@ -26,7 +26,17 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey }: 
   const [announcement, setAnnouncement] = useState('');
   // Stable ref so the interval always calls the latest onExpire without re-creating
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
+
+  // Reset state when question changes (render-time pattern, avoids setState-in-effect)
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
+    setRemaining(timeLimitSeconds ?? 0);
+    setAnnouncement('');
+  }
 
   const handleExpire = useCallback(() => {
     if (expiredRef.current) return; // prevent double-fire
@@ -34,17 +44,10 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey }: 
     onExpireRef.current?.();
   }, []);
 
-  // Reset whenever the question or limit changes
-  useEffect(() => {
-    setRemaining(timeLimitSeconds ?? 0);
-    expiredRef.current = false; // reset guard for new question
-    setAnnouncement('');
-  }, [timeLimitSeconds, resetKey]);
-
   // Tick down using Date.now() anchor for accuracy
   useEffect(() => {
-    if (!timeLimitSeconds) return;
     expiredRef.current = false;
+    if (!timeLimitSeconds) return;
     endTimeRef.current = Date.now() + timeLimitSeconds * 1000;
 
     const interval = setInterval(() => {
