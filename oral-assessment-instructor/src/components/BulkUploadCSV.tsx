@@ -60,11 +60,11 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
               return;
             }
 
-            // Normalize headers to lowercase
+            // Normalize headers: lowercase and strip underscores/hyphens/spaces
             const normalizedData = results.data.map(row => {
               const normalizedRow: Record<string, string> = {};
               Object.keys(row).forEach(key => {
-                normalizedRow[key.toLowerCase().trim()] = row[key];
+                normalizedRow[key.toLowerCase().trim().replace(/[_\- ]/g, '')] = row[key];
               });
               return normalizedRow;
             });
