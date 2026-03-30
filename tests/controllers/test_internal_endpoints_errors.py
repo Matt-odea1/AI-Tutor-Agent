@@ -69,8 +69,10 @@ def test_s3_upload_url_maps_service_error():
     assert response.json()["error"]["code"] == "s3_upload_url_failed"
 
 
-def test_s3_upload_url_forbidden_maps_to_auth_error():
+def test_s3_upload_url_allowed_for_students():
+    """Students need upload URLs for audio answer submissions."""
     s3 = MagicMock()
+    s3.generate_upload_url.return_value = {"uploadUrl": "https://s3.example.com/put", "fileUrl": "https://s3.example.com/a.webm"}
     client = _build_client(
         s3_service=s3,
         principal=AuthPrincipal(user_id="s-1", roles=["student"], source="jwt"),
@@ -78,5 +80,4 @@ def test_s3_upload_url_forbidden_maps_to_auth_error():
 
     response = client.post("/api/s3/upload-url?filename=a.webm")
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "auth_error"
+    assert response.status_code == 200
