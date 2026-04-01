@@ -26,10 +26,10 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 w-full max-w-md shadow-xl">
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Reset Password</h1>
-        <p className="text-slate-400 text-sm mb-6">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-md shadow-xl">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h1>
+        <p className="text-gray-500 text-sm mb-6">
           Enter your email address and we'll send you a reset link.
         </p>
 
@@ -53,7 +53,7 @@ export default function ForgotPassword() {
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-1">
                   Email
                 </label>
                 <input
@@ -63,7 +63,7 @@ export default function ForgotPassword() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
-                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
                   placeholder="you@university.edu"
                 />
               </div>
@@ -76,7 +76,7 @@ export default function ForgotPassword() {
               </button>
             </form>
             <div className="mt-4 text-center">
-              <Link to="/login" className="text-slate-400 hover:text-slate-300 text-sm">
+              <Link to="/login" className="text-gray-500 hover:text-gray-600 text-sm">
                 ← Back to Sign In
               </Link>
             </div>

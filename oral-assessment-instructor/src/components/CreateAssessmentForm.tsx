@@ -150,7 +150,7 @@ export default function CreateAssessmentForm() {
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
       {/* Title */}
       <div>
-        <label htmlFor="title" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
           Assessment Title *
         </label>
         <input
@@ -159,7 +159,7 @@ export default function CreateAssessmentForm() {
           name="title"
           value={formData.title}
           onChange={handleChange}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
           placeholder="e.g., Midterm Oral Assessment"
         />
         {errors.title && <p className="mt-1 text-sm text-red-400">{errors.title}</p>}
@@ -167,7 +167,7 @@ export default function CreateAssessmentForm() {
 
       {/* Description */}
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
           Description
         </label>
         <textarea
@@ -176,14 +176,14 @@ export default function CreateAssessmentForm() {
           value={formData.description}
           onChange={handleChange}
           rows={3}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none"
           placeholder="Describe the assessment objectives..."
         />
       </div>
 
       {/* Course */}
       <div>
-        <label htmlFor="course" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="course" className="block text-sm font-medium text-gray-700 mb-2">
           Course *
         </label>
         <input
@@ -192,7 +192,7 @@ export default function CreateAssessmentForm() {
           name="course"
           value={formData.course}
           onChange={handleChange}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
           placeholder="e.g., CS 101 - Introduction to Programming"
         />
         {errors.course && <p className="mt-1 text-sm text-red-400">{errors.course}</p>}
@@ -200,7 +200,7 @@ export default function CreateAssessmentForm() {
 
       {/* Due Date */}
       <div>
-        <label htmlFor="dueDate" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 mb-2">
           Display Deadline *
         </label>
         <input
@@ -209,9 +209,9 @@ export default function CreateAssessmentForm() {
           name="dueDate"
           value={formData.dueDate}
           onChange={handleChange}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-gray-500">
           Shown to students as a reminder — does not enforce access. Use "Scheduled Window" below to restrict when students can open the assessment.
         </p>
         {errors.dueDate && <p className="mt-1 text-sm text-red-400">{errors.dueDate}</p>}
@@ -219,7 +219,7 @@ export default function CreateAssessmentForm() {
 
       {/* Access Mode */}
       <div>
-        <label className="block text-sm font-medium text-slate-200 mb-2">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           Student Access
         </label>
         <div className="flex space-x-4">
@@ -231,7 +231,7 @@ export default function CreateAssessmentForm() {
               onChange={() => handleAccessModeChange('open')}
               className="text-primary-600 focus:ring-primary-500"
             />
-            <span className="text-slate-200 text-sm font-medium">Open access</span>
+            <span className="text-gray-700 text-sm font-medium">Open access</span>
           </label>
           <label className="flex items-center space-x-2 cursor-pointer">
             <input
@@ -241,10 +241,10 @@ export default function CreateAssessmentForm() {
               onChange={() => handleAccessModeChange('scheduled')}
               className="text-primary-600 focus:ring-primary-500"
             />
-            <span className="text-slate-200 text-sm font-medium">Scheduled window</span>
+            <span className="text-gray-700 text-sm font-medium">Scheduled window</span>
           </label>
         </div>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-gray-500">
           {formData.accessMode === 'open'
             ? 'Students can open their link at any time until the display deadline.'
             : 'Students can only access the assessment during the specified window.'}
@@ -253,10 +253,10 @@ export default function CreateAssessmentForm() {
 
       {/* Scheduled Window (shown only when scheduled mode is selected) */}
       {formData.accessMode === 'scheduled' && (
-        <div className="bg-slate-700/50 rounded-lg p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-slate-200">Scheduled Access Window</h3>
+        <div className="bg-gray-100 rounded-lg p-4 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700">Scheduled Access Window</h3>
           <div>
-            <label htmlFor="scheduledWindowStart" className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor="scheduledWindowStart" className="block text-sm font-medium text-gray-600 mb-2">
               Window opens *
             </label>
             <input
@@ -265,12 +265,12 @@ export default function CreateAssessmentForm() {
               name="scheduledWindowStart"
               value={formData.scheduledWindowStart ?? ''}
               onChange={handleChange}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             />
             {errors.scheduledWindowStart && <p className="mt-1 text-sm text-red-400">{errors.scheduledWindowStart}</p>}
           </div>
           <div>
-            <label htmlFor="scheduledWindowEnd" className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor="scheduledWindowEnd" className="block text-sm font-medium text-gray-600 mb-2">
               Window closes *
             </label>
             <input
@@ -279,7 +279,7 @@ export default function CreateAssessmentForm() {
               name="scheduledWindowEnd"
               value={formData.scheduledWindowEnd ?? ''}
               onChange={handleChange}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             />
             {errors.scheduledWindowEnd && <p className="mt-1 text-sm text-red-400">{errors.scheduledWindowEnd}</p>}
           </div>
@@ -288,7 +288,7 @@ export default function CreateAssessmentForm() {
 
       {/* Total Questions */}
       <div>
-        <label htmlFor="totalQuestions" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="totalQuestions" className="block text-sm font-medium text-gray-700 mb-2">
           Number of Questions *
         </label>
         <input
@@ -299,9 +299,9 @@ export default function CreateAssessmentForm() {
           onChange={handleChange}
           min={1}
           max={20}
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
-        <p className="mt-1 text-sm text-slate-400">Recommended: 8 questions (1-20)</p>
+        <p className="mt-1 text-sm text-gray-500">Recommended: 8 questions (1-20)</p>
         {errors.totalQuestions && (
           <p className="mt-1 text-sm text-red-400">{errors.totalQuestions}</p>
         )}
@@ -309,7 +309,7 @@ export default function CreateAssessmentForm() {
 
       {/* Answer Mode */}
       <div>
-        <label className="block text-sm font-medium text-slate-200 mb-2">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           Answer Mode *
         </label>
         <div className="flex space-x-4">
@@ -321,7 +321,7 @@ export default function CreateAssessmentForm() {
               onChange={() => setFormData(prev => ({ ...prev, answerMode: 'oral', preparationTime: 60 }))}
               className="text-primary-600 focus:ring-primary-500"
             />
-            <span className="text-slate-200 text-sm font-medium">Oral (voice recording)</span>
+            <span className="text-gray-700 text-sm font-medium">Oral (voice recording)</span>
           </label>
           <label className="flex items-center space-x-2 cursor-pointer">
             <input
@@ -331,10 +331,10 @@ export default function CreateAssessmentForm() {
               onChange={() => setFormData(prev => ({ ...prev, answerMode: 'written', preparationTime: undefined }))}
               className="text-primary-600 focus:ring-primary-500"
             />
-            <span className="text-slate-200 text-sm font-medium">Written (typed text)</span>
+            <span className="text-gray-700 text-sm font-medium">Written (typed text)</span>
           </label>
         </div>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-gray-500">
           {formData.answerMode === 'oral'
             ? 'Students record an audio answer. A preparation countdown is shown before recording starts.'
             : 'Students type their answer. The answer timer starts immediately when the question is shown.'}
@@ -344,7 +344,7 @@ export default function CreateAssessmentForm() {
       {/* Preparation Time (oral only) */}
       {formData.answerMode === 'oral' && (
         <div>
-          <label htmlFor="preparationTime" className="block text-sm font-medium text-slate-200 mb-2">
+          <label htmlFor="preparationTime" className="block text-sm font-medium text-gray-700 mb-2">
             Preparation Time (seconds)
           </label>
           <input
@@ -356,9 +356,9 @@ export default function CreateAssessmentForm() {
             min={0}
             max={300}
             placeholder="60"
-            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
           />
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-gray-500">
             0-300 seconds (0-5 minutes). Time students have to read the question before recording begins. Set to 0 to start recording immediately.
           </p>
         </div>
@@ -366,7 +366,7 @@ export default function CreateAssessmentForm() {
 
       {/* Time Limit */}
       <div>
-        <label htmlFor="timeLimit" className="block text-sm font-medium text-slate-200 mb-2">
+        <label htmlFor="timeLimit" className="block text-sm font-medium text-gray-700 mb-2">
           Time Limit per Question (minutes)
         </label>
         <input
@@ -378,9 +378,9 @@ export default function CreateAssessmentForm() {
           min={1}
           max={30}
           placeholder="No limit"
-          className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
         />
-        <p className="mt-1 text-sm text-slate-400">Optional: 1-30 minutes per question. Leave blank for no time limit.</p>
+        <p className="mt-1 text-sm text-gray-500">Optional: 1-30 minutes per question. Leave blank for no time limit.</p>
         {errors.timeLimit && <p className="mt-1 text-sm text-red-400">{errors.timeLimit}</p>}
       </div>
 
@@ -388,14 +388,14 @@ export default function CreateAssessmentForm() {
       <div className="flex items-center gap-4 pt-4">
         <button
           type="submit"
-          className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Create Assessment
         </button>
         <button
           type="button"
           onClick={() => navigate('/assessments')}
-          className="bg-slate-700 text-slate-200 px-6 py-2.5 rounded-lg font-medium hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+          className="bg-gray-100 text-gray-700 px-6 py-2.5 rounded-lg font-medium hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-white"
         >
           Cancel
         </button>

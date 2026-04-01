@@ -38,10 +38,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 w-full max-w-md shadow-xl">
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Instructor Sign In</h1>
-        <p className="text-slate-400 text-sm mb-6">Oral Assessment Platform</p>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-md shadow-xl">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Instructor Sign In</h1>
+        <p className="text-gray-500 text-sm mb-6">Oral Assessment Platform</p>
 
         {error && (
           <div className="mb-4 bg-red-500/10 border border-red-500 rounded-lg p-3">
@@ -51,7 +51,7 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-1">
               Email
             </label>
             <input
@@ -61,13 +61,13 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               placeholder="you@university.edu"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-600 mb-1">
               Password
             </label>
             <input
@@ -77,7 +77,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               placeholder="••••••••"
             />
           </div>
@@ -91,7 +91,7 @@ export default function Login() {
           </button>
         </form>
         <div className="mt-4 text-center">
-          <Link to="/forgot-password" className="text-slate-400 hover:text-slate-300 text-sm">
+          <Link to="/forgot-password" className="text-gray-500 hover:text-gray-600 text-sm">
             Forgot password?
           </Link>
         </div>

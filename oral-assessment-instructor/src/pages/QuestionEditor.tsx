@@ -31,7 +31,7 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   manual: 'bg-purple-900/40 text-purple-300 border-purple-700',
   specific: 'bg-blue-900/40 text-blue-300 border-blue-700',
-  general: 'bg-slate-600/40 text-slate-300 border-slate-600',
+  general: 'bg-gray-200/40 text-gray-600 border-gray-300',
 };
 
 export default function QuestionEditor() {
@@ -168,26 +168,26 @@ export default function QuestionEditor() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-slate-400">Loading questions…</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">Loading questions…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <button
               onClick={() => navigate(-1)}
-              className="text-sm text-slate-400 hover:text-slate-200 mb-1 flex items-center gap-1"
+              className="text-sm text-gray-500 hover:text-gray-700 mb-1 flex items-center gap-1"
             >
               ← Back
             </button>
             <h1 className="text-xl font-bold">Question Editor</h1>
-            <p className="text-sm text-slate-400 mt-0.5">
+            <p className="text-sm text-gray-500 mt-0.5">
               {assessment?.title} · {studentName}
             </p>
           </div>
@@ -209,7 +209,7 @@ export default function QuestionEditor() {
 
         {/* Question list */}
         {questions.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
+          <div className="text-center py-12 text-gray-500">
             No questions generated yet for this student.
           </div>
         )}
@@ -217,11 +217,11 @@ export default function QuestionEditor() {
         {questions.map((q) => (
           <div
             key={q.id}
-            className="bg-slate-800 border border-slate-700 rounded-lg p-5"
+            className="bg-white border border-gray-200 rounded-lg p-5"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 flex-1">
-                <span className="text-slate-400 font-mono text-sm mt-0.5 min-w-[2rem]">
+                <span className="text-gray-500 font-mono text-sm mt-0.5 min-w-[2rem]">
                   Q{q.questionNumber}
                 </span>
                 <div className="flex-1">
@@ -231,11 +231,11 @@ export default function QuestionEditor() {
                         value={editState.text}
                         onChange={(e) => setEditState((s) => ({ ...s, text: e.target.value }))}
                         rows={4}
-                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
+                        className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
                       />
-                      <p className="text-xs text-slate-500">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
+                      <p className="text-xs text-gray-400">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
                       <div className="flex items-center gap-3">
-                        <label className="text-xs text-slate-400">Time limit (min)</label>
+                        <label className="text-xs text-gray-500">Time limit (min)</label>
                         <input
                           type="number"
                           min={1}
@@ -243,7 +243,7 @@ export default function QuestionEditor() {
                           value={editState.timeLimit}
                           onChange={(e) => setEditState((s) => ({ ...s, timeLimit: e.target.value }))}
                           placeholder="inherit"
-                          className="w-24 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:outline-none"
+                          className="w-24 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
                         />
                         <div className="flex gap-2 ml-auto">
                           <button
@@ -255,7 +255,7 @@ export default function QuestionEditor() {
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="px-3 py-1.5 bg-slate-700 text-slate-200 text-xs rounded hover:bg-slate-600"
+                            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
                           >
                             Cancel
                           </button>
@@ -263,7 +263,7 @@ export default function QuestionEditor() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-200 leading-relaxed">{q.text}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">{q.text}</p>
                   )}
 
                   {editingId !== q.id && (
@@ -275,12 +275,12 @@ export default function QuestionEditor() {
                         {q.difficulty}
                       </span>
                       {q.topic && q.topic !== 'general' && (
-                        <span className="px-2 py-0.5 text-xs bg-slate-700 text-slate-300 border border-slate-600 rounded">
+                        <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 border border-gray-300 rounded">
                           {q.topic}
                         </span>
                       )}
                       {q.timeLimit != null && (
-                        <span className="px-2 py-0.5 text-xs text-slate-400">
+                        <span className="px-2 py-0.5 text-xs text-gray-500">
                           ⏱ {q.timeLimit}m
                         </span>
                       )}
@@ -293,7 +293,7 @@ export default function QuestionEditor() {
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => startEdit(q)}
-                    className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded transition-colors"
+                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                     title="Edit question"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -304,7 +304,7 @@ export default function QuestionEditor() {
                   <button
                     onClick={() => deleteQuestion(q.id)}
                     disabled={deletingId === q.id || questions.length <= 1}
-                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     title={questions.length <= 1 ? 'Cannot delete last question' : 'Delete question'}
                   >
                     {deletingId === q.id ? (
@@ -325,23 +325,23 @@ export default function QuestionEditor() {
         {/* Add question */}
         {!isLocked && (
           showAddForm ? (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-5 space-y-4">
-              <h3 className="text-sm font-medium text-slate-200">Add Question</h3>
+            <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+              <h3 className="text-sm font-medium text-gray-700">Add Question</h3>
               <textarea
                 value={addForm.text}
                 onChange={(e) => setAddForm((s) => ({ ...s, text: e.target.value }))}
                 rows={4}
                 placeholder="Enter question text (min 10 characters)…"
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
+                className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
               />
-              <p className="text-xs text-slate-500">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
+              <p className="text-xs text-gray-400">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Type</label>
+                  <label className="block text-xs text-gray-500 mb-1">Type</label>
                   <select
                     value={addForm.questionType}
                     onChange={(e) => setAddForm((s) => ({ ...s, questionType: e.target.value }))}
-                    className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:outline-none"
+                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
                   >
                     <option value="manual">manual</option>
                     <option value="specific">specific</option>
@@ -349,11 +349,11 @@ export default function QuestionEditor() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Difficulty</label>
+                  <label className="block text-xs text-gray-500 mb-1">Difficulty</label>
                   <select
                     value={addForm.difficulty}
                     onChange={(e) => setAddForm((s) => ({ ...s, difficulty: e.target.value }))}
-                    className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:outline-none"
+                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
                   >
                     <option value="easy">easy</option>
                     <option value="medium">medium</option>
@@ -361,7 +361,7 @@ export default function QuestionEditor() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Time limit (min)</label>
+                  <label className="block text-xs text-gray-500 mb-1">Time limit (min)</label>
                   <input
                     type="number"
                     min={1}
@@ -369,24 +369,24 @@ export default function QuestionEditor() {
                     value={addForm.timeLimit}
                     onChange={(e) => setAddForm((s) => ({ ...s, timeLimit: e.target.value }))}
                     placeholder="inherit"
-                    className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:outline-none"
+                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Topic</label>
+                <label className="block text-xs text-gray-500 mb-1">Topic</label>
                 <input
                   type="text"
                   value={addForm.topic}
                   onChange={(e) => setAddForm((s) => ({ ...s, topic: e.target.value }))}
                   placeholder="e.g. data structures, algorithms…"
-                  className="w-full px-3 py-1.5 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm focus:outline-none"
+                  className="w-full px-3 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
                 />
               </div>
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => { setShowAddForm(false); setAddForm({ text: '', questionType: 'manual', difficulty: 'medium', topic: 'general', timeLimit: '' }); }}
-                  className="px-4 py-2 bg-slate-700 text-slate-200 text-sm rounded hover:bg-slate-600"
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
                 >
                   Cancel
                 </button>
@@ -402,7 +402,7 @@ export default function QuestionEditor() {
           ) : (
             <button
               onClick={() => setShowAddForm(true)}
-              className="w-full py-3 border-2 border-dashed border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-300 rounded-lg text-sm transition-colors"
+              className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 hover:border-slate-500 hover:text-gray-600 rounded-lg text-sm transition-colors"
             >
               + Add Question for This Student
             </button>

@@ -176,7 +176,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
       case 'failed':
         return 'text-red-400';
       default:
-        return 'text-slate-400';
+        return 'text-gray-500';
     }
   };
 
@@ -217,77 +217,28 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
 
   return (
     <div className="max-w-2xl space-y-6">
-      {/* Info Panel */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-slate-100 mb-3">
-          Step 3: Generate Questions
-        </h3>
-        <p className="text-slate-300 mb-4">
-          Use AI to automatically generate personalized oral assessment questions for each student 
-          based on their submitted code. This process analyzes the code structure, logic, and 
-          patterns to create relevant questions.
-        </p>
-        <div className="bg-slate-900 border border-slate-700 rounded p-4">
-          <h4 className="text-sm font-medium text-slate-200 mb-2">How it works:</h4>
-          <ul className="space-y-1.5 text-sm text-slate-400">
-            <li className="flex items-start">
-              <span className="text-primary-400 mr-2">1.</span>
-              <span>Code is analyzed using Neo4j vector similarity and graph relationships</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-400 mr-2">2.</span>
-              <span>The AI generates unique questions tailored to each student's code and the assignment brief</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-400 mr-2">3.</span>
-              <span>Questions are validated and stored in the database</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-400 mr-2">4.</span>
-              <span>Students receive email notifications to begin their assessment</span>
-            </li>
-          </ul>
-        </div>
-      </div>
 
       {/* Generation Status */}
       {!generationJob ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center">
-          <svg
-            className="mx-auto h-16 w-16 text-slate-400 mb-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-            />
-          </svg>
-          <h3 className="text-lg font-semibold text-slate-100 mb-2">
-            Ready to Generate Questions
-          </h3>
-          <p className="text-slate-400 mb-6">
-            Click the button below to start the AI-powered question generation process.
-            This may take several minutes depending on the number of students.
+        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+          <p className="text-gray-500 mb-6">
+            Generate personalised questions for each student based on their submitted code.
           </p>
           <button
             onClick={handleStartGeneration}
             disabled={isGenerating}
-            className="bg-primary-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-primary-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? 'Starting...' : 'Generate Questions'}
           </button>
         </div>
       ) : (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
               {getStatusIcon(generationJob.status)}
               <div>
-                <h3 className="text-lg font-semibold text-slate-100">
+                <h3 className="text-lg font-semibold text-gray-900">
                   Question Generation
                 </h3>
                 <p className={`text-sm ${getStatusColor(generationJob.status)}`}>
@@ -299,13 +250,13 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
 
           {/* Progress Bar */}
           <div className="mb-6">
-            <div className="flex justify-between text-sm text-slate-400 mb-2">
+            <div className="flex justify-between text-sm text-gray-500 mb-2">
               <span>Progress</span>
               <span>
                 {generationJob.processedCount} / {generationJob.totalStudents} students
               </span>
             </div>
-            <div className="w-full bg-slate-700 rounded-full h-3">
+            <div className="w-full bg-gray-100 rounded-full h-3">
               <div
                 className={`h-3 rounded-full transition-all duration-500 ${
                   generationJob.status === 'completed'
@@ -318,31 +269,31 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
               />
             </div>
             <div className="flex justify-center items-center gap-4 mt-2">
-              <span className="text-2xl font-bold text-slate-200">
+              <span className="text-2xl font-bold text-gray-700">
                 {generationJob.totalStudents === 0 ? 'No students' : `${progressPercentage}%`}
               </span>
               {elapsedDisplay && (
-                <span className="text-sm text-slate-400">Elapsed: {elapsedDisplay}</span>
+                <span className="text-sm text-gray-500">Elapsed: {elapsedDisplay}</span>
               )}
             </div>
           </div>
 
           {/* Stats Grid */}
           <div className={`grid ${generationJob.failedCount > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-4 mb-6`}>
-            <div className="bg-slate-900 rounded-lg p-4">
-              <div className="text-sm text-slate-400 mb-1">Total Students</div>
-              <div className="text-2xl font-bold text-slate-100">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-sm text-gray-500 mb-1">Total Students</div>
+              <div className="text-2xl font-bold text-gray-900">
                 {generationJob.totalStudents}
               </div>
             </div>
-            <div className="bg-slate-900 rounded-lg p-4">
-              <div className="text-sm text-slate-400 mb-1">Processed</div>
-              <div className="text-2xl font-bold text-slate-100">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-sm text-gray-500 mb-1">Processed</div>
+              <div className="text-2xl font-bold text-gray-900">
                 {generationJob.processedCount}
               </div>
             </div>
             {generationJob.failedCount > 0 && (
-              <div className="bg-slate-900 rounded-lg p-4">
+              <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-sm text-red-400 mb-1">Failed</div>
                 <div className="text-2xl font-bold text-red-400">
                   {generationJob.failedCount}
@@ -397,12 +348,12 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
           <div className="text-center">
             {generationJob.status === 'pending' && (
               <div className="space-y-3">
-                <p className="text-slate-400 text-sm">
+                <p className="text-gray-500 text-sm">
                   Waiting to start... Your job is in the queue.
                 </p>
                 <button
                   onClick={handleCancel}
-                  className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
                   Dismiss
                 </button>
@@ -410,12 +361,12 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
             )}
             {generationJob.status === 'running' && (
               <div className="space-y-3">
-                <p className="text-slate-400 text-sm">
+                <p className="text-gray-500 text-sm">
                   Generating questions... This may take a few minutes.
                 </p>
                 <button
                   onClick={handleCancel}
-                  className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
                   Dismiss
                 </button>
@@ -428,7 +379,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                 </p>
                 {students.length > 0 && (
                   <div className="text-left mt-4">
-                    <h4 className="text-sm font-medium text-slate-300 mb-2">
+                    <h4 className="text-sm font-medium text-gray-600 mb-2">
                       Questions generated for {students.length} student{students.length !== 1 ? 's' : ''}
                     </h4>
                     <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -436,9 +387,9 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                         <Link
                           key={s.studentId}
                           to={`/assessments/${assessmentId}/questions/${s.studentId}`}
-                          className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 transition-colors text-sm"
+                          className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm"
                         >
-                          <span className="text-slate-200">{s.name || s.studentId}</span>
+                          <span className="text-gray-700">{s.name || s.studentId}</span>
                           <span className="text-primary-400 text-xs font-medium">Edit Questions →</span>
                         </Link>
                       ))}
@@ -447,7 +398,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
                 )}
                 <button
                   onClick={handleContinue}
-                  className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                  className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white"
                 >
                   Continue to Monitor Progress
                 </button>
@@ -457,7 +408,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
               <button
                 onClick={handleStartGeneration}
                 disabled={isGenerating}
-                className="bg-red-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50"
+                className="bg-red-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50"
               >
                 Retry Generation
               </button>

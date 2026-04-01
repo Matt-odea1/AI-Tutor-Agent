@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import BulkUploadCSV from '../components/BulkUploadCSV';
-import SetupStepIndicator from '../components/SetupStepIndicator';
 import { useToast } from '../hooks/useToast';
 import Toast from '../components/Toast';
 
@@ -42,38 +41,37 @@ export default function UploadStudents() {
 
   if (!selectedAssessment) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-gray-50">
       {toast && <Toast toast={toast} onDismiss={dismissToast} />}
-      <header className="bg-slate-800 border-b border-slate-700">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center space-x-4">
-            <Link to="/assessments" className="text-slate-400 hover:text-slate-300">
+            <Link to="/assessments" className="text-gray-500 hover:text-gray-600">
               ← Back to Assessments
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-slate-100 mt-2">
+          <h1 className="text-2xl font-bold text-gray-900 mt-2">
             Upload Students: {selectedAssessment.title}
           </h1>
-          <p className="text-slate-400 text-sm mt-1">{selectedAssessment.course}</p>
+          <p className="text-gray-500 text-sm mt-1">{selectedAssessment.course}</p>
         </div>
       </header>
 
-      <SetupStepIndicator currentStep={2} assessmentId={assessmentId!} />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-8">
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-8">
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-slate-100 mb-2">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
               Step 2: Upload Student Data
             </h2>
-            <p className="text-slate-400 text-sm">
+            <p className="text-gray-500 text-sm">
               Upload a CSV file with student information and their code submissions.
               After uploading, you can proceed to generate questions automatically.
             </p>

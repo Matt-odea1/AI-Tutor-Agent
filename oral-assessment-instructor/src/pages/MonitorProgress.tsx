@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import StudentProgressTable from '../components/StudentProgressTable';
-import SetupStepIndicator from '../components/SetupStepIndicator';
 
 export default function MonitorProgress() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -30,8 +29,8 @@ export default function MonitorProgress() {
 
   if (error && !selectedAssessment) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800 border border-red-500/50 rounded-lg p-6 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white border border-red-500/50 rounded-lg p-6 max-w-md w-full text-center">
           <p className="text-red-400 mb-4">{error}</p>
           <button
             onClick={() => assessmentId && loadAssessment(assessmentId)}
@@ -46,27 +45,27 @@ export default function MonitorProgress() {
 
   if (!selectedAssessment || !assessmentId) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="bg-slate-800 border-b border-slate-700">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center space-x-4 mb-2">
-                <Link to="/assessments" className="text-slate-400 hover:text-slate-300">
+                <Link to="/assessments" className="text-gray-500 hover:text-gray-600">
                   ← Back to Assessments
                 </Link>
               </div>
-              <h1 className="text-2xl font-bold text-slate-100">
+              <h1 className="text-2xl font-bold text-gray-900">
                 Monitor Progress: {selectedAssessment.title}
               </h1>
-              <p className="text-slate-400 text-sm mt-1">{selectedAssessment.course}</p>
+              <p className="text-gray-500 text-sm mt-1">{selectedAssessment.course}</p>
             </div>
             <Link
               to={`/assessments/${assessmentId}/results`}
@@ -78,7 +77,6 @@ export default function MonitorProgress() {
         </div>
       </header>
 
-      <SetupStepIndicator currentStep={4} assessmentId={assessmentId!} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <StudentProgressTable assessmentId={assessmentId} />

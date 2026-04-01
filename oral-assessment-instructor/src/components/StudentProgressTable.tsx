@@ -53,7 +53,6 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
-  const [showRefreshInfo, setShowRefreshInfo] = useState(true);
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -65,13 +64,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     loadStudents();
   }, [assessmentId]);
 
-  // Start polling for progress updates with adaptive backoff
-  const pollingStartTime = useRef(Date.now());
-  const lastDataHash = useRef('');
-
+  // Poll for progress updates every 10s
   useEffect(() => {
-    pollingStartTime.current = Date.now();
-    lastDataHash.current = '';
     startPolling();
     return () => {
       if (pollingInterval) {
@@ -118,43 +112,21 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     }
   };
 
-  const getPollingInterval = (): number => {
-    const elapsed = Date.now() - pollingStartTime.current;
-    if (elapsed > 5 * 60 * 1000) return 60_000;  // After 5 min: poll every 60s
-    if (elapsed > 2 * 60 * 1000) return 30_000;  // After 2 min: poll every 30s
-    return 10_000;                                 // Default: every 10s
-  };
-
-  const schedulePoll = () => {
+  const startPolling = () => {
     if (pollingInterval) {
       clearInterval(pollingInterval);
-      setPollingInterval(null);
     }
-    const delay = getPollingInterval();
     const interval = setInterval(async () => {
       try {
         const progressData = await apiService.getAssessmentProgress(assessmentId);
-        const arr = Array.isArray(progressData) ? progressData : [];
-        const hash = JSON.stringify(arr.map(p => `${p.studentId}:${p.status}:${p.questionsAnswered}`));
-        if (hash !== lastDataHash.current) {
-          lastDataHash.current = hash;
-          pollingStartTime.current = Date.now(); // Reset backoff on actual changes
-        }
-        setProgress(arr);
+        setProgress(Array.isArray(progressData) ? progressData : []);
         setLastUpdated(new Date());
         setSecondsSinceUpdate(0);
-        // Re-schedule with potentially updated interval
-        const newDelay = getPollingInterval();
-        if (newDelay !== delay) schedulePoll();
       } catch (err) {
         console.error('Error polling progress:', err);
       }
-    }, delay);
+    }, 10_000);
     setPollingInterval(interval);
-  };
-
-  const startPolling = () => {
-    schedulePoll();
   };
 
   const applyFilters = () => {
@@ -312,12 +284,12 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      'not-started': 'bg-slate-600 text-slate-200',
+      'not-started': 'bg-gray-200 text-gray-700',
       'in-progress': 'bg-yellow-600 text-white',
       'completed': 'bg-green-600 text-white',
       'submitted': 'bg-blue-600 text-white',
     };
-    return badges[status as keyof typeof badges] || 'bg-slate-600 text-slate-200';
+    return badges[status as keyof typeof badges] || 'bg-gray-200 text-gray-700';
   };
 
   const getStatusText = (status: string) => {
@@ -348,26 +320,26 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <div className="text-sm text-slate-400 mb-1">Total Students</div>
-          <div className="text-2xl font-bold text-slate-100">{stats.total}</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-sm text-gray-500 mb-1">Total Students</div>
+          <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <div className="text-sm text-slate-400 mb-1">Not Started</div>
-          <div className="text-2xl font-bold text-slate-100">{stats.notStarted}</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-sm text-gray-500 mb-1">Not Started</div>
+          <div className="text-2xl font-bold text-gray-900">{stats.notStarted}</div>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <div className="text-sm text-slate-400 mb-1">In Progress</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-sm text-gray-500 mb-1">In Progress</div>
           <div className="text-2xl font-bold text-yellow-400">{stats.inProgress}</div>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <div className="text-sm text-slate-400 mb-1">Completed</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-sm text-gray-500 mb-1">Completed</div>
           <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
         </div>
       </div>
 
       {/* Filters and Actions */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1">
             {/* Search */}
@@ -377,10 +349,10 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, email, or ID..."
-                className="w-full px-4 py-2 pl-10 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                className="w-full px-4 py-2 pl-10 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               />
               <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400"
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -398,7 +370,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             >
               <option value="all">All Status</option>
               <option value="not-started">Not Started</option>
@@ -418,12 +390,12 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
             </button>
             <button
               onClick={() => { loadProgressData(); setLastUpdated(new Date()); setSecondsSinceUpdate(0); }}
-              className="bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
+              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
             >
               Refresh
             </button>
             {lastUpdated && (
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-gray-500">
                 Updated {secondsSinceUpdate}s ago
               </span>
             )}
@@ -432,32 +404,32 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       </div>
 
       {/* Progress Table */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-750">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                   Student
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                   Progress
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                   Started At
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700">
+            <tbody className="divide-y divide-gray-200">
               {filteredProgress.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                     {searchQuery || statusFilter !== 'all' 
                       ? 'No students match your filters' 
                       : 'No student data available'}
@@ -465,13 +437,13 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                 </tr>
               ) : (
                 filteredProgress.map((p) => (
-                  <tr key={p.studentId} className="hover:bg-slate-750">
+                  <tr key={p.studentId} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div>
-                        <div className="text-sm font-medium text-slate-200">
+                        <div className="text-sm font-medium text-gray-700">
                           {p.student.name}
                         </div>
-                        <div className="text-xs text-slate-400">{p.student.email}</div>
+                        <div className="text-xs text-gray-500">{p.student.email}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -486,11 +458,11 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         <div className="flex-1 space-y-2">
                           {/* Submission progress */}
                           <div>
-                            <div className="flex justify-between text-xs text-slate-400 mb-1">
+                            <div className="flex justify-between text-xs text-gray-500 mb-1">
                               <span>{p.questionsAnswered} / {p.totalQuestions} answered</span>
                               <span>{getProgressPercentage(p)}%</span>
                             </div>
-                            <div className="w-full bg-slate-700 rounded-full h-2">
+                            <div className="w-full bg-gray-100 rounded-full h-2">
                               <div
                                 className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${getProgressPercentage(p)}%` }}
@@ -508,9 +480,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                                     ? 'Eval failed'
                                     : `Evaluating… ${evalProgress[p.studentId].questionsEvaluated}/${evalProgress[p.studentId].totalQuestions} questions`}
                                 </span>
-                                <span className="text-slate-400">{evalProgress[p.studentId].percentage}%</span>
+                                <span className="text-gray-500">{evalProgress[p.studentId].percentage}%</span>
                               </div>
-                              <div className="w-full bg-slate-700 rounded-full h-1.5">
+                              <div className="w-full bg-gray-100 rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all duration-500 ${evalProgress[p.studentId].status === 'completed' ? 'bg-green-500' : evalProgress[p.studentId].status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'}`}
                                   style={{ width: `${evalProgress[p.studentId].percentage}%` }}
@@ -521,7 +493,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-300">
+                    <td className="px-4 py-3 text-sm text-gray-600">
                       {p.startedAt ? new Date(p.startedAt).toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-3">
@@ -556,14 +528,14 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         )}
                         <Link
                           to={`/assessments/${assessmentId}/questions/${p.studentId}`}
-                          className="text-slate-400 hover:text-slate-300 text-xs font-medium transition-colors"
+                          className="text-gray-500 hover:text-gray-600 text-xs font-medium transition-colors"
                         >
                           Edit Questions
                         </Link>
                         <button
                           onClick={() => handleCopyLink(p.studentId)}
                           title={`${STUDENT_APP_URL}/${p.studentId}/${assessmentId}`}
-                          className="text-slate-400 hover:text-blue-300 text-xs font-medium transition-colors"
+                          className="text-gray-500 hover:text-blue-300 text-xs font-medium transition-colors"
                         >
                           {copiedStudentId === p.studentId ? (
                             <span className="text-green-400">Copied ✓</span>
@@ -581,41 +553,6 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
         </div>
       </div>
 
-      {/* Info Box */}
-      {showRefreshInfo && (
-        <div className="bg-blue-500/10 border border-blue-500 rounded-lg p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start">
-              <svg
-                className="h-5 w-5 text-blue-400 mr-3 mt-0.5 flex-shrink-0"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <div>
-                <h4 className="text-sm font-medium text-blue-300 mb-1">Auto-refresh Enabled</h4>
-                <p className="text-sm text-blue-200">
-                  This table automatically refreshes every 10 seconds to show real-time progress updates.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowRefreshInfo(false)}
-              className="text-blue-400 hover:text-blue-200 ml-4 text-lg leading-none flex-shrink-0"
-              aria-label="Dismiss"
-            >
-              &times;
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

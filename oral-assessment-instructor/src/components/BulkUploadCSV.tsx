@@ -204,12 +204,12 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
   return (
     <div className="max-w-4xl space-y-6">
       {/* CSV Format Info */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-slate-100 mb-3">CSV Format Requirements</h3>
-        <p className="text-slate-300 mb-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">CSV Format Requirements</h3>
+        <p className="text-gray-600 mb-4">
           Your CSV file must include the following columns (case-insensitive):
         </p>
-        <ul className="space-y-2 text-sm text-slate-300">
+        <ul className="space-y-2 text-sm text-gray-600">
           <li className="flex items-start">
             <span className="text-primary-400 mr-2">•</span>
             <span><strong>name</strong> - Student's full name</span>
@@ -227,14 +227,14 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
             <span><strong>code</strong> - Student's submitted code (single line or escaped)</span>
           </li>
           <li className="flex items-start">
-            <span className="text-slate-500 mr-2">•</span>
-            <span className="text-slate-400"><strong>assignmentFile</strong> - (Optional) Path to assignment file</span>
+            <span className="text-gray-400 mr-2">•</span>
+            <span className="text-gray-500"><strong>assignmentFile</strong> - (Optional) Path to assignment file</span>
           </li>
         </ul>
         
-        <div className="mt-4 p-3 bg-slate-900 rounded border border-slate-700">
-          <p className="text-xs text-slate-400 font-mono mb-2">Example CSV:</p>
-          <pre className="text-xs text-slate-300 font-mono overflow-x-auto">
+        <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-200">
+          <p className="text-xs text-gray-500 font-mono mb-2">Example CSV:</p>
+          <pre className="text-xs text-gray-600 font-mono overflow-x-auto">
 {`name,email,studentId,code
 John Doe,john@example.com,12345,"def factorial(n): return 1 if n <= 1 else n * factorial(n-1)"
 Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n-1)"`}
@@ -254,12 +254,12 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
         className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
           isDragActive
             ? 'border-primary-500 bg-primary-500/10'
-            : 'border-slate-600 bg-slate-800 hover:border-primary-500 hover:bg-slate-750'
+            : 'border-gray-300 bg-white hover:border-primary-500 hover:bg-gray-50'
         }`}
       >
         <input {...getInputProps()} />
         <svg
-          className="mx-auto h-12 w-12 text-slate-400 mb-4"
+          className="mx-auto h-12 w-12 text-gray-500 mb-4"
           stroke="currentColor"
           fill="none"
           viewBox="0 0 48 48"
@@ -273,13 +273,13 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
           />
         </svg>
         {isDragActive ? (
-          <p className="text-slate-200 font-medium">Drop the CSV file here</p>
+          <p className="text-gray-700 font-medium">Drop the CSV file here</p>
         ) : (
           <>
-            <p className="text-slate-200 font-medium mb-1">
+            <p className="text-gray-700 font-medium mb-1">
               Drag and drop CSV file here, or click to browse
             </p>
-            <p className="text-sm text-slate-400">Only .csv files are accepted</p>
+            <p className="text-sm text-gray-500">Only .csv files are accepted</p>
           </>
         )}
       </div>
@@ -319,38 +319,38 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
 
       {/* Preview Table */}
       {parsedStudents.length > 0 && (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-slate-700">
-            <h3 className="text-lg font-semibold text-slate-100">
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">
               Preview ({parsedStudents.length} students)
             </h3>
           </div>
           <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="w-full">
-              <thead className="bg-slate-750">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Student ID
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Code
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700">
+              <tbody className="divide-y divide-gray-200">
                 {parsedStudents.map((student, index) => (
                   <>
-                    <tr key={index} className="hover:bg-slate-750">
-                      <td className="px-4 py-3 text-sm text-slate-200">{student.name}</td>
-                      <td className="px-4 py-3 text-sm text-slate-300">{student.email}</td>
-                      <td className="px-4 py-3 text-sm text-slate-300">{student.studentId}</td>
-                      <td className="px-4 py-3 text-sm text-slate-400">
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-700">{student.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.email}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.studentId}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
                         <div className="flex items-center gap-2">
                           <span>{student.code.length} chars</span>
                           <button
@@ -364,8 +364,8 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
                     </tr>
                     {expandedRow === index && (
                       <tr key={`${index}-expand`}>
-                        <td colSpan={4} className="px-4 py-2 bg-slate-900">
-                          <pre className="text-xs text-slate-300 font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{student.code}</pre>
+                        <td colSpan={4} className="px-4 py-2 bg-gray-50">
+                          <pre className="text-xs text-gray-600 font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{student.code}</pre>
                         </td>
                       </tr>
                     )}
@@ -383,14 +383,14 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
           <button
             onClick={handleUpload}
             disabled={isUploading}
-            className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? 'Uploading...' : `Upload ${parsedStudents.length} Students`}
           </button>
           <button
             onClick={() => setParsedStudents([])}
             disabled={isUploading}
-            className="bg-slate-700 text-slate-200 px-6 py-2.5 rounded-lg font-medium hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50"
+            className="bg-gray-100 text-gray-700 px-6 py-2.5 rounded-lg font-medium hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50"
           >
             Clear
           </button>

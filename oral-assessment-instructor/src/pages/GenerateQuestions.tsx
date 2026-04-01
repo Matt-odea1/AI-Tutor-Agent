@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
 import QuestionGenerationProgress from '../components/QuestionGenerationProgress';
-import SetupStepIndicator from '../components/SetupStepIndicator';
 
 export default function GenerateQuestions() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -56,37 +55,36 @@ export default function GenerateQuestions() {
 
   if (!selectedAssessment || !assessmentId) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="bg-slate-800 border-b border-slate-700">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center space-x-4">
-            <Link to="/assessments" className="text-slate-400 hover:text-slate-300">
+            <Link to="/assessments" className="text-gray-500 hover:text-gray-600">
               ← Back to Assessments
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-slate-100 mt-2">
+          <h1 className="text-2xl font-bold text-gray-900 mt-2">
             Generate Questions: {selectedAssessment.title}
           </h1>
-          <p className="text-slate-400 text-sm mt-1">{selectedAssessment.course}</p>
+          <p className="text-gray-500 text-sm mt-1">{selectedAssessment.course}</p>
         </div>
       </header>
 
-      <SetupStepIndicator currentStep={3} assessmentId={assessmentId!} />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Assignment Brief Editor */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-base font-semibold text-slate-100">Assignment Brief</h2>
-              <p className="text-sm text-slate-400 mt-0.5">
+              <h2 className="text-base font-semibold text-gray-900">Assignment Brief</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
                 Describe the assignment so the AI can generate relevant questions. Minimum 50 characters.
               </p>
             </div>
@@ -101,10 +99,10 @@ export default function GenerateQuestions() {
             onChange={(e) => { setBrief(e.target.value); setBriefError(null); }}
             rows={5}
             placeholder="Describe the assignment, its objectives, the programming concepts it covers, and what students were expected to implement..."
-            className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-y text-sm"
+            className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-y text-sm"
           />
           <div className="flex items-center justify-between mt-2">
-            <span className={`text-xs ${(brief ?? '').trim().length < 50 ? 'text-slate-500' : 'text-green-400'}`}>
+            <span className={`text-xs ${(brief ?? '').trim().length < 50 ? 'text-gray-400' : 'text-green-400'}`}>
               {(brief ?? '').trim().length} / 50 characters minimum
             </span>
             <div className="flex items-center gap-3">

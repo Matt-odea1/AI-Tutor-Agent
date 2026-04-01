@@ -87,12 +87,11 @@ test.describe('Instructor assessment list', () => {
     await expect(page.getByText('Assessment Title')).toBeVisible({ timeout: 5_000 });
   });
 
-  test('assessment card shows action buttons', async ({ page }) => {
+  test('assessment card shows open button', async ({ page }) => {
     await page.goto(`${INSTRUCTOR_BASE}/assessments`);
 
     await expect(page.getByText('Introduction to Algorithms')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('link', { name: /monitor progress/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /view results/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /open/i })).toBeVisible();
   });
 });
 
@@ -213,9 +212,9 @@ test.describe('Instructor results dashboard', () => {
 
     await expect(page.getByText('Alice Johnson')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Bob Smith')).toBeVisible();
-    // Use exact match to avoid matching chart axis labels like "61-80%"
-    await expect(page.getByText('80%', { exact: true })).toBeVisible();
-    await expect(page.getByText('70%', { exact: true })).toBeVisible();
+    // Scores now shown as "16/20 (80%)" in combined format
+    await expect(page.getByText(/80%/)).toBeVisible();
+    await expect(page.getByText(/70%/)).toBeVisible();
   });
 
   test('results page shows grade badges', async ({ page }) => {

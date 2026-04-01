@@ -14,7 +14,7 @@ const STEPS = [
 
 export default function SetupStepIndicator({ currentStep, assessmentId }: SetupStepIndicatorProps) {
   return (
-    <div className="bg-slate-800 border-b border-slate-700 px-4 sm:px-6 lg:px-8 py-3">
+    <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-3">
       <div className="max-w-7xl mx-auto">
         <ol className="flex items-center space-x-2 text-sm">
           {STEPS.map((step, i) => {
@@ -23,7 +23,7 @@ export default function SetupStepIndicator({ currentStep, assessmentId }: SetupS
             const isCurrent = stepNum === currentStep;
 
             const label = (
-              <span className={`font-medium ${isCurrent ? 'text-primary-400' : isCompleted ? 'text-green-400' : 'text-slate-500'}`}>
+              <span className={`font-medium ${isCurrent ? 'text-primary-400' : isCompleted ? 'text-green-400' : 'text-gray-400'}`}>
                 {isCompleted && (
                   <svg className="inline w-4 h-4 mr-1 -mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

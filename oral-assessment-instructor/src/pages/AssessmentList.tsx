@@ -2,7 +2,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
-import { format } from 'date-fns';
 
 export default function AssessmentList() {
   const navigate = useNavigate();
@@ -85,24 +84,24 @@ export default function AssessmentList() {
       case 'active': return 'bg-green-600';
       case 'draft': return 'bg-gray-600';
       case 'completed': return 'bg-blue-600';
-      case 'archived': return 'bg-slate-600';
+      case 'archived': return 'bg-gray-200';
       default: return 'bg-gray-600';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="bg-slate-800 border-b border-slate-700">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-slate-100">
+            <h1 className="text-2xl font-bold text-gray-900">
               Oral Assessments
             </h1>
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => loadAssessments()}
                 disabled={isLoading}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
+                className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
                 title="Refresh assessments"
               >
                 {isLoading ? 'Refreshing...' : 'Refresh'}
@@ -115,7 +114,7 @@ export default function AssessmentList() {
               </Link>
               <button
                 onClick={handleLogout}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
               >
                 Log out
               </button>
@@ -140,82 +139,58 @@ export default function AssessmentList() {
             {displayAssessments.map((assessment) => (
             <div
               key={assessment.id}
-              className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-6 hover:border-slate-600 transition-colors"
+              className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h2 className="text-xl font-semibold text-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-3">
+                    <Link to={`/assessments/${assessment.id}/results`} className="text-lg font-semibold text-gray-900 hover:text-primary-600 truncate">
                       {assessment.title}
-                    </h2>
-                    <span className={`${getStatusColor(assessment.status)} text-white text-xs px-2 py-1 rounded-full`}>
+                    </Link>
+                    <span className={`${getStatusColor(assessment.status)} text-white text-xs px-2 py-0.5 rounded-full flex-shrink-0`}>
                       {assessment.status}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-4 text-sm text-slate-400 mb-2">
-                    <span>Course: {assessment.course}</span>
-                    <span>Due: {format(new Date(assessment.dueDate), 'MMM dd, yyyy')}</span>
-                    <span>{assessment.totalQuestions} questions</span>
-                  </div>
-                  {statsCache[assessment.id] ? (
-                    <div className="flex items-center space-x-4 text-xs text-slate-500 mb-2">
-                      <span>{statsCache[assessment.id].enrolled} enrolled</span>
-                      <span>{statsCache[assessment.id].completed} completed</span>
-                    </div>
-                  ) : isLoading ? null : (
-                    <div className="flex items-center space-x-2 text-xs text-slate-500 mb-2">
-                      <div className="animate-spin rounded-full h-3 w-3 border-b border-slate-500"></div>
-                      <span>Loading stats...</span>
-                    </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {assessment.course}
+                    {statsCache[assessment.id] && (
+                      <span className="ml-3">{statsCache[assessment.id].enrolled} students, {statsCache[assessment.id].completed} completed</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2 ml-4">
+                  <Link
+                    to={`/assessments/${assessment.id}/results`}
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Open
+                  </Link>
+                  {confirmDeleteId === assessment.id ? (
+                    <>
+                      <button
+                        onClick={() => handleDelete(assessment.id)}
+                        disabled={isDeleting}
+                        className="bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                      >
+                        {isDeleting ? 'Deleting…' : 'Confirm'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-gray-500 hover:text-gray-700 text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(assessment.id)}
+                      className="text-gray-400 hover:text-red-500 text-sm transition-colors"
+                    >
+                      Delete
+                    </button>
                   )}
                 </div>
               </div>
-
-              {confirmDeleteId === assessment.id ? (
-                <div className="mt-4 flex items-center gap-3">
-                  <span className="text-sm text-red-300">Delete this assessment?</span>
-                  <button
-                    onClick={() => handleDelete(assessment.id)}
-                    disabled={isDeleting}
-                    className="bg-red-600 text-white px-3 py-1 rounded text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
-                  >
-                    {isDeleting ? 'Deleting…' : 'Confirm Delete'}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(null)}
-                    className="bg-slate-700 text-slate-200 px-3 py-1 rounded text-sm font-medium hover:bg-slate-600 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-3 mt-4">
-                  <Link
-                    to={`/assessments/${assessment.id}/monitor`}
-                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Monitor Progress
-                  </Link>
-                  <Link
-                    to={`/assessments/${assessment.id}/results`}
-                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    View Results
-                  </Link>
-                  <button
-                    onClick={() => navigate(`/assessments/${assessment.id}/generate`)}
-                    className="text-slate-400 hover:text-slate-300 px-4 py-2 text-sm font-medium transition-colors"
-                  >
-                    Questions
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(assessment.id)}
-                    className="text-red-400 hover:text-red-300 px-4 py-2 text-sm font-medium transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
             </div>
             ))}
           </div>
@@ -223,7 +198,7 @@ export default function AssessmentList() {
 
         {!isLoading && !error && displayAssessments.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-slate-400 mb-4">No assessments yet</p>
+            <p className="text-gray-500 mb-4">No assessments yet</p>
             <Link
               to="/assessments/create"
               className="inline-block bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
