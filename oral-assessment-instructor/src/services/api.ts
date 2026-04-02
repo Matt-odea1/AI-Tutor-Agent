@@ -78,6 +78,15 @@ class ApiService {
     });
   }
 
+  // Ed import
+  async importFromEd(assessmentId: string, edToken: string, challengeId: number): Promise<{ ok: boolean; studentsImported: number; students: { studentId: string; name: string; hasCode: boolean }[] }> {
+    const response = await this.client.post(`/api/assessment/${assessmentId}/import-ed`, {
+      edToken,
+      challengeId,
+    });
+    return response.data;
+  }
+
   // Question generation endpoints
   async generateQuestions(data: GenerateQuestionsRequest): Promise<QuestionGenerationJob> {
     const response = await this.client.post<QuestionGenerationJob>(

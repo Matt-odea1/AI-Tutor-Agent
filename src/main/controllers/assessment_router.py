@@ -205,6 +205,51 @@ async def upload_students(
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 
+@assessment_router.post("/{id}/import-ed", status_code=200)
+async def import_from_ed(
+    id: str,
+    request: dict = Body(...),
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Import students and code from an Ed challenge using the Ed API."""
+    from src.main.service.EdStemService import EdStemService, EdStemServiceError
+
+    ed_token = request.get("edToken")
+    challenge_id = request.get("challengeId")
+
+    if not ed_token or not challenge_id:
+        raise ApiError(status_code=400, code="missing_fields", message="edToken and challengeId are required")
+
+    try:
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+
+        ed = EdStemService(ed_token)
+        students = ed.import_challenge(int(challenge_id))
+
+        if students:
+            svc.upload_students(id, students)
+
+        return {
+            "ok": True,
+            "studentsImported": len(students),
+            "students": [{"studentId": s["studentId"], "name": s["name"], "hasCode": bool(s.get("code"))} for s in students],
+        }
+
+    except EdStemServiceError as error:
+        raise ApiError(status_code=400, code="ed_import_failed", message=str(error))
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="ed_import_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in import_from_ed: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
 @assessment_router.get("/{id}/students", response_model=StudentListResponse)
 async def get_assessment_students(
     id: str,
