@@ -285,9 +285,12 @@ export default function TakeAssessment() {
   };
 
   const handleSubmitAssessment = async () => {
-    await submitCompleteAssessment();
-    setShowSubmitModal(false);
-    navigate(`/${studentId}/results/${assessmentId}`);
+    const ok = await submitCompleteAssessment();
+    if (ok) {
+      setShowSubmitModal(false);
+      navigate(`/${studentId}/results/${assessmentId}`);
+    }
+    // on failure: modal stays open, error from store shown inside modal
   };
 
   // Loading state
@@ -586,22 +589,30 @@ export default function TakeAssessment() {
             </p>
             {answeredCount < questions.length && (
               <p className="text-orange-600 text-sm mb-4">
-                {questions.length - answeredCount} question(s) are unanswered. You cannot return after submitting.
+                {questions.length - answeredCount} question(s) are unanswered. Go back and answer them before submitting.
               </p>
             )}
-            <p className="text-gray-500 text-sm mb-6">
-              Once submitted, your assessment will be sent for evaluation.
-            </p>
+            {answeredCount >= questions.length && (
+              <p className="text-gray-500 text-sm mb-6">
+                Once submitted, your assessment will be sent for evaluation.
+              </p>
+            )}
+            {error && (
+              <p className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded-lg">
+                {error.message || 'Submission failed. Please try again.'}
+              </p>
+            )}
             <div className="flex space-x-3">
               <button
-                onClick={() => setShowSubmitModal(false)}
-                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                onClick={() => { setShowSubmitModal(false); }}
+                disabled={isLoading}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitAssessment}
-                disabled={isLoading}
+                disabled={isLoading || answeredCount < questions.length}
                 className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
               >
                 {isLoading ? 'Submitting...' : 'Submit'}

@@ -185,6 +185,219 @@ test.describe('Student assessment-taking flow', () => {
   });
 });
 
+// ─── Student: End-of-assessment edge cases ───────────────────────────
+
+test.describe('Student end-of-assessment edge cases', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupStudentMockApi(page, { studentId: STUDENT_ID, assessmentId: ASSESSMENT_ID });
+    await injectStudentSession(page);
+  });
+
+  test('submit modal is blocked when not all questions answered', async ({ page }) => {
+    // Override questions to return 2 questions but only 1 answered
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/questions`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            questions: [
+              { id: 'q-1', text: 'Q1', questionNumber: 1, questionType: 'specific', timeLimit: 300, topic: 'T', difficulty: 'medium' },
+              { id: 'q-2', text: 'Q2', questionNumber: 2, questionType: 'general', timeLimit: 300, topic: 'T', difficulty: 'medium' },
+            ],
+            currentQuestionIndex: 1,
+            answerMode: 'written',
+            preparationTime: 0,
+            assessmentTitle: 'E2E Test Assessment',
+            assessmentCourse: 'COMP9021',
+            assessmentDescription: '',
+          }),
+        });
+      }
+    );
+    // Progress shows only 1 of 2 answered — but Q2 (last) shown and answered
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/progress`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ answeredQuestions: 1, totalQuestions: 2, status: 'in_progress' }),
+        });
+      }
+    );
+
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/${ASSESSMENT_ID}`);
+    await page.getByRole('button', { name: /continue without recording/i }).click();
+    await page.getByRole('button', { name: /start assessment/i }).click();
+
+    // Fill answer for Q2 and submit it so the "Submit Assessment" button appears
+    await expect(page.getByPlaceholder('Type your answer here...')).toBeVisible({ timeout: 10_000 });
+    await page.getByPlaceholder('Type your answer here...').fill(
+      'The time complexity is O(n log n) for the merge sort approach with O(n) space.'
+    );
+    await page.getByRole('button', { name: /submit answer/i }).click();
+
+    // Submit Assessment button should appear (last question answered)
+    await expect(page.getByRole('button', { name: /submit assessment/i })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /submit assessment/i }).click();
+
+    // Modal opens — Submit button should be disabled (1 of 2 answered)
+    await expect(page.getByText('Submit Assessment?')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/unanswered/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^submit$/i })).toBeDisabled();
+  });
+
+  test('results page shows evaluating spinner and auto-polls', async ({ page }) => {
+    // Override progress to submitted
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/progress`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ answeredQuestions: 2, totalQuestions: 2, status: 'submitted' }),
+        });
+      }
+    );
+
+    let resultsCalled = 0;
+    // First call: 202 pending; second call: results ready
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/results`,
+      async (route) => {
+        resultsCalled++;
+        if (resultsCalled < 2) {
+          await route.fulfill({
+            status: 202,
+            contentType: 'application/json',
+            body: JSON.stringify({ detail: 'Results not available yet' }),
+          });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              studentId: STUDENT_ID,
+              assessmentId: ASSESSMENT_ID,
+              totalScore: 14,
+              maxScore: 20,
+              percentage: 70,
+              grade: 'Competent',
+              submittedAt: '2026-04-05T10:00:00Z',
+              completedAt: '2026-04-05T10:00:00Z',
+              questions: [],
+            }),
+          });
+        }
+      }
+    );
+
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
+
+    // First: evaluating spinner
+    await expect(page.getByText('Evaluating Your Assessment')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/this page will update automatically/i)).toBeVisible();
+
+    // After auto-poll fires (~8s), results load
+    await expect(page.getByText('Assessment Results')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('(70%)')).toBeVisible();
+  });
+
+  test('submit failure keeps modal open with error message', async ({ page }) => {
+    // Override submit to fail
+    await page.route(`**/api/student/${STUDENT_ID}/submit`, async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Internal server error' }),
+      });
+    });
+
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/${ASSESSMENT_ID}`);
+    await page.getByRole('button', { name: /continue without recording/i }).click();
+    await page.getByRole('button', { name: /start assessment/i }).click();
+
+    // Answer Q1
+    await expect(page.getByPlaceholder('Type your answer here...')).toBeVisible({ timeout: 10_000 });
+    await page.getByPlaceholder('Type your answer here...').fill(
+      'I used a recursive approach with dynamic programming and memoization to achieve optimal performance.'
+    );
+    await page.getByRole('button', { name: /submit answer/i }).click();
+
+    // Answer Q2
+    await expect(page.getByRole('banner').getByText('Question 2 of 2')).toBeVisible({ timeout: 10_000 });
+    await page.getByPlaceholder('Type your answer here...').fill(
+      'The time complexity is O(n log n) for the merge sort approach with O(n) space.'
+    );
+    await page.getByRole('button', { name: /submit answer/i }).click();
+
+    // Click Submit Assessment
+    await expect(page.getByRole('button', { name: /submit assessment/i })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /submit assessment/i }).click();
+
+    // Confirm in modal
+    await expect(page.getByText('Submit Assessment?')).toBeVisible({ timeout: 5_000 });
+    await page.getByRole('button', { name: /^submit$/i }).click();
+
+    // Modal should STAY open with error — not navigate away
+    await expect(page.getByText('Submit Assessment?')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/submission failed|server error|internal/i)).toBeVisible({ timeout: 5_000 });
+
+    // Still on TakeAssessment page, not results
+    await expect(page).not.toHaveURL(/results/, { timeout: 2_000 });
+  });
+
+  test('results page shows not-released message without retry button', async ({ page }) => {
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/progress`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ answeredQuestions: 2, totalQuestions: 2, status: 'submitted' }),
+        });
+      }
+    );
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/results`,
+      async (route) => {
+        await route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Results not released yet' }),
+        });
+      }
+    );
+
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
+
+    await expect(page.getByText('Results Pending Release')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/this page will update automatically/i)).toBeVisible();
+    // No manual retry button — polling handles it
+    await expect(page.getByRole('button', { name: /retry/i })).not.toBeVisible();
+  });
+
+  test('not-submitted student is redirected back to assessment', async ({ page }) => {
+    await page.route(
+      `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/progress`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ answeredQuestions: 1, totalQuestions: 2, status: 'in_progress' }),
+        });
+      }
+    );
+
+    await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
+
+    await expect(page.getByText('Assessment Not Submitted')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /return to assessment/i })).toBeVisible();
+  });
+});
+
 // ─── Student: Landing page ──────────────────────────────────────────
 
 test.describe('Student landing page', () => {

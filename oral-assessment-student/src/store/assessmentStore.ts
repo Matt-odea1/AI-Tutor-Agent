@@ -122,7 +122,7 @@ interface AssessmentStore {
   submitCurrentAnswer: () => Promise<void>;
   submitCurrentTextAnswer: () => Promise<void>;
   skipCurrentQuestion: () => Promise<void>;
-  submitCompleteAssessment: () => Promise<void>;
+  submitCompleteAssessment: () => Promise<boolean>;
 
   // Results
   loadResults: () => Promise<void>;
@@ -548,9 +548,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     }
   },
 
-  submitCompleteAssessment: async () => {
+  submitCompleteAssessment: async (): Promise<boolean> => {
     const { studentId, assessmentId } = get();
-    if (!studentId || !assessmentId) return;
+    if (!studentId || !assessmentId) return false;
 
     set({ isLoading: true, error: null });
 
@@ -559,8 +559,17 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       await get().loadProgress();
       await get().stopProctoring();
       set({ isLoading: false });
-    } catch (error) {
-      set({ error: error as ApiError, isLoading: false });
+      return true;
+    } catch (err) {
+      const apiErr = err as ApiError;
+      // "already submitted" is idempotent success — treat as OK
+      if (apiErr?.message?.toLowerCase().includes('already submitted')) {
+        await get().loadProgress();
+        set({ isLoading: false, error: null });
+        return true;
+      }
+      set({ error: apiErr, isLoading: false });
+      return false;
     }
   },
 

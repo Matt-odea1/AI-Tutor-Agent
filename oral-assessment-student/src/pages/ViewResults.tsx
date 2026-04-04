@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import ResultsCard from '../components/ResultsCard';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -46,12 +46,30 @@ export default function ViewResults() {
 
   useEffect(() => {
     if (studentId && assessmentId && !isResultsReady) {
-      // Only load results if student has submitted (or we don't have progress yet — let backend handle it)
       if (!progress || progress.status === 'submitted') {
         loadResults();
       }
     }
   }, [studentId, assessmentId, isResultsReady, progress, loadResults]);
+
+  // Auto-poll every 8s while results are pending (evaluation running or not yet released)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (isResultsReady) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+    if (!studentId || !assessmentId) return;
+    if (progress && progress.status !== 'submitted') return;
+
+    pollRef.current = setInterval(() => {
+      loadResults();
+    }, 8000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isResultsReady, studentId, assessmentId, progress, loadResults]);
 
   // Guard: if progress loaded and assessment not submitted, redirect to assessment
   if (progress && progress.status !== 'submitted') {
@@ -97,18 +115,21 @@ export default function ViewResults() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
               <h2 className="text-lg font-semibold text-primary-900 mb-2">Results Pending Release</h2>
-              <p className="text-sm text-primary-700">Your results are ready but have not yet been released by your instructor. Check back soon!</p>
+              <p className="text-sm text-primary-700">Your results are ready but have not yet been released by your instructor.</p>
+              <p className="text-xs text-primary-500 mt-2">This page will update automatically.</p>
+            </div>
+          ) : isPending ? (
+            <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+              <div className="mx-auto h-12 w-12 mb-3 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
+              </div>
+              <h2 className="text-lg font-semibold text-yellow-900 mb-2">Evaluating Your Assessment</h2>
+              <p className="text-sm text-yellow-800">Your assessment is being evaluated. This usually takes a few minutes.</p>
+              <p className="text-xs text-yellow-600 mt-2">This page will update automatically.</p>
             </div>
           ) : (
             <>
               <ErrorMessage error={error} onDismiss={clearError} />
-              {isPending && (
-                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    Your assessment is being evaluated. This usually takes a few minutes. Please check back soon!
-                  </p>
-                </div>
-              )}
               <button onClick={() => loadResults()} className="mt-4 w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700">
                 Retry
               </button>
