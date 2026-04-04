@@ -222,11 +222,13 @@ async def import_from_ed(
         raise ApiError(status_code=400, code="missing_fields", message="edToken and challengeId are required")
 
     try:
+        import asyncio
         assessment = svc.get_assessment(id)
         _assert_assessment_owner(_principal, assessment)
 
         ed = EdStemService(ed_token)
-        students = ed.import_challenge(int(challenge_id))
+        loop = asyncio.get_event_loop()
+        students = await loop.run_in_executor(None, lambda: ed.import_challenge(int(challenge_id)))
 
         if students:
             svc.upload_students(id, students)
