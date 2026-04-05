@@ -473,6 +473,62 @@ async def generate_student_invite(
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 
+@assessment_router.post("/{id}/send-invites", status_code=200)
+async def send_bulk_invites(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    auth_service: AuthService = Depends(get_auth_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Send invite emails to all enrolled students who haven't started yet."""
+    try:
+        _assert_instructor_access(_principal)
+        assessment = svc.get_assessment(id)
+        _assert_assessment_owner(_principal, assessment)
+
+        enrolled_students = svc.get_assessment_students(id)
+        base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
+        title = assessment.get("title", id)
+
+        sent = 0
+        skipped = 0
+        for student in enrolled_students:
+            email = student.get("email", "")
+            if not email:
+                skipped += 1
+                continue
+            try:
+                token = auth_service.generate_student_invite_token(student["studentId"], id)
+                invite_link = f"{base_url}/invite?token={token}"
+                auth_service.send_student_invite_email(
+                    student_email=email,
+                    student_name=student.get("name", student["studentId"]),
+                    assessment_title=title,
+                    invite_link=invite_link,
+                )
+                sent += 1
+            except Exception as e:
+                logger.warning(f"Failed to send invite to {student['studentId']}: {e}")
+                skipped += 1
+
+        return {
+            "ok": True,
+            "assessmentId": id,
+            "sent": sent,
+            "skipped": skipped,
+            "total": len(enrolled_students),
+        }
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in send_bulk_invites: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
 @assessment_router.post("/{id}/upload-csv", response_model=CsvEnrollmentResponse, status_code=201)
 async def upload_students_csv(
     id: str,
@@ -1317,6 +1373,44 @@ async def release_results(
         assessment = svc.get_assessment(id)
         _assert_assessment_owner(_principal, assessment)
         result = svc.release_results(id)
+
+        # Send notification emails to all submitted students (non-blocking)
+        import threading
+        def _notify_students():
+            try:
+                students = svc.get_assessment_students(id)
+                title = assessment.get("title", id)
+                base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
+                from_email = os.getenv("INVITE_FROM_EMAIL") or os.getenv("AUTH_PASSWORD_RESET_FROM_EMAIL", "")
+                ses_region = os.getenv("AUTH_PASSWORD_RESET_SES_REGION", "") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+                if not from_email:
+                    return
+                import boto3
+                ses = boto3.client("ses", region_name=ses_region)
+                for s in students:
+                    if s.get("status") != "submitted" or not s.get("email"):
+                        continue
+                    try:
+                        results_link = f"{base_url}/{s['studentId']}/results/{id}"
+                        ses.send_email(
+                            Source=from_email,
+                            Destination={"ToAddresses": [s["email"]]},
+                            Message={
+                                "Subject": {"Data": f"Results Available: {title}"},
+                                "Body": {"Text": {"Data": (
+                                    f"Hi {s.get('name', s['studentId'])},\n\n"
+                                    f"Your results for \"{title}\" are now available.\n\n"
+                                    f"View your results: {results_link}\n\n"
+                                    f"Best regards,\nYour Instructor"
+                                )}},
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to notify {s['studentId']}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to send release notifications: {e}")
+        threading.Thread(target=_notify_students, daemon=True).start()
+
         return ReleaseResultsResponse(ok=True, **result)
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=404, code="assessment_not_found", message=str(error))

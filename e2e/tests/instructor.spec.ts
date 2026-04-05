@@ -285,4 +285,29 @@ test.describe('Instructor progress monitoring', () => {
     await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Bob Smith').first()).toBeVisible();
   });
+
+  test('monitor page shows View Results link', async ({ page }) => {
+    await page.goto(`${INSTRUCTOR_BASE}/assessments/${ASSESSMENT_ID}/monitor`);
+
+    await expect(page.getByRole('link', { name: /view results/i })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('monitor page shows Send Invites banner when students not started', async ({ page }) => {
+    await page.goto(`${INSTRUCTOR_BASE}/assessments/${ASSESSMENT_ID}/monitor`);
+
+    await expect(page.getByText(/haven't started/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /send invites/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /send invites/i }).click();
+    await expect(page.getByText(/sent 3 invite/i)).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('monitor page shows assessment phase status pill', async ({ page }) => {
+    await page.goto(`${INSTRUCTOR_BASE}/assessments/${ASSESSMENT_ID}/monitor`);
+
+    // Default mock has 1 completed, 1 in progress, 1 not started → "Open"
+    // Wait for progress table to load first
+    await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Open|In Progress/i).first()).toBeVisible();
+  });
 });

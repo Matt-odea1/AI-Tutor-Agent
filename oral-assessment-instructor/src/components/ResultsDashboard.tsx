@@ -11,7 +11,7 @@ interface ResultsDashboardProps {
 
 export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDashboardProps) {
   const navigate = useNavigate();
-  const { results, setResults, isLoading, setLoading, setError } = useAssessmentStore();
+  const { results, setResults, progress, setProgress, isLoading, setLoading, setError } = useAssessmentStore();
 
   const [isReleasing, setIsReleasing] = useState(false);
   const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
@@ -24,6 +24,7 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     setResultsReleased(null);
     loadResults();
     loadReleasedState();
+    loadProgress();
   }, [assessmentId]);
 
   useEffect(() => {
@@ -47,6 +48,13 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     try {
       const assessment = await apiService.getAssessment(assessmentId);
       setResultsReleased(assessment.resultsReleased ?? false);
+    } catch { /* non-critical */ }
+  };
+
+  const loadProgress = async () => {
+    try {
+      const students = await apiService.getAssessmentProgress(assessmentId);
+      setProgress(students);
     } catch { /* non-critical */ }
   };
 
@@ -89,6 +97,12 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
 
   const resultsArray = Array.isArray(results) ? results : [];
 
+  const submittedCount = progress.filter(
+    (s) => s.status === 'completed' || s.status === 'submitted'
+  ).length;
+  const evaluatedCount = resultsArray.length;
+  const hasUnevaluated = submittedCount > 0 && evaluatedCount < submittedCount;
+
   const gradeCounts = resultsArray.reduce((acc, r) => {
     acc[r.grade] = (acc[r.grade] || 0) + 1;
     return acc;
@@ -128,6 +142,16 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-900">Confirm release?</p>
             <p className="text-xs text-gray-500">This will make scores and feedback visible to all students immediately.</p>
+            {hasUnevaluated && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                <p className="text-sm text-amber-800 font-medium">
+                  Only {evaluatedCount} of {submittedCount} submitted students have been evaluated.
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Students without evaluations will see no results.
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <button
                 onClick={async () => { await handleReleaseResults(); setShowReleaseConfirm(false); }}

@@ -19,6 +19,7 @@ export default function TakeAssessment() {
   const navigate = useNavigate();
   const { addToast } = useToastStore();
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
@@ -288,10 +289,39 @@ export default function TakeAssessment() {
     const ok = await submitCompleteAssessment();
     if (ok) {
       setShowSubmitModal(false);
-      navigate(`/${studentId}/results/${assessmentId}`);
+      setSubmitted(true);
     }
     // on failure: modal stays open, error from store shown inside modal
   };
+
+  // Submission success screen
+  if (submitted) {
+    const title = assessment?.title || 'your assessment';
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+            <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Assessment Submitted</h2>
+          <p className="text-gray-600 mb-1">
+            Your responses for <span className="font-medium">{title}</span> have been submitted for evaluation.
+          </p>
+          <p className="text-sm text-gray-500 mb-6">
+            Submitted {new Date().toLocaleString()}
+          </p>
+          <button
+            onClick={() => navigate(`/${studentId}/results/${assessmentId}`)}
+            className="w-full bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          >
+            Check Results
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Loading state
   if (isLoading && questions.length === 0) {
@@ -337,20 +367,66 @@ export default function TakeAssessment() {
 
   const currentQuestion = questions[currentQuestionIndex];
 
-  // Safety: if currentQuestionIndex is out of bounds, show a fallback
+  // Safety: if currentQuestionIndex is out of bounds, prompt submission
   if (!currentQuestion) {
+    const fallbackAnsweredCount = progress?.answeredQuestions || 0;
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Assessment Complete</h2>
-          <p className="text-gray-600 mb-4">All questions have been answered.</p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Ready to Submit</h2>
+          <p className="text-gray-600 mb-4">
+            You have answered {fallbackAnsweredCount} of {questions.length} questions. Submit your assessment to finish.
+          </p>
           <button
-            onClick={() => navigate(`/${studentId}/results/${assessmentId}`)}
+            onClick={() => setShowSubmitModal(true)}
             className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700"
           >
-            View Results
+            Submit Assessment
           </button>
         </div>
+        {showSubmitModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Submit Assessment?</h2>
+              <p className="text-gray-600 mb-2">
+                You've answered{' '}
+                <span className="font-semibold">{fallbackAnsweredCount}</span> out of{' '}
+                <span className="font-semibold">{questions.length}</span> questions.
+              </p>
+              {fallbackAnsweredCount < questions.length && (
+                <p className="text-orange-600 text-sm mb-4">
+                  {questions.length - fallbackAnsweredCount} question(s) are unanswered. Go back and answer them before submitting.
+                </p>
+              )}
+              {fallbackAnsweredCount >= questions.length && (
+                <p className="text-gray-500 text-sm mb-6">
+                  Once submitted, your assessment will be sent for evaluation.
+                </p>
+              )}
+              {error && (
+                <p className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded-lg">
+                  {error.message || 'Submission failed. Please try again.'}
+                </p>
+              )}
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowSubmitModal(false)}
+                  disabled={isLoading}
+                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitAssessment}
+                  disabled={isLoading || fallbackAnsweredCount < questions.length}
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                >
+                  {isLoading ? 'Submitting...' : 'Submit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

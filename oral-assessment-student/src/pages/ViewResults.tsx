@@ -19,12 +19,14 @@ export default function ViewResults() {
   const {
     studentId,
     assessmentId,
+    assessment,
     progress,
     results,
     isResultsReady,
     isLoading,
     error,
     setStudentInfo,
+    loadQuestions,
     loadResults,
     loadProgress,
     clearError,
@@ -52,6 +54,15 @@ export default function ViewResults() {
     }
   }, [studentId, assessmentId, isResultsReady, progress, loadResults]);
 
+  // Load assessment metadata (title, course) if not already in store
+  useEffect(() => {
+    if (studentId && assessmentId && !assessment) {
+      loadQuestions().catch(() => {
+        // Silently ignore — metadata is best-effort for display
+      });
+    }
+  }, [studentId, assessmentId, assessment, loadQuestions]);
+
   // Auto-poll every 8s while results are pending (evaluation running or not yet released)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -71,11 +82,22 @@ export default function ViewResults() {
     };
   }, [isResultsReady, studentId, assessmentId, progress, loadResults]);
 
+  // Shared assessment header for pending/error states
+  const assessmentHeader = assessment ? (
+    <div className="text-center mb-6">
+      <h1 className="text-2xl font-bold text-gray-900">{assessment.title}</h1>
+      {assessment.course && (
+        <p className="text-gray-500 mt-1">{assessment.course}</p>
+      )}
+    </div>
+  ) : null;
+
   // Guard: if progress loaded and assessment not submitted, redirect to assessment
   if (progress && progress.status !== 'submitted') {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center">
+          {assessmentHeader}
           <svg className="mx-auto h-12 w-12 text-yellow-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
@@ -95,8 +117,13 @@ export default function ViewResults() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <LoadingSpinner size="lg" message="Loading results..." />
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          {assessmentHeader}
+          <div className="flex justify-center">
+            <LoadingSpinner size="lg" message="Loading results..." />
+          </div>
+        </div>
       </div>
     );
   }
@@ -109,6 +136,7 @@ export default function ViewResults() {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="max-w-md w-full">
+          {assessmentHeader}
           {isNotReleased ? (
             <div className="p-6 bg-primary-50 border border-primary-200 rounded-lg text-center">
               <svg className="mx-auto h-12 w-12 text-primary-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -124,7 +152,8 @@ export default function ViewResults() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
               </div>
               <h2 className="text-lg font-semibold text-yellow-900 mb-2">Evaluating Your Assessment</h2>
-              <p className="text-sm text-yellow-800">Your assessment is being evaluated. This usually takes a few minutes.</p>
+              <p className="text-sm text-yellow-800">Your assessment is being evaluated.</p>
+              <p className="text-sm text-yellow-700 mt-1">This usually takes 2–5 minutes depending on the number of questions.</p>
               <p className="text-xs text-yellow-600 mt-2">This page will update automatically.</p>
             </div>
           ) : (
@@ -144,7 +173,8 @@ export default function ViewResults() {
   if (!results) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
-        <div className="text-center">
+        <div className="max-w-md w-full text-center">
+          {assessmentHeader}
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             No Results Available
           </h2>
@@ -238,6 +268,19 @@ export default function ViewResults() {
               />
             ))}
           </div>
+        </div>
+
+        {/* Download PDF */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <button
+            onClick={handleDownloadPdf}
+            className="w-full bg-gray-900 text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download Results as PDF
+          </button>
         </div>
 
       </main>

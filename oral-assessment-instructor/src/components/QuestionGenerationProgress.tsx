@@ -374,7 +374,7 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
             )}
             {generationJob.status === 'completed' && (
               <div className="space-y-4">
-                <p className="text-green-400 text-sm font-medium">
+                <p className="text-green-600 text-sm font-medium">
                   ✓ Question generation completed successfully!
                 </p>
                 {students.length > 0 && (

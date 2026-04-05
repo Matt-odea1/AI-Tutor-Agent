@@ -514,6 +514,15 @@ export async function setupInstructorMockApi(
     });
   });
 
+  // Send invites (bulk)
+  await page.route(new RegExp(`/api/assessment/[^/]+/send-invites`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, sent: 3, skipped: 0, total: 3 }),
+    });
+  });
+
   // Send reminder
   await page.route(new RegExp(`/api/assessment/[^/]+/student/[^/]+/remind`), async (route) => {
     await route.fulfill({

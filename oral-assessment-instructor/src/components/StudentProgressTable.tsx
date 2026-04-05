@@ -31,6 +31,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [reminderSent, setReminderSent] = useState<string | null>(null);
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
+  const [isSendingInvites, setIsSendingInvites] = useState(false);
+  const [inviteResult, setInviteResult] = useState<string | null>(null);
   const STUDENT_APP_URL = (() => {
     const envUrl = import.meta.env.VITE_STUDENT_APP_URL;
     if (!envUrl) {
@@ -275,6 +277,20 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     }
   };
 
+  const handleSendInvites = async () => {
+    setIsSendingInvites(true);
+    setInviteResult(null);
+    try {
+      const result = await apiService.sendInvites(assessmentId);
+      setInviteResult(`Sent ${result.sent} invite${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} skipped — no email)` : ''}`);
+      setTimeout(() => setInviteResult(null), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send invites');
+    } finally {
+      setIsSendingInvites(false);
+    }
+  };
+
   const isInactive = (p: StudentProgress): boolean => {
     if (p.status === 'completed' || p.status === 'submitted') return false;
     const startedAt = p.startedAt;
@@ -315,10 +331,65 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     inProgress: progressArray.filter(p => p.status === 'in-progress').length,
     completed: progressArray.filter(p => p.status === 'completed' || p.status === 'submitted').length,
   };
+  const evaluatedCount = Object.values(evalProgress).filter(e => e.status === 'completed').length;
+  const allSubmitted = stats.total > 0 && stats.completed === stats.total;
+  const allEvaluated = stats.completed > 0 && evaluatedCount >= stats.completed;
+
+  // Assessment phase status
+  const assessmentPhase = allEvaluated ? 'Evaluated' : allSubmitted ? 'All Submitted' : stats.inProgress > 0 ? 'In Progress' : stats.notStarted === stats.total ? 'Not Started' : 'Open';
+  const phaseColors: Record<string, string> = {
+    'Not Started': 'bg-gray-100 text-gray-700',
+    'Open': 'bg-blue-100 text-blue-700',
+    'In Progress': 'bg-yellow-100 text-yellow-800',
+    'All Submitted': 'bg-green-100 text-green-800',
+    'Evaluated': 'bg-purple-100 text-purple-800',
+  };
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
+      {/* Status Pill + Stats Cards */}
+      <div className="flex items-center gap-3 mb-2">
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${phaseColors[assessmentPhase] || 'bg-gray-100 text-gray-700'}`}>
+          {assessmentPhase}
+        </span>
+        {evaluatedCount > 0 && (
+          <span className="text-sm text-gray-500">{evaluatedCount} of {stats.completed} evaluated</span>
+        )}
+      </div>
+
+      {/* CTA Banners */}
+      {allSubmitted && !allEvaluated && !isEvaluating && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="text-green-800 font-medium">All {stats.total} students have submitted.</p>
+            <p className="text-green-700 text-sm">Run evaluation to generate scores and feedback.</p>
+          </div>
+          <button
+            onClick={handleEvaluateAll}
+            className="bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors whitespace-nowrap"
+          >
+            Run Evaluation
+          </button>
+        </div>
+      )}
+
+      {stats.total > 0 && stats.notStarted > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="text-blue-800 font-medium">{stats.notStarted} student{stats.notStarted !== 1 ? 's haven\'t' : ' hasn\'t'} started yet.</p>
+            <p className="text-blue-700 text-sm">Send invite emails with their assessment links.</p>
+            {inviteResult && <p className="text-blue-600 text-sm font-medium mt-1">{inviteResult}</p>}
+          </div>
+          <button
+            onClick={handleSendInvites}
+            disabled={isSendingInvites}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {isSendingInvites ? 'Sending...' : 'Send Invites'}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-gray-500 mb-1">Total Students</div>
@@ -330,11 +401,11 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-gray-500 mb-1">In Progress</div>
-          <div className="text-2xl font-bold text-yellow-400">{stats.inProgress}</div>
+          <div className="text-2xl font-bold text-yellow-600">{stats.inProgress}</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-gray-500 mb-1">Completed</div>
-          <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
+          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
         </div>
       </div>
 
@@ -526,12 +597,14 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                             {evaluatingSingle[p.studentId] ? 'Starting…' : 'Evaluate'}
                           </button>
                         )}
-                        <Link
-                          to={`/assessments/${assessmentId}/questions/${p.studentId}`}
-                          className="text-gray-500 hover:text-gray-600 text-xs font-medium transition-colors"
-                        >
-                          Edit Questions
-                        </Link>
+                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                          <Link
+                            to={`/assessments/${assessmentId}/questions/${p.studentId}`}
+                            className="text-gray-500 hover:text-gray-600 text-xs font-medium transition-colors"
+                          >
+                            Edit Questions
+                          </Link>
+                        )}
                         <button
                           onClick={() => handleCopyLink(p.studentId)}
                           title={`${STUDENT_APP_URL}/${p.studentId}/${assessmentId}`}

@@ -134,7 +134,13 @@ test.describe('Student assessment-taking flow', () => {
     // Confirm submission — button text is just "Submit" inside the modal
     await page.getByRole('button', { name: /^submit$/i }).click();
 
-    // 8. Navigate to results page
+    // 8. Submission success screen
+    await expect(page.getByText('Assessment Submitted')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/submitted for evaluation/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /check results/i })).toBeVisible();
+
+    // 9. Click through to results page
+    await page.getByRole('button', { name: /check results/i }).click();
     await expect(page.getByText('Assessment Results')).toBeVisible({ timeout: 15_000 });
   });
 

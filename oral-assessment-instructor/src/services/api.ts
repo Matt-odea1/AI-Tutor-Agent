@@ -231,6 +231,13 @@ class ApiService {
     return response.data;
   }
 
+  async sendInvites(assessmentId: string): Promise<{ ok: boolean; sent: number; skipped: number; total: number }> {
+    const response = await this.client.post(
+      `/api/assessment/${assessmentId}/send-invites`
+    );
+    return response.data;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async sendReminder(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.post(
