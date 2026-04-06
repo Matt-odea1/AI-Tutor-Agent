@@ -476,11 +476,15 @@ async def generate_student_invite(
 @assessment_router.post("/{id}/send-invites", status_code=200)
 async def send_bulk_invites(
     id: str,
+    request: dict = Body(default={}),
     svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
     auth_service: AuthService = Depends(get_auth_service),
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
-    """Send invite emails to all enrolled students who haven't started yet."""
+    """Send invite emails to all enrolled students.  Accepts optional customisation:
+    { "subject": "...", "message": "..." }
+    Use {{name}}, {{title}}, {{link}} as placeholders in subject/message.
+    """
     try:
         _assert_instructor_access(_principal)
         assessment = svc.get_assessment(id)
@@ -489,6 +493,8 @@ async def send_bulk_invites(
         enrolled_students = svc.get_assessment_students(id)
         base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
         title = assessment.get("title", id)
+        custom_subject = (request.get("subject") or "").strip()
+        custom_message = (request.get("message") or "").strip()
 
         sent = 0
         skipped = 0
@@ -505,6 +511,8 @@ async def send_bulk_invites(
                     student_name=student.get("name", student["studentId"]),
                     assessment_title=title,
                     invite_link=invite_link,
+                    custom_subject=custom_subject,
+                    custom_message=custom_message,
                 )
                 sent += 1
             except Exception as e:

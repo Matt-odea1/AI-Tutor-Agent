@@ -842,11 +842,16 @@ class AuthService:
         student_name: str,
         assessment_title: str,
         invite_link: str,
+        custom_subject: str = "",
+        custom_message: str = "",
     ) -> None:
         """
         Send an invite email to a student.
         Silently returns (logs warning) if SES or from-email is not configured,
         so the invite endpoint never fails due to email delivery.
+
+        custom_subject / custom_message: if provided, override the default
+        email content.  Use {{name}}, {{title}}, and {{link}} as placeholders.
         """
         if not self.password_reset_from_email:
             logger.warning("Student invite email skipped — AUTH_PASSWORD_RESET_FROM_EMAIL not configured")
@@ -856,21 +861,42 @@ class AuthService:
             logger.warning("Student invite email skipped — SES client unavailable")
             return
 
-        subject = f"Your assessment invitation: {assessment_title}"
-        text_body = (
-            f"Hi {student_name},\n\n"
-            f"You have been invited to complete an assessment: {assessment_title}.\n\n"
-            f"Click the link below to start:\n{invite_link}\n\n"
-            "This link is single-use and expires in 7 days.\n\n"
-            "Good luck!"
-        )
-        html_body = (
-            f"<p>Hi {student_name},</p>"
-            f"<p>You have been invited to complete an assessment: <strong>{assessment_title}</strong>.</p>"
-            f'<p><a href="{invite_link}">Click here to start your assessment</a></p>'
-            "<p>This link is single-use and expires in 7 days.</p>"
-            "<p>Good luck!</p>"
-        )
+        def _render(template: str) -> str:
+            return (
+                template
+                .replace("{{name}}", student_name)
+                .replace("{{title}}", assessment_title)
+                .replace("{{link}}", invite_link)
+            )
+
+        if custom_subject:
+            subject = _render(custom_subject)
+        else:
+            subject = f"Your assessment invitation: {assessment_title}"
+
+        if custom_message:
+            text_body = _render(custom_message)
+            # Auto-generate HTML from text: paragraphs + clickable link
+            html_body = "".join(
+                f"<p>{line}</p>" if invite_link not in line
+                else f'<p><a href="{invite_link}">{invite_link}</a></p>'
+                for line in text_body.split("\n\n") if line.strip()
+            )
+        else:
+            text_body = (
+                f"Hi {student_name},\n\n"
+                f"You have been invited to complete an assessment: {assessment_title}.\n\n"
+                f"Click the link below to start:\n{invite_link}\n\n"
+                "This link is single-use and expires in 7 days.\n\n"
+                "Good luck!"
+            )
+            html_body = (
+                f"<p>Hi {student_name},</p>"
+                f"<p>You have been invited to complete an assessment: <strong>{assessment_title}</strong>.</p>"
+                f'<p><a href="{invite_link}">Click here to start your assessment</a></p>'
+                "<p>This link is single-use and expires in 7 days.</p>"
+                "<p>Good luck!</p>"
+            )
 
         try:
             self.ses_client.send_email(

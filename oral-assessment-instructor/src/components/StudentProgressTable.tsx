@@ -33,6 +33,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteSubject, setInviteSubject] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
   const STUDENT_APP_URL = (() => {
     const envUrl = import.meta.env.VITE_STUDENT_APP_URL;
     if (!envUrl) {
@@ -277,12 +280,29 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     }
   };
 
+  const openInviteModal = () => {
+    const title = useAssessmentStore.getState().selectedAssessment?.title || 'your assessment';
+    setInviteSubject(`Your assessment invitation: ${title}`);
+    setInviteMessage(
+      `Hi {{name}},\n\n` +
+      `You have been invited to complete an assessment: {{title}}.\n\n` +
+      `Click the link below to start:\n{{link}}\n\n` +
+      `This link is single-use and expires in 7 days.\n\n` +
+      `Good luck!`
+    );
+    setShowInviteModal(true);
+  };
+
   const handleSendInvites = async () => {
     setIsSendingInvites(true);
     setInviteResult(null);
     try {
-      const result = await apiService.sendInvites(assessmentId);
+      const opts: { subject?: string; message?: string } = {};
+      if (inviteSubject.trim()) opts.subject = inviteSubject.trim();
+      if (inviteMessage.trim()) opts.message = inviteMessage.trim();
+      const result = await apiService.sendInvites(assessmentId, opts);
       setInviteResult(`Sent ${result.sent} invite${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} skipped — no email)` : ''}`);
+      setShowInviteModal(false);
       setTimeout(() => setInviteResult(null), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invites');
@@ -381,11 +401,10 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
             {inviteResult && <p className="text-blue-600 text-sm font-medium mt-1">{inviteResult}</p>}
           </div>
           <button
-            onClick={handleSendInvites}
-            disabled={isSendingInvites}
-            className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap"
+            onClick={openInviteModal}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors whitespace-nowrap"
           >
-            {isSendingInvites ? 'Sending...' : 'Send Invites'}
+            Send Invites
           </button>
         </div>
       )}
@@ -625,6 +644,52 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
           </table>
         </div>
       </div>
+
+      {/* Invite Email Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Send Invite Emails</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Customise the email sent to {stats.total} enrolled student{stats.total !== 1 ? 's' : ''}.
+              Use <code className="bg-gray-100 px-1 rounded text-xs">{'{{name}}'}</code>, <code className="bg-gray-100 px-1 rounded text-xs">{'{{title}}'}</code>, and <code className="bg-gray-100 px-1 rounded text-xs">{'{{link}}'}</code> as placeholders.
+            </p>
+
+            <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+            <input
+              type="text"
+              value={inviteSubject}
+              onChange={(e) => setInviteSubject(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none mb-4"
+            />
+
+            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+            <textarea
+              value={inviteMessage}
+              onChange={(e) => setInviteMessage(e.target.value)}
+              rows={8}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-y text-sm font-mono mb-4"
+            />
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowInviteModal(false)}
+                disabled={isSendingInvites}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendInvites}
+                disabled={isSendingInvites}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {isSendingInvites ? 'Sending...' : `Send to ${stats.total} Students`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

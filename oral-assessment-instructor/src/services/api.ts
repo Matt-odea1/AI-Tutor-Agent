@@ -231,9 +231,10 @@ class ApiService {
     return response.data;
   }
 
-  async sendInvites(assessmentId: string): Promise<{ ok: boolean; sent: number; skipped: number; total: number }> {
+  async sendInvites(assessmentId: string, options?: { subject?: string; message?: string }): Promise<{ ok: boolean; sent: number; skipped: number; total: number }> {
     const response = await this.client.post(
-      `/api/assessment/${assessmentId}/send-invites`
+      `/api/assessment/${assessmentId}/send-invites`,
+      options || {}
     );
     return response.data;
   }
