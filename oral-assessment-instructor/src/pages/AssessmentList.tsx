@@ -32,16 +32,13 @@ export default function AssessmentList() {
       const data = await apiService.listAssessments();
       const list = Array.isArray(data) ? data : [];
       setAssessments(list);
-      // Fetch enrollment/completion stats for all assessments in parallel
+      // Fetch enrollment/completion stats from the lightweight progress endpoint
       const entries = await Promise.all(
         list.map(async (a) => {
           try {
-            const [studentsData, progData] = await Promise.all([
-              apiService.getAssessmentStudents(a.id),
-              apiService.getAssessmentProgress(a.id),
-            ]);
-            const enrolled = Array.isArray(studentsData) ? studentsData.length : 0;
+            const progData = await apiService.getAssessmentProgress(a.id);
             const prog = Array.isArray(progData) ? progData : [];
+            const enrolled = prog.length;
             const completed = prog.filter(s => s.status === 'submitted' || s.status === 'completed').length;
             return [a.id, { enrolled, completed }] as const;
           } catch {

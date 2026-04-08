@@ -103,12 +103,12 @@ class AssessmentListResponse(BaseModel):
 class StudentResponse(BaseModel):
     """Student enrollment data"""
     studentId: str
-    name: str
-    email: str
-    code: str
-    assignmentFile: str
-    status: str
-    enrolledAt: str
+    name: str = ""
+    email: str = ""
+    code: str = ""
+    assignmentFile: str = ""
+    status: str = ""
+    enrolledAt: str = ""
 
 
 class StudentListResponse(BaseModel):
