@@ -6,11 +6,13 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 import boto3
 import json
 import logging
+import os
 
 class AgentCoreClient:
     def __init__(self):
         self.app = BedrockAgentCoreApp()
-        self.bedrock_client = boto3.client("bedrock-runtime")
+        bedrock_region = os.getenv("BEDROCK_REGION", "us-east-1")
+        self.bedrock_client = boto3.client("bedrock-runtime", region_name=bedrock_region)
         self.logger = logging.getLogger("AgentCoreClient")
         if not self.logger.hasHandlers():
             logging.basicConfig(level=logging.INFO)

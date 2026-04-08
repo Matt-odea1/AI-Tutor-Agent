@@ -127,7 +127,7 @@ class BedrockPostProcessor:
         if not self.model_id:
             raise EnvironmentError("BEDROCK_MODEL_CHAT not set in env and no model_id provided")
 
-        self.region = region or os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION")
+        self.region = region or os.getenv("BEDROCK_REGION") or os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION")
         # create a bedrock-runtime client; some SDKs call this 'bedrock-runtime' or 'bedrock'
         self.client = client or boto3.client("bedrock-runtime", region_name=self.region)
 
