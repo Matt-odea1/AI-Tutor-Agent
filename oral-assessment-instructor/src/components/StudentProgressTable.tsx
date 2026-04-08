@@ -33,6 +33,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const [invitesSent, setInvitesSent] = useState(() => {
+    try { return localStorage.getItem(`invitesSent:${assessmentId}`) === 'true'; } catch { return false; }
+  });
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteSubject, setInviteSubject] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
@@ -303,6 +306,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       const result = await apiService.sendInvites(assessmentId, opts);
       setInviteResult(`Sent ${result.sent} invite${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} skipped — no email)` : ''}`);
       setShowInviteModal(false);
+      setInvitesSent(true);
+      try { localStorage.setItem(`invitesSent:${assessmentId}`, 'true'); } catch { /* */ }
       setTimeout(() => setInviteResult(null), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invites');
@@ -394,17 +399,21 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       )}
 
       {stats.total > 0 && stats.notStarted > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+        <div className={`${invitesSent ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4 flex items-center justify-between`}>
           <div>
-            <p className="text-blue-800 font-medium">{stats.notStarted} student{stats.notStarted !== 1 ? 's haven\'t' : ' hasn\'t'} started yet.</p>
-            <p className="text-blue-700 text-sm">Send invite emails with their assessment links.</p>
+            <p className={`${invitesSent ? 'text-gray-700' : 'text-blue-800'} font-medium`}>
+              {stats.notStarted} student{stats.notStarted !== 1 ? 's haven\'t' : ' hasn\'t'} started yet.
+            </p>
+            <p className={`${invitesSent ? 'text-gray-500' : 'text-blue-700'} text-sm`}>
+              {invitesSent ? 'Invite emails have been sent.' : 'Send invite emails with their assessment links.'}
+            </p>
             {inviteResult && <p className="text-blue-600 text-sm font-medium mt-1">{inviteResult}</p>}
           </div>
           <button
             onClick={openInviteModal}
-            className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors whitespace-nowrap"
+            className={`${invitesSent ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap`}
           >
-            Send Invites
+            {invitesSent ? 'Resend Invites' : 'Send Invites'}
           </button>
         </div>
       )}

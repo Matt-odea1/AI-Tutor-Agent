@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import TakeAssessment from './pages/TakeAssessment';
 import ViewResults from './pages/ViewResults';
+import InviteLanding from './pages/InviteLanding';
 import { ToastContainer } from './components/ToastContainer';
 import './index.css';
 
@@ -60,6 +61,9 @@ function App() {
     <BrowserRouter>
       <ToastContainer />
       <Routes>
+        {/* Invite link exchange - URL format: /invite?token=... */}
+        <Route path="/invite" element={<InviteLanding />} />
+
         {/* Assessment taking - URL format: /:studentId/:assessmentId */}
         <Route path="/:studentId/:assessmentId" element={<TakeAssessment />} />
 
