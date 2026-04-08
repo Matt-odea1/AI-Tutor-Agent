@@ -288,12 +288,14 @@ async def delete_assessment(
     svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
-    """Delete a draft assessment and all its data. Only works for status='draft'."""
+    """Delete an assessment and all its data."""
     try:
+        import asyncio
         _assert_instructor_access(_principal)
         assessment = svc.get_assessment(id)
         _assert_assessment_owner(_principal, assessment)
-        svc.delete_assessment(id)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, svc.delete_assessment, id)
         return None  # 204 No Content
 
     except InstructorAssessmentServiceError as error:

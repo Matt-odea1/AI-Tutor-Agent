@@ -284,42 +284,50 @@ class InstructorAssessmentService:
 
     def delete_assessment(self, assessment_id: str) -> None:
         """
-        Delete a draft assessment and all its associated data.
-        Only assessments with status='draft' can be deleted.
+        Delete an assessment and all its associated data.
         """
         try:
-            assessment = self.get_assessment(assessment_id)
-            if assessment["status"] != "draft":
-                raise InstructorAssessmentServiceError(
-                    f"Only draft assessments can be deleted (current status: {assessment['status']})"
-                )
+            self.get_assessment(assessment_id)  # verify it exists
 
-            # Get enrolled students before deleting anything
-            students = self.enrollment.get_assessment_students(assessment_id)
+            # Get student IDs using lightweight query (no code)
+            students = self.enrollment.get_assessment_students_lightweight(assessment_id)
             student_ids = [s["studentId"] for s in students]
 
             # Delete all ASSESSMENT#{id} partition items (metadata + enrollment records)
-            assessment_items = self.table.query(
-                KeyConditionExpression=Key("PK").eq(f"ASSESSMENT#{assessment_id}")
-            )
+            # Use paginator in case there are many items
+            last_key = None
             with self.table.batch_writer() as batch:
-                for item in assessment_items.get("Items", []):
-                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
-
-            # For each student: delete reverse lookup + any student-specific items (questions, answers, progress)
-            for student_id in student_ids:
-                # Delete reverse lookup: STUDENT#{id}, SK: ASSESSMENT#{assessment_id}
-                self.table.delete_item(
-                    Key={"PK": f"STUDENT#{student_id}", "SK": f"ASSESSMENT#{assessment_id}"}
-                )
-                # Delete all STUDENT#{id}#ASSESSMENT#{id} items
-                pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-                student_items = self.table.query(
-                    KeyConditionExpression=Key("PK").eq(pk)
-                )
-                with self.table.batch_writer() as batch:
-                    for item in student_items.get("Items", []):
+                while True:
+                    query_args = {"KeyConditionExpression": Key("PK").eq(f"ASSESSMENT#{assessment_id}")}
+                    if last_key:
+                        query_args["ExclusiveStartKey"] = last_key
+                    resp = self.table.query(**query_args)
+                    for item in resp.get("Items", []):
                         batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                    last_key = resp.get("LastEvaluatedKey")
+                    if not last_key:
+                        break
+
+            # Batch delete reverse lookups + all student-specific items
+            with self.table.batch_writer() as batch:
+                for student_id in student_ids:
+                    # Reverse lookup
+                    batch.delete_item(
+                        Key={"PK": f"STUDENT#{student_id}", "SK": f"ASSESSMENT#{assessment_id}"}
+                    )
+                    # All student-assessment items (questions, answers, progress, evaluations)
+                    pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+                    s_last_key = None
+                    while True:
+                        q_args = {"KeyConditionExpression": Key("PK").eq(pk)}
+                        if s_last_key:
+                            q_args["ExclusiveStartKey"] = s_last_key
+                        s_resp = self.table.query(**q_args)
+                        for item in s_resp.get("Items", []):
+                            batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                        s_last_key = s_resp.get("LastEvaluatedKey")
+                        if not s_last_key:
+                            break
 
             logger.info(f"Deleted assessment {assessment_id} with {len(student_ids)} student records")
 
