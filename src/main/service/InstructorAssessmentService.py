@@ -18,6 +18,7 @@ import os
 import json
 import uuid
 import boto3
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -442,17 +443,27 @@ class InstructorAssessmentService:
         Warns if not all submitted students have evaluations."""
         try:
             # Check how many submitted students have evaluations
-            students = self.enrollment.get_assessment_students(assessment_id)
+            students = self.enrollment.get_assessment_students_lightweight(assessment_id)
             submitted = [s for s in students if s.get("status") == "submitted"]
-            evaluated_count = 0
-            for s in submitted:
-                pk = f"STUDENT#{s['studentId']}#ASSESSMENT#{assessment_id}"
+
+            def _has_evaluation(student_id: str) -> bool:
+                pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
                 eval_resp = self.table.query(
                     KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#"),
                     Select="COUNT",
+                    Limit=1,
                 )
-                if eval_resp.get("Count", 0) > 0:
-                    evaluated_count += 1
+                return eval_resp.get("Count", 0) > 0
+
+            evaluated_count = 0
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                futures = {
+                    executor.submit(_has_evaluation, s["studentId"]): s
+                    for s in submitted
+                }
+                for future in as_completed(futures):
+                    if future.result():
+                        evaluated_count += 1
 
             self.table.update_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},

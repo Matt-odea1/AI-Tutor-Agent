@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
 from boto3.dynamodb.conditions import Key
@@ -18,29 +19,92 @@ class InstructorAssessmentResultsAggregator:
         self.table = table
         self.get_students = get_students
 
+    # ------------------------------------------------------------------
+    # Batch helpers
+    # ------------------------------------------------------------------
+
+    def _batch_get_enrollments(
+        self, assessment_id: str, student_ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Fetch enrollment items via BatchGetItem (100-key pages)."""
+        table_name = self.table.table_name
+        keys = [
+            {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{sid}"}
+            for sid in student_ids
+        ]
+        enrollment_map: Dict[str, Dict[str, Any]] = {}
+        for i in range(0, len(keys), 100):
+            batch = keys[i : i + 100]
+            response = self.table.meta.client.batch_get_item(
+                RequestItems={table_name: {"Keys": batch}}
+            )
+            for item in response.get("Responses", {}).get(table_name, []):
+                sid = item["SK"].replace("STUDENT#", "")
+                enrollment_map[sid] = item
+
+            # Handle unprocessed keys (throttling)
+            unprocessed = (
+                response.get("UnprocessedKeys", {})
+                .get(table_name, {})
+                .get("Keys", [])
+            )
+            while unprocessed:
+                retry = self.table.meta.client.batch_get_item(
+                    RequestItems={table_name: {"Keys": unprocessed}}
+                )
+                for item in retry.get("Responses", {}).get(table_name, []):
+                    sid = item["SK"].replace("STUDENT#", "")
+                    enrollment_map[sid] = item
+                unprocessed = (
+                    retry.get("UnprocessedKeys", {})
+                    .get(table_name, {})
+                    .get("Keys", [])
+                )
+        return enrollment_map
+
+    def _query_evaluations(
+        self, student_id: str, assessment_id: str
+    ) -> List[Dict[str, Any]]:
+        """Query evaluation items for a single student (used inside thread pool)."""
+        pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
+        resp = self.table.query(
+            KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#")
+        )
+        return resp.get("Items", [])
+
+    # ------------------------------------------------------------------
+    # get_assessment_results  — was N+1, now batched + concurrent
+    # ------------------------------------------------------------------
+
     def get_assessment_results(self, assessment_id: str) -> List[Dict[str, Any]]:
         students = self.get_students(assessment_id)
-        results_list: List[Dict[str, Any]] = []
+        if not students:
+            return []
 
+        student_ids = [s["studentId"] for s in students]
+
+        # 1) BatchGetItem for all enrollment records (ceil(N/100) calls)
+        enrollment_map = self._batch_get_enrollments(assessment_id, student_ids)
+
+        # 2) Concurrent evaluation queries (max 20 workers)
+        evaluations_map: Dict[str, List[Dict[str, Any]]] = {}
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            futures = {
+                pool.submit(self._query_evaluations, sid, assessment_id): sid
+                for sid in student_ids
+            }
+            for future in as_completed(futures):
+                sid = futures[future]
+                evaluations_map[sid] = future.result()
+
+        # 3) Assemble results
+        results_list: List[Dict[str, Any]] = []
         for student in students:
             student_id = student["studentId"]
-            pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
-
-            evaluations_response = self.table.query(
-                KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#")
-            )
-            evaluations = evaluations_response.get("Items", [])
-
-            enrollment_response = self.table.get_item(
-                Key={
-                    "PK": f"ASSESSMENT#{assessment_id}",
-                    "SK": f"STUDENT#{student_id}",
-                }
-            )
-            enrollment = enrollment_response.get("Item", {})
+            evaluations = evaluations_map.get(student_id, [])
+            enrollment = enrollment_map.get(student_id, {})
 
             if not evaluations:
-                # Include student with no evaluations so instructor sees the full roster
                 results_list.append(
                     {
                         "studentId": student_id,
@@ -89,29 +153,38 @@ class InstructorAssessmentResultsAggregator:
 
         return results_list
 
+    # ------------------------------------------------------------------
+    # get_student_detail  — was 5 sequential queries, now 1 query + 1 get
+    # ------------------------------------------------------------------
+
     def get_student_detail(self, assessment_id: str, student_id: str) -> Dict[str, Any]:
         """Return per-question details for one student in the instructor view."""
         pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
 
-        questions_resp = self.table.query(
-            KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("QUESTION#")
-        )
-        answers_resp = self.table.query(
-            KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("ANSWER#")
-        )
-        evaluations_resp = self.table.query(
-            KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("EVALUATION#")
-        )
-        chunks_resp = self.table.query(
-            KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with("PROCTORING#CHUNK#")
-        )
+        # Single query for ALL items under this PK (questions, answers,
+        # evaluations, and proctoring chunks all share the same partition).
+        all_items_resp = self.table.query(KeyConditionExpression=Key("PK").eq(pk))
+        all_items = all_items_resp.get("Items", [])
 
-        questions_map = {item["SK"].replace("QUESTION#", ""): item for item in questions_resp.get("Items", [])}
-        answers_map = {item["SK"].replace("ANSWER#", ""): item for item in answers_resp.get("Items", [])}
-        evaluations_map = {item["SK"].replace("EVALUATION#", ""): item for item in evaluations_resp.get("Items", [])}
+        # Bucket items by SK prefix
+        questions_map: Dict[str, Dict[str, Any]] = {}
+        answers_map: Dict[str, Dict[str, Any]] = {}
+        evaluations_map: Dict[str, Dict[str, Any]] = {}
+        chunks: List[Dict[str, Any]] = []
+
+        for item in all_items:
+            sk: str = item.get("SK", "")
+            if sk.startswith("QUESTION#"):
+                questions_map[sk.replace("QUESTION#", "")] = item
+            elif sk.startswith("ANSWER#"):
+                answers_map[sk.replace("ANSWER#", "")] = item
+            elif sk.startswith("EVALUATION#"):
+                evaluations_map[sk.replace("EVALUATION#", "")] = item
+            elif sk.startswith("PROCTORING#CHUNK#"):
+                chunks.append(item)
 
         # Proctoring chunk health
-        chunks = sorted(chunks_resp.get("Items", []), key=lambda c: int(c.get("chunkIndex", 0)))
+        chunks.sort(key=lambda c: int(c.get("chunkIndex", 0)))
         chunk_indexes = {int(c.get("chunkIndex", 0)) for c in chunks}
         max_index = max(chunk_indexes, default=-1)
         missing_indexes = [i for i in range(max_index + 1) if i not in chunk_indexes]
@@ -183,7 +256,7 @@ class InstructorAssessmentResultsAggregator:
         else:
             grade = "Unsatisfactory"
 
-        # Fetch enrollment for name/email/submittedAt
+        # Fetch enrollment for name/email/submittedAt (different PK, so separate call)
         enrollment_resp = self.table.get_item(
             Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
         )

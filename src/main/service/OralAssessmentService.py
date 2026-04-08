@@ -87,18 +87,26 @@ class OralAssessmentService:
         except Exception as e:
             logger.warning(f"Failed to update progress: {e}")
     
-    def _check_assessment_window(self, assessment_id: str) -> None:
+    def _get_assessment_metadata(self, assessment_id: str) -> Dict[str, Any]:
+        """Fetch and return assessment METADATA item, raising if not found."""
+        response = self.table.get_item(
+            Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+        )
+        item = response.get("Item")
+        if not item:
+            raise OralAssessmentServiceError(f"Assessment {assessment_id} not found")
+        return item
+
+    def _check_assessment_window(self, assessment_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Raise OralAssessmentServiceError if the assessment is in scheduled mode
         and the current time is outside the configured window.
+
+        If *metadata* is provided it is used directly, avoiding a redundant
+        DynamoDB read.
         """
         try:
-            response = self.table.get_item(
-                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
-            )
-            item = response.get("Item")
-            if not item:
-                raise OralAssessmentServiceError(f"Assessment {assessment_id} not found")
+            item = metadata if metadata is not None else self._get_assessment_metadata(assessment_id)
 
             if item.get("accessMode", "open") != "scheduled":
                 return  # open access — no check needed
@@ -154,13 +162,10 @@ class OralAssessmentService:
         """
         try:
             self.question_access.ensure_student_enrollment(student_id, assessment_id)
-            self._check_assessment_window(assessment_id)
 
-            # Fetch assessment metadata to get time limit for question view
-            meta_resp = self.table.get_item(
-                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
-            )
-            assessment_meta = meta_resp.get("Item", {})
+            # Single METADATA read — reused for window check and question view
+            assessment_meta = self._get_assessment_metadata(assessment_id)
+            self._check_assessment_window(assessment_id, metadata=assessment_meta)
             # timeLimit is stored in seconds (create_assessment converts minutes → seconds)
             raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
             assessment_time_limit = raw_time_limit
@@ -377,11 +382,11 @@ class OralAssessmentService:
         try:
             pk = f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}"
 
+            # Single METADATA read — reused for due-date check and title
+            meta = self._get_assessment_metadata(assessment_id)
+
             # Check due date before accepting final submission
             try:
-                meta = self.table.get_item(
-                    Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
-                ).get("Item", {})
                 due_date_str = meta.get("dueDate")
                 if due_date_str:
                     due = datetime.fromisoformat(due_date_str.replace("Z", "+00:00"))
@@ -449,15 +454,8 @@ class OralAssessmentService:
             except self.table.meta.client.exceptions.ConditionalCheckFailedException:
                 raise OralAssessmentServiceError("Assessment already submitted")
             
-            # Get assessment title
-            assessment_response = self.table.get_item(
-                Key={
-                    'PK': f"ASSESSMENT#{assessment_id}",
-                    'SK': 'METADATA'
-                }
-            )
-            
-            assessment_title = assessment_response.get('Item', {}).get('title', 'Unknown')
+            # Reuse METADATA fetched earlier for the title
+            assessment_title = meta.get('title', 'Unknown')
             
             logger.info(f"Student {student_id} submitted assessment {assessment_id}")
             

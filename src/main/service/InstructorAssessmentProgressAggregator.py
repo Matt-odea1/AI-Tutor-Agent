@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Callable, Dict, List
 
 
@@ -33,9 +34,12 @@ class InstructorAssessmentProgressAggregator:
                 student_id = pk.split("#")[1]
                 progress_map[student_id] = item
 
-            # Handle unprocessed keys (throttling)
+            # Handle unprocessed keys (throttling) with exponential backoff
             unprocessed = response.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
-            while unprocessed:
+            attempt = 0
+            max_retries = 3
+            while unprocessed and attempt < max_retries:
+                time.sleep(0.1 * (2 ** attempt))
                 retry = self.table.meta.client.batch_get_item(
                     RequestItems={table_name: {"Keys": unprocessed}}
                 )
@@ -44,6 +48,7 @@ class InstructorAssessmentProgressAggregator:
                     student_id = pk.split("#")[1]
                     progress_map[student_id] = item
                 unprocessed = retry.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
+                attempt += 1
 
         # Build response
         progress_list: List[Dict[str, Any]] = []

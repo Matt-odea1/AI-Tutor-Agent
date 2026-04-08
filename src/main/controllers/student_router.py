@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import io
@@ -58,8 +59,11 @@ async def get_student_token(
     Verifies the student is enrolled in the assessment, then issues a
     12-hour scoped JWT so the student can call protected student endpoints.
     """
+    loop = asyncio.get_event_loop()
     try:
-        svc.question_access.ensure_student_enrollment(request.student_id, request.assessment_id)
+        await loop.run_in_executor(
+            None, lambda: svc.question_access.ensure_student_enrollment(request.student_id, request.assessment_id)
+        )
     except (ValueError, OralAssessmentServiceError):
         raise ApiError(
             status_code=404,
@@ -70,7 +74,9 @@ async def get_student_token(
         logger.error("Unexpected error verifying enrollment: %s", error)
         raise ApiError(status_code=500, code="unexpected_error", message="Failed to verify enrollment")
 
-    return auth_service.issue_student_session_token(request.student_id, request.assessment_id)
+    return await loop.run_in_executor(
+        None, lambda: auth_service.issue_student_session_token(request.student_id, request.assessment_id)
+    )
 
 
 @student_router.get("/{student_id}/assessment/{assessment_id}/questions", response_model=StudentQuestionsResponse)
@@ -82,7 +88,8 @@ async def get_student_questions(
 ):
     try:
         _assert_student_access(_principal, student_id, assessment_id)
-        result = svc.get_student_questions(student_id, assessment_id)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: svc.get_student_questions(student_id, assessment_id))
 
         # result is now {"questions": [...], "answerMode": ..., "preparationTime": ...}
         raw_questions = result.get("questions", []) if isinstance(result, dict) else result
@@ -135,7 +142,8 @@ async def submit_answer(
 ):
     try:
         _assert_student_access(_principal, student_id, request.assessment_id)
-        result = svc.submit_answer(
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: svc.submit_answer(
             student_id=student_id,
             question_id=request.question_id,
             assessment_id=request.assessment_id,
@@ -144,7 +152,7 @@ async def submit_answer(
             duration=request.duration,
             text_content=request.text_content,
             video_url=request.video_url,
-        )
+        ))
 
         return SubmitAnswerResponse(**result)
 
@@ -170,10 +178,11 @@ async def submit_assessment(
 ):
     try:
         _assert_student_access(_principal, student_id, request.assessment_id)
-        result = svc.submit_assessment(
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: svc.submit_assessment(
             student_id=student_id,
             assessment_id=request.assessment_id,
-        )
+        ))
 
         # Auto-evaluate in background so the last student's response isn't delayed
         def _maybe_auto_evaluate():
@@ -229,7 +238,8 @@ async def get_student_progress(
 ):
     try:
         _assert_student_access(_principal, student_id, assessment_id)
-        progress = svc.get_student_progress(student_id, assessment_id)
+        loop = asyncio.get_event_loop()
+        progress = await loop.run_in_executor(None, lambda: svc.get_student_progress(student_id, assessment_id))
         return StudentProgressResponse(**progress)
 
     except OralAssessmentServiceError as error:
@@ -252,7 +262,8 @@ async def get_student_results(
 ):
     try:
         _assert_student_access(_principal, student_id, assessment_id)
-        results = svc.get_student_results(student_id, assessment_id)
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, lambda: svc.get_student_results(student_id, assessment_id))
         return StudentResultsResponse(**results)
 
     except OralAssessmentServiceError as error:
@@ -275,13 +286,14 @@ async def submit_proctor_chunk(
 ):
     try:
         _assert_student_access(_principal, student_id, request.assessment_id)
-        result = svc.submit_proctor_chunk(
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: svc.submit_proctor_chunk(
             student_id=student_id,
             assessment_id=request.assessment_id,
             chunk_url=request.chunk_url,
             chunk_index=request.chunk_index,
             timestamp=request.timestamp,
-        )
+        ))
         return SubmitProctorChunkResponse(**result)
 
     except OralAssessmentServiceError as error:
@@ -309,7 +321,8 @@ async def get_student_results_pdf(
     """EPIC-6-3: Generate a PDF results report for a student."""
     try:
         _assert_student_access(_principal, student_id, assessment_id)
-        results = svc.get_student_results(student_id, assessment_id)
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, lambda: svc.get_student_results(student_id, assessment_id))
 
         try:
             from reportlab.lib.pagesizes import A4
