@@ -62,7 +62,7 @@ class InstructorAssessmentService:
             )
             self.progress_aggregator = InstructorAssessmentProgressAggregator(
                 table=self.table,
-                get_students=self.enrollment.get_assessment_students,
+                get_students=self.enrollment.get_assessment_students_lightweight,
             )
             self.results_aggregator = InstructorAssessmentResultsAggregator(
                 table=self.table,

@@ -60,11 +60,35 @@ class InstructorAssessmentEnrollment:
             students.append(
                 {
                     "studentId": item["studentId"],
-                    "name": item["name"],
-                    "email": item["email"],
-                    "code": item["code"],
+                    "name": item.get("name", ""),
+                    "email": item.get("email", ""),
+                    "code": item.get("code", ""),
                     "assignmentFile": item.get("assignmentFile", ""),
                     "status": item.get("status", "enrolled"),
+                    "enrolledAt": item.get("enrolledAt", ""),
+                }
+            )
+        return students
+
+    def get_assessment_students_lightweight(self, assessment_id: str) -> List[Dict[str, Any]]:
+        """Get students without code/assignmentFile — for progress and stats queries."""
+        response = self.table.query(
+            KeyConditionExpression=Key("PK").eq(f"ASSESSMENT#{assessment_id}")
+            & Key("SK").begins_with("STUDENT#"),
+            ProjectionExpression="studentId, #n, email, #s, startedAt, submittedAt, enrolledAt",
+            ExpressionAttributeNames={"#n": "name", "#s": "status"},
+        )
+
+        students: List[Dict[str, Any]] = []
+        for item in response.get("Items", []):
+            students.append(
+                {
+                    "studentId": item["studentId"],
+                    "name": item.get("name", ""),
+                    "email": item.get("email", ""),
+                    "status": item.get("status", "enrolled"),
+                    "startedAt": item.get("startedAt"),
+                    "submittedAt": item.get("submittedAt"),
                     "enrolledAt": item.get("enrolledAt", ""),
                 }
             )
