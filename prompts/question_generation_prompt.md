@@ -43,3 +43,11 @@ General questions must:
 - Avoid yes/no questions.
 - Use clear, direct language.
 - Prefer one concept per question.
+
+## Course-Level Alignment
+
+- Only ask about concepts appropriate for the course level described in the assignment brief.
+- For introductory courses: avoid questions about time/space complexity analysis, design patterns, advanced data structures, concurrency, or other topics beyond the scope.
+- Match question difficulty to the course level.
+- If the assignment brief describes the course level (e.g., "introductory programming", "COMP1511"), use that to calibrate question difficulty and topic selection.
+- The course context will be provided with the assignment brief. Ensure all questions are answerable by a student at that level.

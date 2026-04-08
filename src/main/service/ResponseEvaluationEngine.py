@@ -13,13 +13,14 @@ class ResponseEvaluationEngine:
         self.agent_client = agent_client
         self.evaluation_prompt = evaluation_prompt
 
-    def evaluate_qa_pair(self, qa_pair: Dict[str, Any], rubric: str = "") -> Dict[str, Any]:
+    def evaluate_qa_pair(self, qa_pair: Dict[str, Any], rubric: str = "", course_context: str = "") -> Dict[str, Any]:
         question = qa_pair["question"]
         answer = qa_pair["answer"]
 
+        course_section = f"\n**Course Context:**\n{course_context}\n" if course_context else ""
         rubric_section = f"\n**Custom Rubric:**\n{rubric}\n" if rubric else ""
 
-        user_prompt = f"""
+        user_prompt = f"""{course_section}
 **Question Type:** {question.get('questionType', 'general')}
 
 **Question:**
@@ -143,10 +144,10 @@ Evaluate this response and provide your assessment in JSON format as specified.
 
     @staticmethod
     def calculate_grade(percentage: float) -> str:
-        if percentage >= 80:
+        if percentage >= 90:
             return "Excellent"
-        if percentage >= 60:
+        if percentage >= 75:
             return "Competent"
-        if percentage >= 40:
+        if percentage >= 60:
             return "Developing"
         return "Unsatisfactory"

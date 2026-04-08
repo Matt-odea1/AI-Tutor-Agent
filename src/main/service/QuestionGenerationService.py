@@ -6,7 +6,9 @@ QuestionGenerationService: Generates oral exam questions from assignment briefs 
 """
 import json
 import csv
+import logging
 import os
+import re
 import uuid
 import boto3
 from pathlib import Path
@@ -16,6 +18,8 @@ from decimal import Decimal
 
 from src.main.llm.AgentCoreProvider import AgentCoreProvider
 from src.main.utils.ReadPrompt import read_prompt
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionGenerationError(Exception):
@@ -50,6 +54,27 @@ class QuestionGenerationService:
         prompt_file = Path(__file__).resolve().parents[3] / "prompts" / "question_generation_prompt.md"
         self.prompt_template = read_prompt(prompt_file)
 
+    @staticmethod
+    def _derive_course_level(course_code: str) -> str:
+        """
+        Derive a human-readable course level from a course code.
+
+        Heuristic: the first digit in the code indicates the level.
+          1xxx -> "introductory"
+          2xxx -> "intermediate"
+          3xxx or higher -> "advanced"
+        Falls back to "introductory" when no digit is found.
+        """
+        match = re.search(r"\d", course_code or "")
+        if not match:
+            return "introductory"
+        first_digit = int(match.group())
+        if first_digit <= 1:
+            return "introductory"
+        if first_digit == 2:
+            return "intermediate"
+        return "advanced"
+
     def generate_questions(
         self,
         assignment_brief: str,
@@ -58,6 +83,8 @@ class QuestionGenerationService:
         student_id: Optional[str] = None,
         assessment_id: Optional[str] = None,
         assessment_time_limit: Optional[int] = None,
+        course_name: Optional[str] = None,
+        assessment_title: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate questions from assignment brief and student code.
@@ -68,7 +95,9 @@ class QuestionGenerationService:
             student_name: Student identifier for filename generation
             student_id: Optional student ID for DynamoDB storage
             assessment_id: Optional assessment ID for DynamoDB storage
-            
+            course_name: Optional course code (e.g. "COMP9021") for level-appropriate questions
+            assessment_title: Optional assessment title for additional context
+
         Returns:
             Dictionary with:
                 - questions: List of question dicts
@@ -82,7 +111,10 @@ class QuestionGenerationService:
         
         # Build the complete prompt
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(assignment_brief, student_code)
+        user_prompt = self._build_user_prompt(
+            assignment_brief, student_code,
+            course_name=course_name, assessment_title=assessment_title,
+        )
         
         # Prepare messages for the LLM
         messages = [
@@ -111,7 +143,25 @@ class QuestionGenerationService:
         
         # Parse JSON from response
         questions = self._parse_json_response(response_text)
-        
+
+        # Validate LLM output; retry once if critically invalid
+        questions = self._validate_questions(questions)
+        if not questions:
+            logger.warning("Validation failed on first attempt, retrying LLM call once.")
+            try:
+                result = self.agent_client.chat(messages)
+            except Exception as e:
+                raise QuestionGenerationError(f"LLM retry call failed: {e}")
+            if isinstance(result, dict):
+                response_text = result.get("text") or result.get("content") or result.get("answer") or ""
+                tokens_used = result.get("tokens_input")
+            else:
+                response_text = str(result)
+            questions = self._parse_json_response(response_text)
+            questions = self._validate_questions(questions)
+            if not questions:
+                raise QuestionGenerationError("LLM produced no valid questions after retry.")
+
         # Save to files
         json_path = self._save_json(questions, student_name)
         csv_path = self._save_csv(questions, student_name)
@@ -149,8 +199,12 @@ You must respond with ONLY a valid JSON array. Each question object must have th
   "question_type": "specific" or "general",
   "question": "<the question text>",
   "rationale": "<why this question tests important concepts>",
-  "code_reference": "<the relevant code block (5-15 lines including surrounding context) being examined, or empty string for general questions>"
+  "code_reference": "<the relevant code block (5-15 lines including surrounding context) being examined, or empty string for general questions>",
+  "difficulty": "easy" | "medium" | "hard",
+  "topic": "<short topic label, e.g. loops, functions, data_structures, recursion, error_handling>"
 }
+
+The "difficulty" and "topic" fields are optional but strongly encouraged.
 
 Output format example:
 [
@@ -159,14 +213,18 @@ Output format example:
     "question_type": "specific",
     "question": "Can you explain how your for loop iterates through the list and why you chose this approach?",
     "rationale": "Tests understanding of loop mechanics and list iteration",
-    "code_reference": "def process_items(my_list):\n    results = []\n    for item in my_list:\n        if item > 0:\n            results.append(item * 2)\n    return results"
+    "code_reference": "def process_items(my_list):\n    results = []\n    for item in my_list:\n        if item > 0:\n            results.append(item * 2)\n    return results",
+    "difficulty": "easy",
+    "topic": "loops"
   },
   {
     "question_number": 6,
     "question_type": "general",
     "question": "What is the difference between a list and a tuple in Python?",
     "rationale": "Tests fundamental understanding of data structures",
-    "code_reference": ""
+    "code_reference": "",
+    "difficulty": "medium",
+    "topic": "data_structures"
   }
 ]
 
@@ -178,11 +236,40 @@ Remember:
 """
         return self.prompt_template + "\n\n" + json_schema
 
-    def _build_user_prompt(self, assignment_brief: str, student_code: str) -> str:
+    def _build_user_prompt(
+        self,
+        assignment_brief: str,
+        student_code: str,
+        course_name: Optional[str] = None,
+        assessment_title: Optional[str] = None,
+    ) -> str:
         """Build the user prompt with assignment and code."""
+        brief = assignment_brief.strip() if assignment_brief else ""
+        brief_section = brief
+
+        if not brief or brief.lower() == "no assignment brief provided":
+            logger.warning("No assignment brief provided; questions will be based solely on the code.")
+            brief_section = (
+                "No assignment brief provided. Generate questions based solely on the student's code, "
+                "focusing on implementation details, logic, and programming concepts visible in the submission."
+            )
+
+        # Prepend course context when available so the LLM calibrates
+        # question difficulty to the appropriate academic level.
+        context_header = ""
+        if course_name:
+            course_level = self._derive_course_level(course_name)
+            context_header = (
+                f"**COURSE CONTEXT:**\n"
+                f"Course: {course_name}\n"
+                f"Assessment: {assessment_title or 'N/A'}\n\n"
+                f"This is an {course_level} course. "
+                f"Ensure all questions are appropriate for students at this level.\n\n---\n\n"
+            )
+
         return f"""
-**ASSIGNMENT BRIEF:**
-{assignment_brief}
+{context_header}**ASSIGNMENT BRIEF:**
+{brief_section}
 
 ---
 
@@ -293,8 +380,8 @@ Generate the questions in JSON format as specified.
                     'questionType': q.get('question_type', 'general'),
                     'rationale': q.get('rationale', ''),
                     'codeContext': q.get('code_reference', ''),
-                    'difficulty': 'medium',
-                    'topic': self._extract_topic(q.get('rationale', '')),
+                    'difficulty': q.get('difficulty', 'medium') if q.get('difficulty') in ('easy', 'medium', 'hard') else 'medium',
+                    'topic': q.get('topic', 'general')[:30] if q.get('topic') else 'general',
                     'createdAt': created_at,
                 }
                 # Store assessment-level time limit as the default per-question limit.
@@ -308,20 +395,42 @@ Generate the questions in JSON format as specified.
         
         print(f"[QuestionGenerationService] Stored {len(questions)} questions in DynamoDB")
 
-    def _extract_topic(self, rationale: str) -> str:
-        """Extract topic from rationale (simple keyword matching)."""
-        rationale_lower = rationale.lower()
-        
-        # Simple keyword matching
-        if 'loop' in rationale_lower or 'iteration' in rationale_lower:
-            return 'loops'
-        elif 'function' in rationale_lower or 'method' in rationale_lower:
-            return 'functions'
-        elif 'list' in rationale_lower or 'array' in rationale_lower:
-            return 'data_structures'
-        elif 'variable' in rationale_lower or 'assignment' in rationale_lower:
-            return 'variables'
-        elif 'conditional' in rationale_lower or 'if' in rationale_lower:
-            return 'conditionals'
-        else:
-            return 'general'
+    def _validate_questions(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Validate LLM-generated questions. Filters out items missing the 'question' field.
+        Logs warnings if question counts differ from expected (5 specific, 3 general).
+
+        Returns:
+            Validated list of questions, or empty list if critically invalid.
+        """
+        REQUIRED_FIELDS = {"question", "question_type", "question_number"}
+
+        valid = []
+        for q in questions:
+            if not q.get("question"):
+                logger.warning("Dropping question item with missing 'question' field: %s", q)
+                continue
+            missing = REQUIRED_FIELDS - set(q.keys())
+            if missing:
+                logger.warning("Question %s missing fields %s, keeping anyway.", q.get("question_number", "?"), missing)
+            # Validate question_type value
+            if q.get("question_type") not in ("specific", "general"):
+                logger.warning(
+                    "Question %s has unexpected question_type '%s', defaulting to 'general'.",
+                    q.get("question_number", "?"), q.get("question_type")
+                )
+                q["question_type"] = "general"
+            valid.append(q)
+
+        if not valid:
+            return []
+
+        # Check counts (advisory, not fatal)
+        specific_count = sum(1 for q in valid if q.get("question_type") == "specific")
+        general_count = sum(1 for q in valid if q.get("question_type") == "general")
+        if specific_count != 5:
+            logger.warning("Expected ~5 specific questions, got %d.", specific_count)
+        if general_count != 3:
+            logger.warning("Expected ~3 general questions, got %d.", general_count)
+
+        return valid

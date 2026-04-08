@@ -111,6 +111,8 @@ class SQSJobDispatcher:
         assessment_id: str,
         students: List[Dict[str, Any]],
         assignment_brief: str,
+        course_name: str = "",
+        assessment_title: str = "",
     ) -> int:
         """
         Send one SQS message per student for question generation.
@@ -148,6 +150,8 @@ class SQSJobDispatcher:
                             "student_name": student["name"],
                             "student_code": student.get("code", ""),
                             "assignment_brief": assignment_brief,
+                            "course_name": course_name,
+                            "assessment_title": assessment_title,
                         }
                     ),
                 }
@@ -283,6 +287,8 @@ class SQSJobDispatcher:
                     student_name=body.get("student_name", student_id),
                     student_id=student_id,
                     assessment_id=assessment_id,
+                    course_name=body.get("course_name", ""),
+                    assessment_title=body.get("assessment_title", ""),
                 )
                 self._increment_job_progress(job_id, success=True)
                 logger.info("[Job %s] Question generation succeeded for student %s", job_id, student_id)

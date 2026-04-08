@@ -50,8 +50,9 @@ class EvaluationWorkflowRunner:
             qa_pairs = self.match_questions_and_answers(questions_data, answers_data)
             total_questions = len(qa_pairs)
 
-            # Read assessment rubric if available
+            # Read assessment rubric and course context if available
             rubric = self._read_assessment_rubric(assessment_id)
+            course_context = self._read_course_context(assessment_id)
 
             evaluations = []
             total_score = 0.0
@@ -61,7 +62,11 @@ class EvaluationWorkflowRunner:
             for index, qa_pair in enumerate(qa_pairs):
                 try:
                     logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
-                    evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric)
+                    try:
+                        evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
+                    except Exception as first_error:
+                        logger.warning("[Job %s] First attempt failed for question %d, retrying: %s", job_id, index + 1, first_error)
+                        evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
                     evaluations.append(evaluation)
                     total_score += evaluation["total_score"]
 
@@ -115,6 +120,23 @@ class EvaluationWorkflowRunner:
             if answer:
                 qa_pairs.append({"question": question, "answer": answer})
         return qa_pairs
+
+    def _read_course_context(self, assessment_id: str) -> str:
+        """Read course name and description from the assessment metadata. Returns '' if not set."""
+        try:
+            resp = self.repository.table.get_item(
+                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
+            )
+            item = resp.get("Item") or {}
+            course_name = item.get("courseName") or ""
+            description = item.get("description") or ""
+            if course_name or description:
+                parts = [p for p in [course_name, description] if p]
+                return " — ".join(parts)
+            return ""
+        except Exception as e:
+            logger.warning("Could not read course context for assessment %s: %s", assessment_id, e)
+            return ""
 
     def _read_assessment_rubric(self, assessment_id: str) -> str:
         """Read the custom rubric from the assessment metadata item. Returns '' if not set."""

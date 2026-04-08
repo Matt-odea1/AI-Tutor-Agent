@@ -28,7 +28,7 @@ def test_parse_evaluation_response_missing_required_field_raises():
 
 
 def test_calculate_grade_boundaries():
-    assert ResponseEvaluationEngine.calculate_grade(80) == "Excellent"
-    assert ResponseEvaluationEngine.calculate_grade(60) == "Competent"
-    assert ResponseEvaluationEngine.calculate_grade(40) == "Developing"
-    assert ResponseEvaluationEngine.calculate_grade(39.9) == "Unsatisfactory"
+    assert ResponseEvaluationEngine.calculate_grade(90) == "Excellent"
+    assert ResponseEvaluationEngine.calculate_grade(75) == "Competent"
+    assert ResponseEvaluationEngine.calculate_grade(60) == "Developing"
+    assert ResponseEvaluationEngine.calculate_grade(59.9) == "Unsatisfactory"

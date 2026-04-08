@@ -496,37 +496,42 @@ async def send_bulk_invites(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
-        enrolled_students = svc.get_assessment_students(id)
+        enrolled_students = await loop.run_in_executor(None, lambda: svc.get_assessment_students(id))
         base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
         title = assessment.get("title", id)
         custom_subject = (request.get("subject") or "").strip()
         custom_message = (request.get("message") or "").strip()
 
-        sent = 0
-        skipped = 0
-        for student in enrolled_students:
-            email = student.get("email", "")
-            if not email:
-                skipped += 1
-                continue
-            try:
-                token = auth_service.generate_student_invite_token(student["studentId"], id)
-                invite_link = f"{base_url}/invite?token={token}"
-                auth_service.send_student_invite_email(
-                    student_email=email,
-                    student_name=student.get("name", student["studentId"]),
-                    assessment_title=title,
-                    invite_link=invite_link,
-                    custom_subject=custom_subject,
-                    custom_message=custom_message,
-                )
-                sent += 1
-            except Exception as e:
-                logger.warning(f"Failed to send invite to {student['studentId']}: {e}")
-                skipped += 1
+        def _send_all_invites():
+            sent = 0
+            skipped = 0
+            for student in enrolled_students:
+                email = student.get("email", "")
+                if not email:
+                    skipped += 1
+                    continue
+                try:
+                    token = auth_service.generate_student_invite_token(student["studentId"], id)
+                    invite_link = f"{base_url}/invite?token={token}"
+                    auth_service.send_student_invite_email(
+                        student_email=email,
+                        student_name=student.get("name", student["studentId"]),
+                        assessment_title=title,
+                        invite_link=invite_link,
+                        custom_subject=custom_subject,
+                        custom_message=custom_message,
+                    )
+                    sent += 1
+                except Exception as e:
+                    logger.warning(f"Failed to send invite to {student['studentId']}: {e}")
+                    skipped += 1
+            return sent, skipped
+
+        sent, skipped = await loop.run_in_executor(None, _send_all_invites)
 
         return {
             "ok": True,
@@ -562,14 +567,15 @@ async def upload_students_csv(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
         csv_bytes = await file.read()
-        valid_rows, error_rows = submission_svc.parse_csv_enrollment(csv_bytes)
+        valid_rows, error_rows = await loop.run_in_executor(None, lambda: submission_svc.parse_csv_enrollment(csv_bytes))
 
         if valid_rows:
-            svc.upload_students(id, valid_rows)
+            await loop.run_in_executor(None, lambda: svc.upload_students(id, valid_rows))
 
         return CsvEnrollmentResponse(
             ok=True,
@@ -612,10 +618,11 @@ async def upload_student_code(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
-        students = svc.get_assessment_students(id)
+        students = await loop.run_in_executor(None, lambda: svc.get_assessment_students(id))
         if not any(s["studentId"] == student_id for s in students):
             raise ApiError(
                 status_code=404,
@@ -624,7 +631,7 @@ async def upload_student_code(
             )
 
         file_tuples = [(f.filename or "upload.txt", await f.read()) for f in files]
-        result = submission_svc.upload_student_code_files(id, student_id, file_tuples)
+        result = await loop.run_in_executor(None, lambda: submission_svc.upload_student_code_files(id, student_id, file_tuples))
 
         return CodeUploadResponse(**result)
 
@@ -657,14 +664,15 @@ async def upload_zip_submissions(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
-        students = svc.get_assessment_students(id)
+        students = await loop.run_in_executor(None, lambda: svc.get_assessment_students(id))
         enrolled_ids = [s["studentId"] for s in students]
 
         zip_bytes = await file.read()
-        result = submission_svc.upload_zip_submissions(id, zip_bytes, enrolled_ids)
+        result = await loop.run_in_executor(None, lambda: submission_svc.upload_zip_submissions(id, zip_bytes, enrolled_ids))
 
         return ZipUploadResponse(**result)
 
@@ -695,9 +703,10 @@ async def update_assessment_brief(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        result = svc.update_brief(id, request.brief)
+        result = await loop.run_in_executor(None, lambda: svc.update_brief(id, request.brief))
         return AssessmentResponse(**result)
 
     except InstructorAssessmentServiceError as error:
@@ -727,10 +736,11 @@ async def generate_questions_batch(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = instructor_svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: instructor_svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
-        all_students = instructor_svc.get_assessment_students(id)
+        all_students = await loop.run_in_executor(None, lambda: instructor_svc.get_assessment_students(id))
         if request.studentIds:
             students_to_process = [s for s in all_students if s["studentId"] in request.studentIds]
         else:
@@ -743,7 +753,7 @@ async def generate_questions_batch(
         job_manager = get_batch_job_manager()
         existing_job_id = assessment.get("activeGenerationJobId")
         if existing_job_id:
-            existing_job = job_manager.get_job(existing_job_id)
+            existing_job = await loop.run_in_executor(None, lambda: job_manager.get_job(existing_job_id))
             if existing_job and existing_job.get("status") in ("pending", "running"):
                 return QuestionGenerationJobResponse(
                     ok=True,
@@ -762,26 +772,28 @@ async def generate_questions_batch(
             or "No assignment brief provided"
         )
 
-        job_id = job_manager.create_job(
+        job_id = await loop.run_in_executor(None, lambda: job_manager.create_job(
             job_type=JobType.QUESTION_GENERATION,
             assessment_id=id,
             total_items=len(students_to_process),
             metadata={"assessment_title": assessment["title"]},
-        )
+        ))
 
         # Persist active job ID on assessment so duplicate requests are blocked server-side
-        instructor_svc.table.update_item(
+        await loop.run_in_executor(None, lambda: instructor_svc.table.update_item(
             Key={"PK": f"ASSESSMENT#{id}", "SK": "METADATA"},
             UpdateExpression="SET activeGenerationJobId = :jid",
             ExpressionAttributeValues={":jid": job_id},
-        )
+        ))
 
-        enqueued = dispatcher.enqueue_question_generation(
+        enqueued = await loop.run_in_executor(None, lambda: dispatcher.enqueue_question_generation(
             job_id=job_id,
             assessment_id=id,
             students=students_to_process,
             assignment_brief=assignment_brief,
-        )
+            course_name=assessment.get("course", ""),
+            assessment_title=assessment.get("title", ""),
+        ))
 
         return QuestionGenerationJobResponse(
             ok=True,
@@ -818,7 +830,8 @@ async def stream_generation_status(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
     except (InstructorAssessmentServiceError, ApiError, HTTPException) as error:
         raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
@@ -827,9 +840,10 @@ async def stream_generation_status(
 
     async def event_stream():
         import json as _json
+        _loop = asyncio.get_event_loop()
         terminal = {"completed", "failed"}
         while True:
-            job = job_manager.get_job(jobId)
+            job = await _loop.run_in_executor(None, lambda: job_manager.get_job(jobId))
             if not job:
                 yield f"event: error\ndata: {_json.dumps({'message': 'Job not found'})}\n\n"
                 break
@@ -868,15 +882,17 @@ async def stream_student_evaluation_progress(
     """
     import json as _json
     _assert_instructor_access(_principal)
-    assessment = svc.get_assessment(id)
+    loop = asyncio.get_event_loop()
+    assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
     _assert_assessment_owner(_principal, assessment)
 
     repo = ResponseEvaluationRepository()
     terminal = {"completed", "failed"}
 
     async def event_stream():
+        _loop = asyncio.get_event_loop()
         for _ in range(300):  # max 10 min
-            item = repo.get_evaluation_progress(studentId, id)
+            item = await _loop.run_in_executor(None, lambda: repo.get_evaluation_progress(studentId, id))
             if item is None:
                 yield f"data: {_json.dumps({'status': 'not_started', 'questionsEvaluated': 0, 'totalQuestions': 0, 'percentage': 0})}\n\n"
                 await asyncio.sleep(2)
@@ -906,10 +922,11 @@ async def get_generation_status(
 ):
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
         job_manager = get_batch_job_manager()
-        job = job_manager.get_job(jobId)
+        job = await loop.run_in_executor(None, lambda: job_manager.get_job(jobId))
 
         if not job:
             raise ApiError(status_code=404, code="job_not_found", message=f"Job {jobId} not found")
@@ -948,9 +965,10 @@ async def get_assessment_progress(
 ):
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        progress_list = svc.get_assessment_progress(id)
+        progress_list = await loop.run_in_executor(None, lambda: svc.get_assessment_progress(id))
 
         total = len(progress_list)
         not_started = sum(1 for p in progress_list if p["status"] == "not-started")
@@ -990,10 +1008,11 @@ async def evaluate_batch(
 ):
     try:
         _assert_instructor_access(_principal)
-        assessment = instructor_svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: instructor_svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
-        all_students = instructor_svc.get_assessment_students(id)
+        all_students = await loop.run_in_executor(None, lambda: instructor_svc.get_assessment_students(id))
         if request.studentIds:
             students_to_process = [s for s in all_students if s["studentId"] in request.studentIds]
         else:
@@ -1003,18 +1022,18 @@ async def evaluate_batch(
             raise ApiError(status_code=400, code="no_students_to_process", message="No students found to process")
 
         job_manager = get_batch_job_manager()
-        job_id = job_manager.create_job(
+        job_id = await loop.run_in_executor(None, lambda: job_manager.create_job(
             job_type=JobType.EVALUATION,
             assessment_id=id,
             total_items=len(students_to_process),
             metadata={"assessment_title": assessment["title"]},
-        )
+        ))
 
-        enqueued = dispatcher.enqueue_evaluation_batch(
+        enqueued = await loop.run_in_executor(None, lambda: dispatcher.enqueue_evaluation_batch(
             job_id=job_id,
             assessment_id=id,
             students=students_to_process,
-        )
+        ))
         logger.info("[Job %s] Enqueued %d/%d evaluation messages", job_id, enqueued, len(students_to_process))
 
         return EvaluationJobResponse(
@@ -1047,10 +1066,11 @@ async def get_evaluation_status(
 ):
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
         job_manager = get_batch_job_manager()
-        job = job_manager.get_job(jobId)
+        job = await loop.run_in_executor(None, lambda: job_manager.get_job(jobId))
 
         if not job:
             raise ApiError(status_code=404, code="job_not_found", message=f"Job {jobId} not found")
@@ -1088,9 +1108,10 @@ async def get_assessment_results(
 ):
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        results_list = svc.get_assessment_results(id)
+        results_list = await loop.run_in_executor(None, lambda: svc.get_assessment_results(id))
 
         if results_list:
             avg_percentage = sum(item["percentage"] for item in results_list) / len(results_list)
@@ -1137,9 +1158,10 @@ async def list_bank_questions(
     """List all question bank questions for an assessment."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        questions = bank_svc.list_questions(id)
+        questions = await loop.run_in_executor(None, lambda: bank_svc.list_questions(id))
         return BankQuestionListResponse(
             ok=True,
             assessmentId=id,
@@ -1170,16 +1192,17 @@ async def add_bank_question(
     """Add a question to the assessment bank (max 20 per assessment)."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        result = bank_svc.add_question(
+        result = await loop.run_in_executor(None, lambda: bank_svc.add_question(
             assessment_id=id,
             text=request.text,
             topic=request.topic,
             difficulty=request.difficulty,
             time_limit=request.timeLimit,
             source="manual",
-        )
+        ))
         return BankQuestionResponse(**result)
     except InstructorQuestionBankServiceError as error:
         raise ApiError(status_code=400, code="add_bank_question_failed", message=str(error))
@@ -1205,9 +1228,10 @@ async def delete_bank_question(
     """Delete a bank question from an assessment."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        bank_svc.delete_question(id, question_id)
+        await loop.run_in_executor(None, lambda: bank_svc.delete_question(id, question_id))
         return None
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
@@ -1235,9 +1259,10 @@ async def suggest_bank_questions(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        suggestions = bank_svc.suggest_questions(id, count=request.count)
+        suggestions = await loop.run_in_executor(None, lambda: bank_svc.suggest_questions(id, count=request.count))
         return SuggestBankQuestionsResponse(
             ok=True,
             assessmentId=id,
@@ -1277,21 +1302,22 @@ async def update_question_time_limit(
     """
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
 
         pk = f"STUDENT#{student_id}#ASSESSMENT#{id}"
         if request.timeLimit is not None:
-            svc.table.update_item(
+            await loop.run_in_executor(None, lambda: svc.table.update_item(
                 Key={"PK": pk, "SK": f"QUESTION#{question_id}"},
                 UpdateExpression="SET timeLimit = :tl",
                 ExpressionAttributeValues={":tl": request.timeLimit},
-            )
+            ))
         else:
-            svc.table.update_item(
+            await loop.run_in_executor(None, lambda: svc.table.update_item(
                 Key={"PK": pk, "SK": f"QUESTION#{question_id}"},
                 UpdateExpression="REMOVE timeLimit",
-            )
+            ))
 
         logger.info(
             "Set timeLimit=%s on question %s for student %s in assessment %s",
@@ -1327,9 +1353,10 @@ async def get_student_detail(
     """EPIC-6-2: Instructor per-student detailed results with transcript, playback URLs, and proctor chunk health."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        detail = svc.get_student_detail(id, student_id)
+        detail = await loop.run_in_executor(None, lambda: svc.get_student_detail(id, student_id))
         proctor_raw = detail.pop("proctoring")
         proctor_chunks = [ProctorChunkItem(**c) for c in proctor_raw.pop("chunks", [])]
         return InstructorStudentDetailResponse(
@@ -1363,9 +1390,10 @@ async def override_question_score(
     """EPIC-6-2: Override an AI-assigned score for a specific question."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        result = svc.override_question_score(id, student_id, question_id, request.score, request.comment)
+        result = await loop.run_in_executor(None, lambda: svc.override_question_score(id, student_id, question_id, request.score, request.comment))
         return ScoreOverrideResponse(ok=True, **result)
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=400, code="override_failed", message=str(error))
@@ -1387,9 +1415,10 @@ async def release_results(
     """EPIC-6-3: Release results so students can view their feedback."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        result = svc.release_results(id)
+        result = await loop.run_in_executor(None, lambda: svc.release_results(id))
 
         # Send notification emails to all submitted students (non-blocking)
         import threading
@@ -1450,9 +1479,10 @@ async def send_reminder(
     """EPIC-6-4: Send an email reminder to a student who has not yet submitted."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        message = svc.send_reminder_email(id, student_id)
+        message = await loop.run_in_executor(None, lambda: svc.send_reminder_email(id, student_id))
         return SendReminderResponse(ok=True, studentId=student_id, assessmentId=id, message=message)
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=400, code="reminder_failed", message=str(error))
@@ -1477,9 +1507,10 @@ async def list_student_questions(
     """EPIC-3-3: List all generated questions for a student."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        questions_raw = svc.list_student_questions(id, student_id)
+        questions_raw = await loop.run_in_executor(None, lambda: svc.list_student_questions(id, student_id))
         questions = [StudentQuestionItem(**q) for q in questions_raw]
         return StudentQuestionListResponse(
             assessmentId=id, studentId=student_id, questions=questions, total=len(questions)
@@ -1507,9 +1538,10 @@ async def update_student_question(
     """EPIC-3-3: Edit a student question's text. Locked once assessment is open."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        updated = svc.update_student_question(id, student_id, question_id, body.text, body.timeLimit)
+        updated = await loop.run_in_executor(None, lambda: svc.update_student_question(id, student_id, question_id, body.text, body.timeLimit))
         return StudentQuestionResponse(question=StudentQuestionItem(**updated))
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=400, code="update_question_failed", message=str(error))
@@ -1533,9 +1565,10 @@ async def delete_student_question(
     """EPIC-3-3: Delete a student question. Min 1 must remain. Locked once assessment is open."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        deleted_id = svc.delete_student_question(id, student_id, question_id)
+        deleted_id = await loop.run_in_executor(None, lambda: svc.delete_student_question(id, student_id, question_id))
         return DeleteStudentQuestionResponse(deletedId=deleted_id)
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=400, code="delete_question_failed", message=str(error))
@@ -1559,11 +1592,12 @@ async def add_student_question(
     """EPIC-3-3: Manually add a question for a specific student. Locked once assessment is open."""
     try:
         _assert_instructor_access(_principal)
-        assessment = svc.get_assessment(id)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
         _assert_assessment_owner(_principal, assessment)
-        added = svc.add_student_question(
+        added = await loop.run_in_executor(None, lambda: svc.add_student_question(
             id, student_id, body.text, body.questionType, body.difficulty, body.topic, body.timeLimit
-        )
+        ))
         return StudentQuestionResponse(question=StudentQuestionItem(**added))
     except InstructorAssessmentServiceError as error:
         raise ApiError(status_code=400, code="add_question_failed", message=str(error))
@@ -1585,15 +1619,17 @@ async def stream_evaluation_status(
 ):
     """EPIC-6-1: SSE stream for evaluation job status (auto-refreshes results dashboard)."""
     _assert_instructor_access(_principal)
-    assessment = svc.get_assessment(id)
+    loop = asyncio.get_event_loop()
+    assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
     _assert_assessment_owner(_principal, assessment)
 
     terminal = {"completed", "failed"}
     job_manager = get_batch_job_manager()
 
     async def event_stream():
+        _loop = asyncio.get_event_loop()
         while True:
-            job = job_manager.get_job(jobId)
+            job = await _loop.run_in_executor(None, lambda: job_manager.get_job(jobId))
             if not job:
                 yield f"event: error\ndata: {_json.dumps({'message': 'Job not found'})}\n\n"
                 break
