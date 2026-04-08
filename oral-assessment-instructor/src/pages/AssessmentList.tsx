@@ -32,24 +32,23 @@ export default function AssessmentList() {
       const data = await apiService.listAssessments();
       const list = Array.isArray(data) ? data : [];
       setAssessments(list);
-      // Fetch enrollment/completion stats from the lightweight progress endpoint
-      const entries = await Promise.all(
-        list.map(async (a) => {
-          try {
-            const progData = await apiService.getAssessmentProgress(a.id);
-            const prog = Array.isArray(progData) ? progData : [];
-            const enrolled = prog.length;
-            const completed = prog.filter(s => s.status === 'submitted' || s.status === 'completed').length;
-            return [a.id, { enrolled, completed }] as const;
-          } catch {
-            return [a.id, { enrolled: 0, completed: 0 }] as const;
-          }
-        })
-      );
-      setStatsCache(Object.fromEntries(entries));
+      setLoading(false);
+
+      // Load stats in background — don't block the page render.
+      // Sequential to avoid overwhelming the single-worker backend.
+      for (const a of list) {
+        try {
+          const progData = await apiService.getAssessmentProgress(a.id);
+          const prog = Array.isArray(progData) ? progData : [];
+          const enrolled = prog.length;
+          const completed = prog.filter(s => s.status === 'submitted' || s.status === 'completed').length;
+          setStatsCache(prev => ({ ...prev, [a.id]: { enrolled, completed } }));
+        } catch {
+          // skip — card just won't show stats
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load assessments');
-    } finally {
       setLoading(false);
     }
   };
