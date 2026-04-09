@@ -1,13 +1,50 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+import logging
+import re
+from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
+import boto3
+from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
+
+logger = logging.getLogger(__name__)
 
 
 class OralAssessmentResultsAggregator:
-    def __init__(self, *, table):
+    def __init__(self, *, table, s3_bucket: Optional[str] = None, s3_region: Optional[str] = None):
         self.table = table
+        self._s3_bucket = s3_bucket
+        self._s3_region = s3_region
+        self._s3_client: Optional[Any] = None
+
+    def _get_s3_client(self):
+        if self._s3_client is None and self._s3_bucket:
+            self._s3_client = boto3.client("s3", region_name=self._s3_region or "us-east-1")
+        return self._s3_client
+
+    def _presign_audio_url(self, raw_url: Optional[str]) -> Optional[str]:
+        """Convert a raw S3 URL to a presigned GET URL (1 hour expiry)."""
+        if not raw_url or not self._s3_bucket:
+            return raw_url
+        # Extract the S3 key from the URL
+        parsed = urlparse(raw_url)
+        key = parsed.path.lstrip("/")
+        if not key:
+            return raw_url
+        client = self._get_s3_client()
+        if not client:
+            return raw_url
+        try:
+            return client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._s3_bucket, "Key": key},
+                ExpiresIn=3600,
+            )
+        except ClientError:
+            logger.warning("Failed to presign audio URL: %s", raw_url)
+            return raw_url
 
     def get_student_results(self, *, student_id: str, assessment_id: str) -> Dict[str, Any]:
         enrollment_response = self.table.get_item(
@@ -89,7 +126,7 @@ class OralAssessmentResultsAggregator:
                     "questionNumber": q_num,
                     "questionText": question.get("text", ""),
                     "questionType": question.get("questionType"),
-                    "audioUrl": answer.get("audioUrl"),
+                    "audioUrl": self._presign_audio_url(answer.get("audioUrl")),
                     "transcript": answer.get("transcript"),
                     "duration": int(answer.get("duration", 0)) if answer.get("duration") else None,
                     "totalScore": score,

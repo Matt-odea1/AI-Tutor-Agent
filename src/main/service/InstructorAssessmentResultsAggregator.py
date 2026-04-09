@@ -15,9 +15,10 @@ def _effective_score(eval_item: Dict[str, Any]) -> int:
 
 
 class InstructorAssessmentResultsAggregator:
-    def __init__(self, *, table, get_students: Callable[[str], List[Dict[str, Any]]]):
+    def __init__(self, *, table, get_students: Callable[[str], List[Dict[str, Any]]], presign_url: Optional[Callable[[Optional[str]], Optional[str]]] = None):
         self.table = table
         self.get_students = get_students
+        self._presign_url = presign_url or (lambda url: url)
 
     # ------------------------------------------------------------------
     # Batch helpers
@@ -225,7 +226,7 @@ class InstructorAssessmentResultsAggregator:
                 "questionId": question_id,
                 "questionText": question.get("text", ""),
                 "answerType": answer.get("answerType"),
-                "audioUrl": answer.get("audioUrl"),
+                "audioUrl": self._presign_url(answer.get("audioUrl")),
                 "videoUrl": answer.get("videoUrl"),
                 "textContent": answer.get("textContent"),
                 "duration": int(answer.get("duration", 0)) if answer.get("duration") else None,

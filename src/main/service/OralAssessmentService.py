@@ -63,7 +63,17 @@ class OralAssessmentService:
                 table=self.table,
                 progress_updater=self._update_progress,
             )
-            self.results_aggregator = OralAssessmentResultsAggregator(table=self.table)
+            # S3 bucket may be in a different region than DynamoDB; detect it
+            try:
+                bucket_loc = self.s3.get_bucket_location(Bucket=self.s3_bucket)
+                s3_region = bucket_loc.get("LocationConstraint") or "us-east-1"
+            except Exception:
+                s3_region = self.region
+            self.results_aggregator = OralAssessmentResultsAggregator(
+                table=self.table,
+                s3_bucket=self.s3_bucket,
+                s3_region=s3_region,
+            )
             
             logger.info(f"Connected to DynamoDB table: {self.table_name}")
             logger.info(f"Using S3 bucket: {self.s3_bucket}")

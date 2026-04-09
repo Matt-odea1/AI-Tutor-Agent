@@ -65,11 +65,38 @@ class InstructorAssessmentService:
                 table=self.table,
                 get_students=self.enrollment.get_assessment_students_lightweight,
             )
+            # Build presigner for S3 audio URLs
+            s3_bucket = os.getenv("S3_ASSESSMENT_BUCKET", "")
+            presign_url = None
+            if s3_bucket:
+                try:
+                    _s3 = boto3.client("s3", region_name=self.region)
+                    bucket_loc = _s3.get_bucket_location(Bucket=s3_bucket)
+                    s3_region = bucket_loc.get("LocationConstraint") or "us-east-1"
+                    _s3_signed = boto3.client("s3", region_name=s3_region)
+
+                    def presign_url(url, _client=_s3_signed, _bucket=s3_bucket):
+                        if not url:
+                            return url
+                        from urllib.parse import urlparse
+                        key = urlparse(url).path.lstrip("/")
+                        if not key:
+                            return url
+                        try:
+                            return _client.generate_presigned_url(
+                                "get_object", Params={"Bucket": _bucket, "Key": key}, ExpiresIn=3600,
+                            )
+                        except Exception:
+                            return url
+                except Exception:
+                    logger.warning("Could not configure S3 presigning for instructor results")
+
             self.results_aggregator = InstructorAssessmentResultsAggregator(
                 table=self.table,
                 get_students=self.enrollment.get_assessment_students,
+                presign_url=presign_url,
             )
-            
+
             logger.info(f"Connected to DynamoDB table: {self.table_name}")
         except Exception as e:
             raise InstructorAssessmentServiceError(f"Failed to connect to DynamoDB: {e}")
