@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAssistantChat } from '../../hooks/useAssistantChat'
 import { useChatStore } from '../../store/chatStore'
+import { deleteAssistantThread } from '../../api/history'
 import type { AssistantThreadResponse } from '../../api/history'
 import { AiAssistHeader, AiAssistInput, AiAssistMessageList } from './index'
 
 export const AiAssistPanel = () => {
   const { messages, isLoading, sendMessage, loadHistory, loadThreads, createNewThread } = useAssistantChat()
-  const { assistantThreadId, setAssistantThreadId, codeMemoryId } = useChatStore()
+  const { assistantThreadId, setAssistantThreadId, setAssistantMessages, codeMemoryId } = useChatStore()
   const [input, setInput] = useState('')
   const [threads, setThreads] = useState<AssistantThreadResponse[]>([])
   const [isLoadingThreads, setIsLoadingThreads] = useState(false)
@@ -41,6 +42,19 @@ export const AiAssistPanel = () => {
     await loadHistory(selectedThreadId)
   }
 
+  const handleDeleteThread = async (threadIdToDelete: string) => {
+    try {
+      await deleteAssistantThread(threadIdToDelete)
+      setThreads((prev) => prev.filter((t) => t.thread_id !== threadIdToDelete))
+      if (threadIdToDelete === assistantThreadId) {
+        setAssistantThreadId(null)
+        setAssistantMessages([])
+      }
+    } catch (err) {
+      console.error('Failed to delete thread:', err)
+    }
+  }
+
   useEffect(() => {
     void refreshThreads()
   }, [refreshThreads, assistantThreadId])
@@ -54,6 +68,7 @@ export const AiAssistPanel = () => {
         isLoadingThreads={isLoadingThreads}
         onNewChat={handleNewChat}
         onSelectThread={handleSelectThread}
+        onDeleteThread={handleDeleteThread}
       />
 
       <AiAssistMessageList messages={messages} isLoading={isLoading} />

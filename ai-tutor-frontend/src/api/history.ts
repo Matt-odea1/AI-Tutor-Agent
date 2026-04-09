@@ -223,6 +223,11 @@ export const listAssistantThreads = async (codeMemoryId: string): Promise<Assist
   return response.data
 }
 
+export const deleteAssistantThread = async (threadId: string): Promise<{ ok: boolean; thread_id: string }> => {
+  const response = await apiClient.delete<{ ok: boolean; thread_id: string }>(`/internal/history/threads/${threadId}`)
+  return response.data
+}
+
 export const getAssistantHistory = async (threadId: string): Promise<AssistantHistoryResponse> => {
   const response = await apiClient.get<AssistantHistoryResponse>(API_ENDPOINTS.HISTORY_THREAD_HISTORY(threadId))
   return response.data

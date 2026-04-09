@@ -7,7 +7,7 @@ import type { CodeProgram } from '../types'
 const generateProgramTitle = (code: string) => {
   const lines = code
     .split('\n')
-    .slice(0, 20)
+    .slice(0, 30)
     .map((line) => line.trim())
     .filter(Boolean)
 
@@ -15,12 +15,36 @@ const generateProgramTitle = (code: string) => {
     return 'Untitled Program'
   }
 
-  const first = lines[0].replace(/^#\s*/, '').replace(/^\/\/\s*/, '')
-  if (!first) {
-    return 'Untitled Program'
+  // Priority 1: Look for a class or function definition
+  for (const line of lines) {
+    const defMatch = /^(?:def|class)\s+(\w+)/.exec(line)
+    if (defMatch) {
+      const name = defMatch[1]
+      const kind = line.startsWith('class') ? 'Class' : 'Function'
+      return `${kind}: ${name}`
+    }
   }
 
-  return first.length > 60 ? `${first.slice(0, 60)}…` : first
+  // Priority 2: Look for a meaningful comment (skip template comments)
+  const templatePhrases = ['write python', 'your code', 'write your', 'enter code', 'start coding']
+  for (const line of lines) {
+    const commentMatch = /^#\s*(.+)/.exec(line)
+    if (commentMatch) {
+      const comment = commentMatch[1].trim()
+      if (comment.length > 3 && !templatePhrases.some((p) => comment.toLowerCase().includes(p))) {
+        return comment.length > 60 ? `${comment.slice(0, 60)}...` : comment
+      }
+    }
+  }
+
+  // Priority 3: First meaningful non-comment line
+  const firstCode = lines.find((l) => !l.startsWith('#') && !l.startsWith('//') && !l.startsWith('import ') && !l.startsWith('from '))
+  if (firstCode) {
+    const cleaned = firstCode.length > 60 ? `${firstCode.slice(0, 60)}...` : firstCode
+    return cleaned
+  }
+
+  return 'Untitled Program'
 }
 
 export const usePrograms = () => {

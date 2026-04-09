@@ -63,6 +63,9 @@ export const SidebarProgramList: React.FC<SidebarProgramListProps> = ({
             <div className="flex items-center justify-between gap-1">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded bg-blue-600/20 text-blue-400 text-[8px] font-bold flex items-center justify-center uppercase" title={program.language || 'python'}>
+                    {(program.language || 'py').slice(0, 2)}
+                  </span>
                   <p className="text-xs font-medium truncate">{program.title}</p>
                   {isLoading && (
                     <div className="animate-spin h-2.5 w-2.5 border border-primary-500 border-t-transparent rounded-full" />

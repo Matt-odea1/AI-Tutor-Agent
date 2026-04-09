@@ -344,6 +344,17 @@ def get_thread_history_endpoint(
     )
 
 
+@history_router.delete("/threads/{thread_id}")
+def delete_thread_endpoint(
+    thread_id: str,
+    store=Depends(get_history_store),
+    user_id: str = Depends(_require_user_id),
+):
+    _assert_thread_owner(store, thread_id, user_id)
+    store.delete_thread(thread_id)
+    return {"ok": True, "thread_id": thread_id}
+
+
 @history_router.post("/threads/{thread_id}/message", response_model=ChatResponse)
 def post_thread_message_endpoint(
     thread_id: str,

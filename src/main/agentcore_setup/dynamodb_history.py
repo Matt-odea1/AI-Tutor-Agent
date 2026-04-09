@@ -418,6 +418,28 @@ class DynamoDBHistoryStore:
         except ClientError:
             pass
 
+    def delete_thread(self, thread_id: str) -> None:
+        metadata = self.get_thread(thread_id)
+        # Delete all messages for this thread
+        messages = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues={":pk": f"THREAD#{thread_id}", ":sk": "MESSAGE#"},
+            ProjectionExpression="PK, SK",
+        ).get("Items", [])
+        with self.table.batch_writer() as batch:
+            for msg in messages:
+                batch.delete_item(Key={"PK": msg["PK"], "SK": msg["SK"]})
+        # Delete thread metadata
+        self.table.delete_item(Key={"PK": f"THREAD#{thread_id}", "SK": "METADATA"})
+        # Delete index entry
+        if metadata:
+            try:
+                self.table.delete_item(
+                    Key={"PK": f"CODEMEM#{metadata['code_memory_id']}", "SK": f"THREAD#{thread_id}"}
+                )
+            except ClientError:
+                pass
+
     def get_thread_history(self, thread_id: str) -> List[Dict[str, Any]]:
         response = self.table.query(
             KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",

@@ -255,5 +255,11 @@ class HistoryStore:
 
         return message
 
+    def delete_thread(self, thread_id: str) -> None:
+        thread = self.threads.pop(thread_id, None)
+        self.thread_messages.pop(thread_id, None)
+        if thread:
+            logger.info(f"Deleted thread {thread_id[:8]}... from code_memory {thread.get('code_memory_id')}")
+
     def get_thread_history(self, thread_id: str) -> List[Dict[str, Any]]:
         return list(self.thread_messages.get(thread_id, []))

@@ -286,10 +286,10 @@ function App() {
         {/* Main Content Area - Full Width */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
-            <div className="h-full">
+            <div className="h-full transition-opacity duration-200 ease-in-out">
               {!appMode && <ModeSelector />}
-              {appMode === 'chat' && <ChatContainer />}
-              {appMode === 'ide' && <IdeWorkspace />}
+              {appMode === 'chat' && <div className="h-full animate-fade-in"><ChatContainer /></div>}
+              {appMode === 'ide' && <div className="h-full animate-fade-in"><IdeWorkspace /></div>}
               {appMode === 'questions' && (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center space-y-2">

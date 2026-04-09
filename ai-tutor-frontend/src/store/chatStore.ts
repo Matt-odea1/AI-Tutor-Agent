@@ -273,7 +273,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         ...state.codeEditor,
         history: [
           { code, output, error, timestamp: Date.now() },
-          ...state.codeEditor.history.slice(0, 4), // Keep last 5
+          ...state.codeEditor.history.slice(0, 19), // Keep last 20
         ],
       },
     })),

@@ -27,20 +27,31 @@ export const IdeWorkspace = () => {
   useEffect(() => {
     if (!isResizing) return
 
+    let rafId = 0
     const handleMouseMove = (event: MouseEvent) => {
-      const delta = resizeStartX.current - event.clientX
-      const nextWidth = Math.min(Math.max(resizeStartWidth.current + delta, 280), 520)
-      setPanelWidth(nextWidth)
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        const delta = resizeStartX.current - event.clientX
+        const nextWidth = Math.min(Math.max(resizeStartWidth.current + delta, 280), 520)
+        setPanelWidth(nextWidth)
+      })
     }
 
     const handleMouseUp = () => {
+      cancelAnimationFrame(rafId)
       setIsResizing(false)
     }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
 
     return () => {
+      cancelAnimationFrame(rafId)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }

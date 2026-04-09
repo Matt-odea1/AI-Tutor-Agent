@@ -16,7 +16,7 @@ import { STORAGE_KEYS } from '../config/constants'
 
 type EditIntent = 'strong' | 'weak' | 'none'
 
-const classifyEditIntent = (query: string): EditIntent => {
+const classifyEditIntent = (query: string, recentMessages?: Array<{ role: string; content: string }>): EditIntent => {
   if (!query) return 'none'
   const lowered = query.toLowerCase()
 
@@ -82,6 +82,28 @@ const classifyEditIntent = (query: string): EditIntent => {
     'sample input',
     'sample output',
   ]
+  // Continuation phrases that imply "keep editing" in multi-turn context
+  const continuationPhrases = [
+    'now ',
+    'also ',
+    'then ',
+    'next ',
+    'and also',
+    'can you also',
+    'do the same',
+    'same thing',
+    'apply that',
+    'keep going',
+    'continue',
+    'make it',
+    'try again',
+    'do it',
+    'yes',
+    'ok do it',
+    'go ahead',
+    'that too',
+    'what about',
+  ]
 
   const hasStrongVerb = strongVerbs.some((verb) => lowered.includes(`${verb} `))
   const hasConstructVerb = constructVerbs.some((verb) => lowered.includes(`${verb} `))
@@ -101,6 +123,20 @@ const classifyEditIntent = (query: string): EditIntent => {
   if (hasStrongVerb || hasFileHint || looksLikeProblemPaste) return 'strong'
   if (hasConstructVerb && hasCodeTarget) return 'strong'
   if (hasConstructVerb) return hasInfoPhrase ? 'none' : 'weak'
+
+  // Multi-turn: if the last assistant message contained an edit block, short follow-ups
+  // like "now add error handling" or "also make it recursive" are likely edit continuations
+  if (recentMessages && recentMessages.length >= 1) {
+    const lastAssistant = [...recentMessages].reverse().find((m) => m.role === 'assistant')
+    const lastWasEdit = lastAssistant?.content?.includes('```edit')
+    if (lastWasEdit) {
+      const hasContinuation = continuationPhrases.some((phrase) => lowered.startsWith(phrase) || lowered.includes(phrase))
+      if (hasContinuation) return 'strong'
+      // Short messages after an edit are likely edit follow-ups
+      if (query.trim().length < 80 && !hasInfoPhrase) return 'weak'
+    }
+  }
+
   if (hasInfoPhrase) return 'none'
   return 'none'
 }
@@ -242,7 +278,8 @@ export const useAssistantChat = () => {
           codeEditor.lastError
         )
 
-        const editIntent = classifyEditIntent(content)
+        const recentMsgs = useChatStore.getState().assistantMessages.slice(-6)
+        const editIntent = classifyEditIntent(content, recentMsgs)
         if (editIntent === 'strong') {
           const bufferHash = await hashString(codeEditor.code || '')
           const response = await createEditProposal({

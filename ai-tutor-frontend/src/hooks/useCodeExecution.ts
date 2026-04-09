@@ -52,8 +52,16 @@ export function useCodeExecution() {
     sys.stderr = StringIO()
     sys.stdin = StringIO()
 
-    def _blocked_input(*args, **kwargs):
-        raise RuntimeError("input() is not supported in the browser runner. Remove input() or provide hardcoded values.")
+    def _blocked_input(prompt=""):
+        raise RuntimeError(
+            "input() is not supported in the browser editor.\\n"
+            "\\n"
+            "To test your code, replace input() calls with hardcoded values.\\n"
+            "For example, instead of:\\n"
+            "    name = input('Enter name: ')\\n"
+            "Use:\\n"
+            "    name = 'Alice'  # Replace with test value"
+        )
 
     builtins.input = _blocked_input
     `);
