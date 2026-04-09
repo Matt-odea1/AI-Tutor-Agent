@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Cookie, Depends, Response
 
-from src.main.auth.dependencies import get_auth_service
+from src.main.auth.dependencies import get_auth_service, require_auth_principal
+from src.main.auth.models import AuthPrincipal
 from src.main.auth.service import AuthService
 from src.main.controllers.api_errors import ApiError
 from src.main.dtos.AuthDTOs import (
@@ -137,3 +138,31 @@ def reset_password(
 ):
     message = auth_service.reset_password(request.token, request.new_password)
     return ForgotPasswordResponse(message=message)
+
+
+@auth_router.get("/users")
+def list_users(
+    auth_service: AuthService = Depends(get_auth_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """List all registered users with their roles. Instructor-only."""
+    if "instructor" not in _principal.roles and "admin" not in _principal.roles:
+        raise ApiError(status_code=403, code="forbidden", message="Instructor access required")
+    return {"ok": True, "users": auth_service.list_users()}
+
+
+@auth_router.put("/users/{email}/roles")
+def set_user_roles(
+    email: str,
+    request: dict = Body(...),
+    auth_service: AuthService = Depends(get_auth_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Set roles for a user. Instructor-only."""
+    if "instructor" not in _principal.roles and "admin" not in _principal.roles:
+        raise ApiError(status_code=403, code="forbidden", message="Instructor access required")
+    roles = request.get("roles", [])
+    if not isinstance(roles, list):
+        raise ApiError(status_code=400, code="invalid_roles", message="roles must be an array")
+    auth_service.set_user_roles(email, roles)
+    return {"ok": True, "email": email, "roles": roles}

@@ -9,6 +9,10 @@ export default function AssessmentList() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [statsCache, setStatsCache] = useState<Record<string, { enrolled: number; completed: number }>>({});
+  const [showSettings, setShowSettings] = useState(false);
+  const [users, setUsers] = useState<{ email: string; roles: string[]; createdAt: string }[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [roleUpdating, setRoleUpdating] = useState<string | null>(null);;
 
   useEffect(() => {
     loadAssessments();
@@ -72,6 +76,35 @@ export default function AssessmentList() {
     }
   };
 
+  const openSettings = async () => {
+    setShowSettings(true);
+    setUsersLoading(true);
+    try {
+      const data = await apiService.listUsers();
+      setUsers(data);
+    } catch {
+      // ignore — table stays empty
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const toggleInstructor = async (email: string, currentRoles: string[]) => {
+    setRoleUpdating(email);
+    const isInstructor = currentRoles.includes('instructor');
+    const newRoles = isInstructor
+      ? currentRoles.filter(r => r !== 'instructor')
+      : [...currentRoles.filter(r => r !== 'instructor'), 'instructor'];
+    try {
+      await apiService.setUserRoles(email, newRoles);
+      setUsers(prev => prev.map(u => u.email === email ? { ...u, roles: newRoles } : u));
+    } catch {
+      // ignore
+    } finally {
+      setRoleUpdating(null);
+    }
+  };
+
   // Display assessments (real data when available)
   const displayAssessments = Array.isArray(assessments) ? assessments : [];
 
@@ -108,6 +141,13 @@ export default function AssessmentList() {
               >
                 + Create Assessment
               </Link>
+              <button
+                onClick={openSettings}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg font-medium transition-colors text-sm"
+                title="Settings"
+              >
+                ⚙ Settings
+              </button>
               <button
                 onClick={handleLogout}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
@@ -204,6 +244,56 @@ export default function AssessmentList() {
           </div>
         )}
       </main>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900">User Management</h2>
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <p className="text-sm text-gray-500 mb-4">Toggle instructor access for registered users.</p>
+              {usersLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                </div>
+              ) : users.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No registered users found.</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {users.map(user => {
+                    const isInstructor = user.roles.includes('instructor');
+                    const isUpdating = roleUpdating === user.email;
+                    return (
+                      <div key={user.email} className="flex items-center justify-between py-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                          <p className="text-xs text-gray-500">
+                            {user.roles.length > 0 ? user.roles.join(', ') : 'no roles'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => toggleInstructor(user.email, user.roles)}
+                          disabled={isUpdating}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+                            isInstructor
+                              ? 'bg-primary-100 text-primary-700 hover:bg-red-100 hover:text-red-700'
+                              : 'bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700'
+                          }`}
+                        >
+                          {isUpdating ? '...' : isInstructor ? 'Instructor ✓' : 'Make Instructor'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -488,6 +488,66 @@ class AuthService:
             source="signup",
         )
 
+    def list_users(self) -> List[Dict[str, Any]]:
+        """Scan auth_users table and return all users (email + roles only)."""
+        if not self.auth_users_table:
+            return []
+        try:
+            results = []
+            last_key = None
+            while True:
+                args: Dict[str, Any] = {
+                    "ProjectionExpression": "email, #r, created_at",
+                    "ExpressionAttributeNames": {"#r": "roles"},
+                }
+                if last_key:
+                    args["ExclusiveStartKey"] = last_key
+                resp = self.auth_users_table.scan(**args)
+                for item in resp.get("Items", []):
+                    roles = item.get("roles", [])
+                    results.append({
+                        "email": item.get("email", ""),
+                        "roles": [str(r) for r in roles] if isinstance(roles, list) else [],
+                        "createdAt": item.get("created_at", ""),
+                    })
+                last_key = resp.get("LastEvaluatedKey")
+                if not last_key:
+                    break
+            results.sort(key=lambda u: u["email"])
+            return results
+        except Exception:
+            logger.exception("Failed to list users")
+            return []
+
+    def set_user_roles(self, email: str, roles: List[str]) -> None:
+        """Overwrite a user's roles list in DynamoDB and in-memory cache."""
+        normalized = self._normalize_email(email)
+        if not normalized:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email")
+        if not self.auth_users_table:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="User store not available")
+        valid_roles = {"instructor", "admin", "student"}
+        cleaned = [r.strip().lower() for r in roles if r.strip().lower() in valid_roles]
+        try:
+            self.auth_users_table.update_item(
+                Key={"email": normalized},
+                UpdateExpression="SET #r = :roles, updated_at = :ua",
+                ExpressionAttributeNames={"#r": "roles"},
+                ExpressionAttributeValues={
+                    ":roles": cleaned,
+                    ":ua": datetime.now(timezone.utc).isoformat(),
+                },
+                ConditionExpression="attribute_exists(email)",
+            )
+        except ClientError as err:
+            if err.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update roles")
+        # Update in-memory cache if present
+        cached = self._login_users.get(normalized)
+        if cached:
+            cached["roles"] = cleaned
+
     def authenticate_credentials(self, email: str, password: str) -> AuthPrincipal:
         normalized_email = self._normalize_email(email)
         user_record = self._load_existing_user(normalized_email)

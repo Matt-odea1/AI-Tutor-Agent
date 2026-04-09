@@ -297,6 +297,15 @@ class ApiService {
   async updateBrief(assessmentId: string, brief: string): Promise<void> {
     await this.client.put(`/api/assessment/${assessmentId}/brief`, { brief });
   }
+
+  async listUsers(): Promise<{ email: string; roles: string[]; createdAt: string }[]> {
+    const response = await this.client.get('/api/auth/users');
+    return response.data.users || [];
+  }
+
+  async setUserRoles(email: string, roles: string[]): Promise<void> {
+    await this.client.put(`/api/auth/users/${encodeURIComponent(email)}/roles`, { roles });
+  }
 }
 
 export const apiService = new ApiService();
