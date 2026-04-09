@@ -215,8 +215,9 @@ const classifyEditIntent = (query: string, recentMessages?: Array<{ role: string
     'what about',
   ]
 
-  const hasStrongVerb = strongVerbs.some((verb) => lowered.includes(`${verb} `))
-  const hasConstructVerb = constructVerbs.some((verb) => lowered.includes(`${verb} `))
+  const verbMatch = (verb: string) => lowered.includes(`${verb} `) || lowered === verb || lowered.endsWith(` ${verb}`)
+  const hasStrongVerb = strongVerbs.some(verbMatch)
+  const hasConstructVerb = constructVerbs.some(verbMatch)
   const hasCodeTarget = codeTargets.some((target) => lowered.includes(target))
   const hasAssignmentSignal = assignmentSignals.some((signal) => lowered.includes(signal))
   const hasFileHint =
@@ -230,9 +231,11 @@ const classifyEditIntent = (query: string, recentMessages?: Array<{ role: string
 
   const looksLikeProblemPaste = hasAssignmentSignal || (/\n/.test(query) && query.length > 180 && hasCodeTarget)
 
+  // Info phrases take priority — "explain this code" should NOT trigger an edit
+  if (hasInfoPhrase && !hasStrongVerb && !looksLikeProblemPaste) return 'none'
+
   if (hasStrongVerb || hasFileHint || looksLikeProblemPaste) return 'strong'
-  if (hasConstructVerb && hasCodeTarget) return 'strong'
-  if (hasConstructVerb) return hasInfoPhrase ? 'none' : 'weak'
+  if (hasConstructVerb) return 'strong'
 
   // Multi-turn: if the last assistant message contained an edit block, short follow-ups
   // like "now add error handling" or "also make it recursive" are likely edit continuations
