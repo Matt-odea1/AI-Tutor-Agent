@@ -166,14 +166,22 @@ def get_instructor_question_bank_service() -> InstructorQuestionBankService:
     return _instructor_question_bank_service_singleton()
 
 
+def _extract_sqs_region(queue_url: str, fallback: str) -> str:
+    """Extract the AWS region from an SQS queue URL (sqs.<region>.amazonaws.com)."""
+    import re
+    match = re.search(r"sqs\.([a-z0-9-]+)\.amazonaws\.com", queue_url)
+    return match.group(1) if match else fallback
+
+
 @lru_cache(maxsize=1)
 def _sqs_job_dispatcher_singleton() -> SQSJobDispatcher:
     settings = get_settings()
     instructor_svc = _instructor_assessment_service_singleton()
     queue_url = resolve_queue_url(region=settings.aws_default_region)
+    sqs_region = _extract_sqs_region(queue_url, settings.aws_default_region)
     return SQSJobDispatcher(
         queue_url=queue_url,
-        region=settings.aws_default_region,
+        region=sqs_region,
         table=instructor_svc.table,
     )
 
