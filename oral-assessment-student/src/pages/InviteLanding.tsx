@@ -33,8 +33,15 @@ export default function InviteLanding() {
         // Redirect to assessment
         navigate(`/${student_id}/${assessment_id}`, { replace: true });
       } catch (err) {
-        if (axios.isAxiosError(err) && err.response?.status === 400) {
-          setError('This invite link has already been used or has expired. Please contact your instructor for a new link.');
+        if (axios.isAxiosError(err) && (err.response?.status === 400 || err.response?.status === 401)) {
+          const detail = err.response?.data?.error?.message || err.response?.data?.detail || '';
+          if (detail.toLowerCase().includes('expired')) {
+            setError('This invite link has expired. Please contact your instructor for a new link.');
+          } else if (detail.toLowerCase().includes('already been used')) {
+            setError('This invite link has already been used. Please contact your instructor for a new link.');
+          } else {
+            setError('This invite link is invalid or has expired. Please contact your instructor for a new link.');
+          }
         } else {
           setError('Failed to verify your invite link. Please try again or contact your instructor.');
         }
