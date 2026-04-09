@@ -13,6 +13,7 @@ import type {
 } from '../types'
 import { STORAGE_KEYS } from '../config/constants'
 import { EDITOR_TEMPLATE } from '../config/editorDefaults'
+import { getUserSession } from '../utils/userSession'
 
 interface ChatStore {
   // State
@@ -48,7 +49,7 @@ interface ChatStore {
   setAssistantMessages: (messages: Message[]) => void
   setSessionId: (id: string | null) => void
   setAssistantThreadId: (id: string | null) => void
-  setWorkspaceId: (id: string | null) => void
+  setWorkspaceId: (id: string | null, userId?: string) => void
   setCodeMemoryId: (id: string | null) => void
   setAppMode: (mode: AppMode | null) => void
   setLoading: (loading: boolean) => void
@@ -94,7 +95,13 @@ export const useChatStore = create<ChatStore>((set) => ({
   assistantMessages: [],
   sessionId: null,
   assistantThreadId: null,
-  workspaceId: localStorage.getItem(STORAGE_KEYS.WORKSPACE_ID),
+  workspaceId: (() => {
+    const session = getUserSession()
+    if (session?.user_id) {
+      return localStorage.getItem(`${STORAGE_KEYS.WORKSPACE_ID}:${session.user_id}`)
+    }
+    return null
+  })(),
   codeMemoryId: null,
   appMode: (localStorage.getItem(STORAGE_KEYS.APP_MODE) as AppMode) || null,
   isLoading: false,
@@ -149,11 +156,11 @@ export const useChatStore = create<ChatStore>((set) => ({
   },
 
   setAssistantThreadId: (id) => set({ assistantThreadId: id }),
-  setWorkspaceId: (id) => {
-    if (id) {
-      localStorage.setItem(STORAGE_KEYS.WORKSPACE_ID, id)
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.WORKSPACE_ID)
+  setWorkspaceId: (id, userId) => {
+    // Clear any previous unscoped key
+    localStorage.removeItem(STORAGE_KEYS.WORKSPACE_ID)
+    if (id && userId) {
+      localStorage.setItem(`${STORAGE_KEYS.WORKSPACE_ID}:${userId}`, id)
     }
     set({ workspaceId: id })
   },

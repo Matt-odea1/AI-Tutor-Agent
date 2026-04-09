@@ -132,6 +132,10 @@ export const Sidebar = () => {
     const handleLogout = () => {
       trackAuthEvent('logout', undefined, 'manual')
       clearUserSession()
+      // Clear workspace so next login gets a user-scoped workspace
+      const { setWorkspaceId, clearSession } = useChatStore.getState()
+      setWorkspaceId(null)
+      clearSession()
     }
 
     const handleOpenPrivacyPolicy = () => {

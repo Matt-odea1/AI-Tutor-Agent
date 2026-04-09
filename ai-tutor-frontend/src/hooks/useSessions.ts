@@ -5,6 +5,7 @@ import { useCallback } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { listSessions, getSessionHistory, deleteSession } from '../api/sessions'
 import { createWorkspace } from '../api/history'
+import { getUserSession } from '../utils/userSession'
 import type { Message } from '../types'
 
 export const useSessions = () => {
@@ -27,17 +28,33 @@ export const useSessions = () => {
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true)
     try {
+      const session = getUserSession()
+      const userId = session?.user_id
       let resolvedWorkspaceId = workspaceId
       if (!resolvedWorkspaceId) {
         const workspace = await createWorkspace('AI Assistant')
         resolvedWorkspaceId = workspace.workspace_id
-        setWorkspaceId(resolvedWorkspaceId)
+        setWorkspaceId(resolvedWorkspaceId, userId ?? undefined)
       }
-      const data = await listSessions(resolvedWorkspaceId)
-      setSessions(data.sessions)
+      try {
+        const data = await listSessions(resolvedWorkspaceId)
+        setSessions(data.sessions)
+      } catch (err: unknown) {
+        // If 403, the workspace belongs to a different user — create a new one
+        const status = (err as { response?: { status?: number } })?.response?.status
+        if (status === 403) {
+          console.warn('Workspace ownership mismatch, creating new workspace')
+          const workspace = await createWorkspace('AI Assistant')
+          resolvedWorkspaceId = workspace.workspace_id
+          setWorkspaceId(resolvedWorkspaceId, userId ?? undefined)
+          const data = await listSessions(resolvedWorkspaceId)
+          setSessions(data.sessions)
+        } else {
+          throw err
+        }
+      }
     } catch (error) {
       console.error('Failed to load sessions:', error)
-      // Optionally set an error state here
     } finally {
       setLoadingSessions(false)
     }
@@ -99,7 +116,8 @@ export const useSessions = () => {
     if (!resolvedWorkspaceId) {
       const workspace = await createWorkspace('AI Assistant')
       resolvedWorkspaceId = workspace.workspace_id
-      setWorkspaceId(resolvedWorkspaceId)
+      const session = getUserSession()
+      setWorkspaceId(resolvedWorkspaceId, session?.user_id ?? undefined)
     }
     // Create a new general chat session (view)
     const newSession = await import('../api/history').then(m => m.createViewSession(resolvedWorkspaceId, 'chat'))
