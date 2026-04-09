@@ -483,9 +483,13 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
             <button
               onClick={handleEvaluateAll}
               disabled={isEvaluating || stats.completed === 0}
-              className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                allEvaluated
+                  ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
+                  : 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500'
+              }`}
             >
-              {isEvaluating ? 'Evaluating...' : `Evaluate All (${stats.completed})`}
+              {isEvaluating ? 'Evaluating...' : allEvaluated ? `Re-evaluate All (${stats.completed})` : `Evaluate All (${stats.completed})`}
             </button>
             <button
               onClick={() => { loadProgressData(); setLastUpdated(new Date()); setSecondsSinceUpdate(0); }}
@@ -614,6 +618,15 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                               {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
                             </button>
                           )
+                        )}
+                        {(p.status === 'completed' || p.status === 'submitted') &&
+                          evalProgress[p.studentId]?.status === 'completed' && (
+                          <Link
+                            to={`/assessments/${assessmentId}/student/${p.studentId}/results`}
+                            className="text-green-400 hover:text-green-300 text-xs font-medium transition-colors"
+                          >
+                            View Results
+                          </Link>
                         )}
                         {(p.status === 'completed' || p.status === 'submitted') &&
                           (!evalProgress[p.studentId] || evalProgress[p.studentId].status === 'not_started') && (
