@@ -198,10 +198,10 @@ class ApiService {
   }
 
   async getAssessmentStudents(assessmentId: string): Promise<Student[]> {
-    const response = await this.client.get<Student[]>(
+    const response = await this.client.get<{ ok: boolean; students: Student[] }>(
       `/api/assessment/${assessmentId}/students`
     );
-    return response.data;
+    return response.data.students || [];
   }
 
   // Sprint 8: Results Dashboards
