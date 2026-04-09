@@ -13,9 +13,29 @@ class ResponseEvaluationEngine:
         self.agent_client = agent_client
         self.evaluation_prompt = evaluation_prompt
 
+    @staticmethod
+    def _empty_evaluation(question: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a zero-score evaluation for an empty or missing response."""
+        return {
+            "correctness_score": 0,
+            "understanding_score": 0,
+            "total_score": 0,
+            "feedback": "No response was provided for this question.",
+            "strengths": [],
+            "weaknesses": ["No answer submitted."],
+            "suggested_improvements": ["Ensure you provide a verbal response to each question."],
+            "question_id": question.get("id", ""),
+            "question_number": question.get("questionNumber", 0),
+            "question_type": question.get("questionType", ""),
+        }
+
     def evaluate_qa_pair(self, qa_pair: Dict[str, Any], rubric: str = "", course_context: str = "") -> Dict[str, Any]:
         question = qa_pair["question"]
         answer = qa_pair["answer"]
+
+        transcript = (answer.get("transcript") or "").strip()
+        if not transcript:
+            return self._empty_evaluation(question)
 
         course_section = f"\n**Course Context:**\n{course_context}\n" if course_context else ""
         rubric_section = f"\n**Custom Rubric:**\n{rubric}\n" if rubric else ""
@@ -61,6 +81,21 @@ Evaluate this response and provide your assessment in JSON format as specified.
             raise ResponseEvaluationEngineError(f"Failed to evaluate question: {error}")
 
     def evaluate_single_question(self, response_data: Dict[str, str]) -> Dict[str, Any]:
+        transcript = (response_data.get("transcript") or "").strip()
+        if not transcript:
+            return {
+                "correctness_score": 0,
+                "understanding_score": 0,
+                "total_score": 0,
+                "feedback": "No response was provided for this question.",
+                "strengths": [],
+                "weaknesses": ["No answer submitted."],
+                "suggested_improvements": ["Ensure you provide a verbal response to each question."],
+                "question_number": int(response_data.get("question_number", 0)),
+                "question": response_data.get("question", ""),
+                "question_type": response_data.get("question_type", ""),
+            }
+
         user_prompt = self.build_evaluation_prompt(response_data)
 
         messages = [
