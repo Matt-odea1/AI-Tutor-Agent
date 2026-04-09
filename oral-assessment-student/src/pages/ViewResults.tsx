@@ -195,11 +195,24 @@ export default function ViewResults() {
   const grade = results.grade;
   const gradeColorClass = getBandGradeColor(grade);
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     const token = sessionStorage.getItem('studentToken');
-    const url = `${API_BASE_URL}/api/student/${studentId}/assessment/${assessmentId}/results/pdf${token ? `?token=${token}` : ''}`;
-    window.open(url, '_blank');
+    const url = `${API_BASE_URL}/api/student/${studentId}/assessment/${assessmentId}/results/pdf`;
+    try {
+      const resp = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `results-${assessmentId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      alert('Failed to download PDF. Please try again.');
+    }
   };
 
   return (
