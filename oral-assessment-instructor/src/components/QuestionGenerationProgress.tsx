@@ -216,11 +216,11 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
     : 0;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
 
       {/* Generation Status */}
       {!generationJob ? (
-        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
           <p className="text-gray-500 mb-6">
             Generate personalised questions for each student based on their submitted code.
           </p>
