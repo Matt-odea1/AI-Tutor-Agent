@@ -32,8 +32,8 @@ ED_API_BASE = "https://edstem.org/api"
 ED_WS_HOST = "wss://sahara.au.edstem.org/connect"
 # Per-student WebSocket timeout (seconds)
 WS_TIMEOUT = 20
-# Max concurrent WebSocket connections — keep low to avoid Ed rate limiting (429)
-MAX_WS_WORKERS = 3
+# Max concurrent WebSocket connections
+MAX_WS_WORKERS = 8
 
 
 class EdStemServiceError(Exception):
