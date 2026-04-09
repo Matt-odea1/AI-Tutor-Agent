@@ -63,7 +63,7 @@ const extractEditPayload = (content: string): { cleaned: string; payload: EditPa
   return { cleaned: cleaned.trim(), payload }
 }
 
-const renderContent = (content: string) => {
+const renderContent = (content: string, onInsertCode?: (code: string) => void) => {
   const segments: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = []
   const codeBlockRegex = /```([\s\S]*?)```/g
   let lastIndex = 0
@@ -90,12 +90,21 @@ const renderContent = (content: string) => {
   return segments.map((segment, index) => {
     if (segment.type === 'code') {
       return (
-        <pre
-          key={`code-${index}`}
-          className="mt-2 rounded-md bg-gray-900/90 px-3 py-2 text-[12px] leading-relaxed text-gray-100 whitespace-pre-wrap break-words"
-        >
-          <code>{segment.content}</code>
-        </pre>
+        <div key={`code-${index}`} className="relative mt-2 group">
+          <pre
+            className="rounded-md bg-gray-900/90 px-3 py-2 text-[12px] leading-relaxed text-gray-100 whitespace-pre-wrap break-words"
+          >
+            <code>{segment.content}</code>
+          </pre>
+          {onInsertCode && segment.content.trim().length > 10 && (
+            <button
+              onClick={() => onInsertCode(segment.content)}
+              className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-primary-600 text-white text-[10px] px-2 py-1 rounded transition-opacity hover:bg-primary-700"
+            >
+              Insert into Editor
+            </button>
+          )}
+        </div>
       )
     }
 
@@ -118,6 +127,7 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
     clearEditorDecorations,
     setEditorDeletionZones,
     clearEditorDeletionZones,
+    insertCodeIntoEditor,
   } = useChatStore()
   const [pendingEdit, setPendingEdit] = useState<{ before: string; after: string } | null>(null)
   const autoAppliedRef = useRef(false)
@@ -339,7 +349,7 @@ export const AiAssistMessageBubble = ({ message }: AiAssistMessageBubbleProps) =
               }`
         }
       >
-        {renderContent(formattedContent)}
+        {renderContent(formattedContent, isUser ? undefined : insertCodeIntoEditor)}
         {payload && !isUser && (
           <div className="mt-2 text-[11px] text-gray-500">
             {applyError && <span className="text-amber-600">{applyError}</span>}
