@@ -15,7 +15,7 @@ interface CodeBlockProps {
 export const CodeBlock = ({ children, language, className }: CodeBlockProps) => {
   const [isCopied, setIsCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
-  const { insertCodeIntoEditor, appMode } = useChatStore()
+  const { insertCodeIntoEditor, appMode, setAppMode } = useChatStore()
 
   // Extract language from className (format: language-python)
   const match = /language-(\w+)/.exec(className || '')
@@ -57,9 +57,14 @@ export const CodeBlock = ({ children, language, className }: CodeBlockProps) => 
           {lang}
         </span>
         <div className="flex items-center space-x-1">
-          {canInsert && appMode !== 'ide' && (
+          {canInsert && (
             <button
-              onClick={() => insertCodeIntoEditor(code)}
+              onClick={() => {
+                insertCodeIntoEditor(code)
+                if (appMode !== 'ide') {
+                  setAppMode('ide')
+                }
+              }}
               className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
               title="Open in code editor"
             >
