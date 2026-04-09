@@ -106,7 +106,7 @@ class StudentResponse(BaseModel):
     name: str = ""
     email: str = ""
     code: str = ""
-    assignmentFile: str = ""
+    assignmentFile: Optional[str] = ""
     status: str = ""
     enrolledAt: str = ""
 
