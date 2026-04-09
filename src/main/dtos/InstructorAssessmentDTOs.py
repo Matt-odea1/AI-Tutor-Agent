@@ -347,8 +347,8 @@ class InstructorQuestionDetail(BaseModel):
     effectiveScore: Optional[int] = None
     maxScore: int = 10
     feedback: Optional[str] = None
-    strengths: Optional[str] = None
-    improvements: Optional[str] = None
+    strengths: Optional[str | list] = None
+    improvements: Optional[str | list] = None
     instructorComment: Optional[str] = None
     evaluatedAt: Optional[str] = None
 
