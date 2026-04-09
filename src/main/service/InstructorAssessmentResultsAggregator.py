@@ -198,7 +198,7 @@ class InstructorAssessmentResultsAggregator:
             "chunks": [
                 {
                     "chunkIndex": int(c.get("chunkIndex", 0)),
-                    "chunkUrl": c.get("chunkUrl", ""),
+                    "chunkUrl": self._presign_url(c.get("chunkUrl", "")),
                     "recordedAt": c.get("recordedAt"),
                 }
                 for c in chunks
@@ -227,7 +227,7 @@ class InstructorAssessmentResultsAggregator:
                 "questionText": question.get("text", ""),
                 "answerType": answer.get("answerType"),
                 "audioUrl": self._presign_url(answer.get("audioUrl")),
-                "videoUrl": answer.get("videoUrl"),
+                "videoUrl": self._presign_url(answer.get("videoUrl")),
                 "textContent": answer.get("textContent"),
                 "duration": int(answer.get("duration", 0)) if answer.get("duration") else None,
                 "transcript": answer.get("transcript"),
