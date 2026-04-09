@@ -67,6 +67,7 @@ class ChatService:
         language: Optional[str] = None,
         history_override: Optional[List[dict]] = None,
         persist_history: bool = True,
+        intent_override: Optional[str] = None,
     ) -> dict:
         """
         Process a chat query with conversation history and context retrieval.
@@ -143,7 +144,7 @@ class ChatService:
             logger.debug(f"Truncated context to {self.max_context_chars} chars")
         
         # Step 4: Build messages with system prompt (including pedagogy mode), history, context, and query
-        intent = self._classify_edit_intent(query)
+        intent = intent_override or self._classify_edit_intent(query)
         messages = self._build_messages(
             query,
             context_str,
@@ -407,20 +408,18 @@ class ChatService:
         lowered = query.lower()
 
         strong_verbs = [
-            "edit",
-            "change",
-            "update",
-            "modify",
-            "refactor",
-            "fix",
-            "add",
-            "remove",
-            "rewrite",
-            "replace",
-            "optimize",
-            "rename",
+            "edit", "change", "update", "modify", "refactor", "fix", "add", "remove",
+            "rewrite", "replace", "optimize", "rename", "make", "convert", "transform",
+            "move", "extract", "inline", "merge", "split", "wrap", "unwrap", "simplify",
+            "clean", "restructure", "swap", "insert", "append", "delete", "drop", "strip",
+            "format", "sort", "reverse", "flatten", "debug", "patch", "correct", "adjust",
+            "tweak", "improve", "enhance", "upgrade", "migrate", "combine", "separate",
+            "validate", "handle", "catch", "initialize", "reset", "clear", "expand",
         ]
-        construct_verbs = ["implement", "write", "create", "generate", "build"]
+        construct_verbs = [
+            "implement", "write", "create", "generate", "build", "scaffold", "setup",
+            "define", "declare", "construct", "design", "draft", "prototype",
+        ]
         code_targets = [
             "code",
             "program",
@@ -469,8 +468,11 @@ class ChatService:
             "sample output",
         ]
 
-        has_strong_verb = any(f"{verb} " in lowered for verb in strong_verbs)
-        has_construct_verb = any(f"{verb} " in lowered for verb in construct_verbs)
+        def verb_match(verb: str) -> bool:
+            return f"{verb} " in lowered or lowered == verb or lowered.endswith(f" {verb}")
+
+        has_strong_verb = any(verb_match(verb) for verb in strong_verbs)
+        has_construct_verb = any(verb_match(verb) for verb in construct_verbs)
         has_code_target = any(target in lowered for target in code_targets)
         has_assignment_signal = any(signal in lowered for signal in assignment_signals)
         has_file_hint = (
@@ -485,16 +487,16 @@ class ChatService:
         has_info_phrase = any(phrase in lowered for phrase in info_phrases)
         looks_like_problem_paste = has_assignment_signal or ("\n" in query and len(query) > 180 and has_code_target)
 
+        # Info phrases take priority over file hints
+        if has_info_phrase and not has_strong_verb and not looks_like_problem_paste:
+            return "none"
+
         if has_strong_verb or has_file_hint or looks_like_problem_paste:
             return "strong"
-        if has_construct_verb and has_code_target:
-            return "strong"
         if has_construct_verb:
-            heuristic = "none" if has_info_phrase else "weak"
-        elif has_info_phrase:
-            heuristic = "none"
-        else:
-            heuristic = "none"
+            return "strong"
+
+        heuristic = "none"
 
         if heuristic == "weak" and self._use_llm_intent():
             llm_intent = self._llm_classify_intent(query)

@@ -437,6 +437,7 @@ def create_edit_proposal(
             language=request.language,
             history_override=existing_history,
             persist_history=False,
+            intent_override="strong",
         )
     except ChatServiceError as error:
         raise ApiError(status_code=500, code="history_edit_proposal_failed", message=str(error))
