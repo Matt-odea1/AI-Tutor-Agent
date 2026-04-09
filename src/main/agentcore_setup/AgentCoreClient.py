@@ -28,6 +28,11 @@ class AgentCoreClient:
         # Amazon Nova models use specific format
         if model_id == "amazon.nova-lite-v1:0":
             messages = self._adapt_messages_for_nova(messages)
+            # Ensure all message content fields are arrays (Nova requirement)
+            for msg in messages:
+                c = msg.get("content")
+                if isinstance(c, str):
+                    msg["content"] = [{"text": c}]
             # Validate messages structure
             if not messages or not isinstance(messages, list):
                 self.logger.error("Nova chat: 'messages' must be a non-empty list.")
@@ -137,16 +142,21 @@ class AgentCoreClient:
 
         if remainder and remainder[0].get("role") == "user":
             current = remainder[0].get("content", "")
-            current_text = current if isinstance(current, str) else str(current)
+            # Extract text from content (may be string or list of {text: ...})
+            if isinstance(current, list):
+                current_text = " ".join(c.get("text", "") for c in current if isinstance(c, dict))
+            else:
+                current_text = str(current)
+            merged = f"System instructions:\n{system_block}\n\n{current_text}".strip()
             remainder[0] = {
                 **remainder[0],
-                "content": f"System instructions:\n{system_block}\n\n{current_text}".strip(),
+                "content": [{"text": merged}],
             }
             return remainder
 
         injected_user = {
             "role": "user",
-            "content": f"System instructions:\n{system_block}".strip(),
+            "content": [{"text": f"System instructions:\n{system_block}".strip()}],
         }
         return [injected_user, *remainder]
 
