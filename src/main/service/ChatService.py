@@ -270,8 +270,10 @@ class ChatService:
 
         if intent == "strong":
             user_parts.append(
-                "If the user wants code changes, respond with exactly one edit block. "
-                "Keep the response to one short sentence plus the edit block."
+                "IMPORTANT: You MUST respond with exactly one ```edit block using the Edit Block Contract (v1) schema. "
+                "The edit block must contain the complete replacement code, not a scaffold with TODOs. "
+                "Use scope 'file' with strategy 'replace' if you are rewriting the whole file, or use 'target' for partial edits. "
+                "Keep non-edit text to one short sentence. Do NOT use a plain ```python code block — use ```edit with JSON payload."
             )
         elif intent == "weak":
             user_parts.append(
