@@ -47,7 +47,9 @@ jobs:
           echo "VITE_ANALYTICS_ENABLED=${{ vars.VITE_ANALYTICS_ENABLED }}" >> .env.production
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install @rollup/rollup-linux-x64-gnu --save-optional 2>/dev/null || true
 
       - name: Build
         run: npm run build
