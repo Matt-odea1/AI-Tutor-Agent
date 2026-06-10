@@ -289,3 +289,17 @@ terraform/**/terraform.tfstate.*
 *.tfvars.json
 # Allow example files
 !*.tfvars.example
+
+# ================================
+# Test artifacts
+# ================================
+test-results/
+
+# ── Code-only repo: thesis/paper sources + research data live on disk but are NOT tracked here ──
+# Research data (e.g. data/, results CSVs) may contain student records — keep it out of git.
+# Full prior history is preserved in tag backup-main-pre-scrub; old thesis remains in remote history.
+papers/
+data/
+Matt_thesis/
+thesis/
+FIE_paper/
