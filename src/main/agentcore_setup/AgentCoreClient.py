@@ -116,6 +116,73 @@ class AgentCoreClient:
             self.logger.error(f"Unexpected chat response: {body}")
             raise ValueError(f"Unexpected chat response: {body}")
 
+    def chat_with_tool(self, messages, model_id, tool_config, system=None, **kwargs):
+        """
+        Invoke a chat model forcing a tool call (structured output) and return the
+        tool input.
+
+        Uses the same invoke_model transport as chat(); only the request body
+        gains a `toolConfig` (Nova-native tool use). Returns:
+            {"tool_use": <input dict|None>, "tool_name": <str|None>, "stop_reason": <str|None>}
+
+        Raises on transport errors. A response with no toolUse block returns
+        tool_use=None so the caller can fall back to text parsing.
+        """
+        self.logger.debug(f"chat_with_tool called with model_id={model_id}")
+
+        norm = self._adapt_messages_for_nova(messages) if model_id == "amazon.nova-lite-v1:0" else list(messages)
+        for msg in norm:
+            c = msg.get("content")
+            if isinstance(c, str):
+                msg["content"] = [{"text": c}]
+
+        if not norm or not isinstance(norm, list):
+            raise ValueError("chat_with_tool: 'messages' must be a non-empty list.")
+
+        body = {"messages": norm, "toolConfig": tool_config}
+        if system:
+            body["system"] = system if isinstance(system, list) else [{"text": system}]
+
+        payload = json.dumps(body)
+        self.logger.debug(f"chat_with_tool payload for {model_id}={payload}")
+        try:
+            response = self.bedrock_client.invoke_model(
+                modelId=model_id,
+                body=payload,
+                contentType="application/json",
+                accept="application/json",
+            )
+            resp_body = json.loads(response["body"].read())
+            self.logger.debug(f"chat_with_tool response for {model_id}={resp_body}")
+        except Exception as e:
+            self.logger.error(f"chat_with_tool Bedrock error for {model_id}: {e}")
+            raise
+
+        # Nova/Bedrock tool-use response:
+        #   {"output": {"message": {"content": [{"toolUse": {"name","input","toolUseId"}} | {"text": ...}]}},
+        #    "stopReason": "tool_use"}
+        content_blocks = []
+        output = resp_body.get("output") if isinstance(resp_body, dict) else None
+        if isinstance(output, dict):
+            message = output.get("message") or {}
+            content_blocks = message.get("content") or []
+        # Some response shapes nest the message at the top level.
+        if not content_blocks and isinstance(resp_body, dict):
+            message = resp_body.get("message") or {}
+            content_blocks = message.get("content") or []
+
+        for block in content_blocks:
+            if isinstance(block, dict) and "toolUse" in block:
+                tool_use = block["toolUse"] or {}
+                return {
+                    "tool_use": tool_use.get("input"),
+                    "tool_name": tool_use.get("name"),
+                    "stop_reason": resp_body.get("stopReason"),
+                }
+
+        self.logger.warning(f"chat_with_tool: no toolUse block (stopReason={resp_body.get('stopReason')})")
+        return {"tool_use": None, "tool_name": None, "stop_reason": resp_body.get("stopReason")}
+
     def _adapt_messages_for_nova(self, messages):
         """
         Nova requires the first message role to be 'user'.
