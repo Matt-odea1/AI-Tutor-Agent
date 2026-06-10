@@ -3,7 +3,7 @@ DTOs for Instructor Assessment endpoints
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 
@@ -24,6 +24,8 @@ class CreateAssessmentRequest(BaseModel):
     rubric: Optional[str] = Field(None, description="Custom grading rubric injected into the evaluation prompt")
     answerMode: str = Field("oral", description="'oral' or 'written' — controls student answer interface")
     preparationTime: Optional[int] = Field(None, description="Seconds of prep time shown before oral recording starts (0 = start immediately)", ge=0, le=300)
+    maxScorePerQuestion: Optional[int] = Field(None, description="Override max marks per question (default 10)", ge=1, le=100)
+    gradeCutoffs: Optional[Dict[str, float]] = Field(None, description="Override grade cutoffs as percentages, e.g. {'excellent': 90, 'competent': 75, 'developing': 60}")
 
 
 class UploadedStudent(BaseModel):
@@ -87,6 +89,8 @@ class AssessmentResponse(BaseModel):
     rubric: Optional[str] = None
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
+    maxScorePerQuestion: Optional[int] = None
+    gradeCutoffs: Optional[Dict[str, float]] = None
     resultsReleased: bool = False
     status: str
     createdAt: str
@@ -342,15 +346,30 @@ class InstructorQuestionDetail(BaseModel):
     duration: Optional[int] = None
     transcript: Optional[str] = None
     transcriptStatus: Optional[str] = None
+    transcriptConfidence: Optional[float] = None
     aiScore: Optional[int] = None
+    correctnessScore: Optional[int] = None
+    understandingScore: Optional[int] = None
     instructorScore: Optional[int] = None
     effectiveScore: Optional[int] = None
     maxScore: int = 10
     feedback: Optional[str] = None
     strengths: Optional[str | list] = None
+    weaknesses: Optional[str | list] = None
     improvements: Optional[str | list] = None
+    suggestedImprovements: Optional[str | list] = None
     instructorComment: Optional[str] = None
     evaluatedAt: Optional[str] = None
+    # Review flags (Tasks 4 & 5)
+    needsReview: bool = False
+    reviewReasons: Optional[List[str]] = None
+    evaluationMethod: Optional[str] = None
+    # Human reference score for the dual-scoring validity harness (Task 3)
+    humanCorrectnessScore: Optional[int] = None
+    humanUnderstandingScore: Optional[int] = None
+    humanTotalScore: Optional[int] = None
+    humanScoredBy: Optional[str] = None
+    humanScoredAt: Optional[str] = None
 
 
 class InstructorStudentDetailResponse(BaseModel):
@@ -374,6 +393,49 @@ class ReleaseResultsResponse(BaseModel):
     ok: bool = True
     assessmentId: str
     resultsReleased: bool
+    warning: Optional[str] = None
+    flaggedCount: Optional[int] = None
+
+
+# ── Dual-scoring validity harness (Task 3) + review flagging (Task 5) ────────
+
+class RecordHumanScoreRequest(BaseModel):
+    """Record a human reference score for a question (dual-scoring harness)."""
+    humanCorrectnessScore: int = Field(..., description="Human correctness score (0-5)", ge=0, le=5)
+    humanUnderstandingScore: int = Field(..., description="Human understanding score (0-5)", ge=0, le=5)
+    scoredBy: Optional[str] = Field(None, description="Identifier of the human scorer")
+
+
+class RecordHumanScoreResponse(BaseModel):
+    """Response after recording a human reference score."""
+    ok: bool = True
+    assessmentId: str
+    studentId: str
+    questionId: str
+    humanCorrectnessScore: int
+    humanUnderstandingScore: int
+    humanTotalScore: int
+    humanScoredBy: Optional[str] = None
+    humanScoredAt: Optional[str] = None
+
+
+class ScoreAgreementResponse(BaseModel):
+    """AI-vs-human agreement summary across all dual-scored items."""
+    ok: bool = True
+    assessmentId: str
+    dualScoredCount: int
+    exactMatchRate: Optional[float] = None
+    within1Rate: Optional[float] = None
+    meanAbsoluteDifference: Optional[float] = None
+    items: List[Dict[str, Any]] = []
+
+
+class FlaggedEvaluationsResponse(BaseModel):
+    """Evaluations flagged for human review before release."""
+    ok: bool = True
+    assessmentId: str
+    flaggedCount: int
+    items: List[Dict[str, Any]] = []
 
 
 class SendReminderResponse(BaseModel):

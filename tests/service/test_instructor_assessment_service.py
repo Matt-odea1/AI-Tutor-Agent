@@ -11,6 +11,8 @@ Covers:
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 import boto3
 import pytest
 from moto import mock_aws
@@ -233,3 +235,45 @@ class TestUpdateSchedule:
 
         with pytest.raises(InstructorAssessmentServiceError, match="must be"):
             svc.update_schedule(assessment["id"], access_mode="invalid")
+
+
+# ── Task 6: configurable scoring + Task 3: dual-scoring service paths ────────
+
+class TestScoringConfigAndDualScoring:
+    def test_create_assessment_persists_scoring_overrides(self, dynamo_env):
+        svc = _create_service(dynamo_env)
+        result = svc.create_assessment(
+            title="T", course="COMP1010", description="d", due_date="2026-12-01",
+            total_questions=5, max_score_per_question=20,
+            grade_cutoffs={"excellent": 50, "competent": 30, "developing": 10},
+        )
+        item = dynamo_env.get_item(Key={"PK": f"ASSESSMENT#{result['id']}", "SK": "METADATA"})["Item"]
+        assert int(item["maxScorePerQuestion"]) == 20
+        assert float(item["gradeCutoffs"]["excellent"]) == 50
+
+    def test_create_assessment_without_overrides_omits_config(self, dynamo_env):
+        svc = _create_service(dynamo_env)
+        result = svc.create_assessment(
+            title="T", course="COMP1010", description="d", due_date="2026-12-01", total_questions=5,
+        )
+        item = dynamo_env.get_item(Key={"PK": f"ASSESSMENT#{result['id']}", "SK": "METADATA"})["Item"]
+        assert "maxScorePerQuestion" not in item
+        assert "gradeCutoffs" not in item
+
+    def test_record_human_score_persists_and_leaves_ai_untouched(self, dynamo_env):
+        svc = _create_service(dynamo_env)
+        a_id, s_id, q_id = "a-1", "s-1", "q-1"
+        pk = f"STUDENT#{s_id}#ASSESSMENT#{a_id}"
+        dynamo_env.put_item(Item={
+            "PK": pk, "SK": f"EVALUATION#{q_id}",
+            "totalScore": Decimal("8"), "correctnessScore": Decimal("4"),
+            "understandingScore": Decimal("4"), "maxScore": Decimal("10"),
+        })
+        res = svc.record_human_score(
+            a_id, s_id, q_id, human_correctness_score=5, human_understanding_score=3, scored_by="grader",
+        )
+        assert res["humanTotalScore"] == 8
+        item = dynamo_env.get_item(Key={"PK": pk, "SK": f"EVALUATION#{q_id}"})["Item"]
+        assert int(item["humanTotalScore"]) == 8
+        assert item["humanScoredBy"] == "grader"
+        assert int(item["totalScore"]) == 8  # AI score untouched by the human reference

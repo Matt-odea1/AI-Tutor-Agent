@@ -38,6 +38,7 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     EvaluateBatchRequest,
     EvaluationJobResponse,
     EvaluationStatusResponse,
+    FlaggedEvaluationsResponse,
     GenerateQuestionsBatchRequest,
     InstructorStudentDetailResponse,
     ProgressSummaryResponse,
@@ -45,8 +46,11 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     ProctorChunkItem,
     QuestionGenerationJobResponse,
     QuestionGenerationStatusResponse,
+    RecordHumanScoreRequest,
+    RecordHumanScoreResponse,
     ReleaseResultsResponse,
     ResultsSummaryResponse,
+    ScoreAgreementResponse,
     ScoreOverrideRequest,
     ScoreOverrideResponse,
     SendReminderResponse,
@@ -108,6 +112,8 @@ async def create_assessment(
             rubric=request.rubric,
             answer_mode=request.answerMode,
             preparation_time=request.preparationTime,
+            max_score_per_question=request.maxScorePerQuestion,
+            grade_cutoffs=request.gradeCutoffs,
         ))
         return AssessmentResponse(**result)
 
@@ -1466,6 +1472,96 @@ async def release_results(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in release_results: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.put(
+    "/{id}/student/{student_id}/question/{question_id}/human-score",
+    response_model=RecordHumanScoreResponse,
+)
+async def record_human_score(
+    id: str,
+    student_id: str,
+    question_id: str,
+    request: RecordHumanScoreRequest = Body(...),
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Dual-scoring harness: record a HUMAN reference score for a question.
+    Separate from the grade override — it does not change the student's grade."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        result = await loop.run_in_executor(
+            None,
+            lambda: svc.record_human_score(
+                id, student_id, question_id,
+                human_correctness_score=request.humanCorrectnessScore,
+                human_understanding_score=request.humanUnderstandingScore,
+                scored_by=request.scoredBy,
+            ),
+        )
+        return RecordHumanScoreResponse(ok=True, **result)
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="human_score_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in record_human_score: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.get("/{id}/score-agreement", response_model=ScoreAgreementResponse)
+async def get_score_agreement(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """AI-vs-human agreement summary across all dual-scored items (validity harness)."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        result = await loop.run_in_executor(None, lambda: svc.get_score_agreement(id))
+        return ScoreAgreementResponse(ok=True, **result)
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="score_agreement_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in get_score_agreement: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.get("/{id}/flagged-evaluations", response_model=FlaggedEvaluationsResponse)
+async def get_flagged_evaluations(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """List evaluations flagged for human review (needs-review, fallback, or score divergence)."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        result = await loop.run_in_executor(None, lambda: svc.get_flagged_evaluations(id))
+        return FlaggedEvaluationsResponse(ok=True, **result)
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="flagged_evaluations_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in get_flagged_evaluations: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

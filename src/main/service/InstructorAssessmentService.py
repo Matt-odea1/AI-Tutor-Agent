@@ -27,6 +27,7 @@ from src.main.service.InstructorAssessmentCatalog import InstructorAssessmentCat
 from src.main.service.InstructorAssessmentEnrollment import InstructorAssessmentEnrollment
 from src.main.service.InstructorAssessmentProgressAggregator import InstructorAssessmentProgressAggregator
 from src.main.service.InstructorAssessmentResultsAggregator import InstructorAssessmentResultsAggregator
+from src.main.service.ResponseEvaluationRepository import ResponseEvaluationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,8 @@ class InstructorAssessmentService:
         rubric: Optional[str] = None,
         answer_mode: str = "oral",
         preparation_time: Optional[int] = None,
+        max_score_per_question: Optional[int] = None,
+        grade_cutoffs: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         """
         Create a new assessment.
@@ -144,6 +147,17 @@ class InstructorAssessmentService:
         Returns:
             Created assessment data
         """
+        # Validate optional grade-cutoff override up front so a bad config is
+        # rejected with a clear error rather than silently ignored at scoring time.
+        if grade_cutoffs:
+            excellent = grade_cutoffs.get("excellent", 90)
+            competent = grade_cutoffs.get("competent", 75)
+            developing = grade_cutoffs.get("developing", 60)
+            if not (0 <= developing <= competent <= excellent <= 100):
+                raise InstructorAssessmentServiceError(
+                    "gradeCutoffs must satisfy 0 <= developing <= competent <= excellent <= 100"
+                )
+
         try:
             assessment_id = str(uuid.uuid4())
             created_at = datetime.now(timezone.utc).isoformat()
@@ -172,7 +186,14 @@ class InstructorAssessmentService:
                 'createdAt': created_at,
                 'updatedAt': created_at
             }
-            
+
+            # Optional per-assessment scoring overrides (Task 6). Stored only when
+            # provided so existing assessments with no override behave as before.
+            if max_score_per_question is not None:
+                assessment['maxScorePerQuestion'] = int(max_score_per_question)
+            if grade_cutoffs:
+                assessment['gradeCutoffs'] = {k: Decimal(str(v)) for k, v in grade_cutoffs.items()}
+
             self.table.put_item(Item=assessment)
             
             logger.info(f"Created assessment: {assessment_id}")
@@ -465,9 +486,58 @@ class InstructorAssessmentService:
             logger.error(f"Failed to override score: {e}")
             raise InstructorAssessmentServiceError(f"Failed to override score: {e}")
 
+    def record_human_score(
+        self,
+        assessment_id: str,
+        student_id: str,
+        question_id: str,
+        human_correctness_score: int,
+        human_understanding_score: int,
+        scored_by: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Record a HUMAN reference score for the dual-scoring validity harness
+        (Task 3). Separate from the instructor grade override — it does not change
+        the student's grade; it is the independent human score used to measure
+        AI-vs-human agreement.
+        """
+        try:
+            repo = ResponseEvaluationRepository(table_name=self.table_name, region=self.region)
+            repo.table = self.table  # share the (possibly mocked) table handle
+            result = repo.record_human_score(
+                student_id,
+                assessment_id,
+                question_id,
+                human_correctness_score=human_correctness_score,
+                human_understanding_score=human_understanding_score,
+                scored_by=scored_by,
+            )
+            logger.info("Human score recorded: %s/%s/Q%s", assessment_id, student_id, question_id)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to record human score: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to record human score: {e}")
+
+    def get_score_agreement(self, assessment_id: str) -> Dict[str, Any]:
+        """AI-vs-human agreement summary across all dual-scored items (Task 3)."""
+        try:
+            return self.results_aggregator.compute_score_agreement(assessment_id)
+        except Exception as e:
+            logger.error(f"Failed to compute score agreement: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to compute score agreement: {e}")
+
+    def get_flagged_evaluations(self, assessment_id: str) -> Dict[str, Any]:
+        """Evaluations worth a human glance before release (Task 5)."""
+        try:
+            return self.results_aggregator.get_flagged_evaluations(assessment_id)
+        except Exception as e:
+            logger.error(f"Failed to get flagged evaluations: {e}")
+            raise InstructorAssessmentServiceError(f"Failed to get flagged evaluations: {e}")
+
     def release_results(self, assessment_id: str) -> Dict[str, Any]:
         """Set resultsReleased=True on the assessment metadata item.
-        Warns if not all submitted students have evaluations."""
+        Warns if not all submitted students have evaluations, and surfaces a
+        count of evaluations flagged for review (Task 5)."""
         try:
             # Check how many submitted students have evaluations
             students = self.enrollment.get_assessment_students_lightweight(assessment_id)
@@ -492,6 +562,15 @@ class InstructorAssessmentService:
                     if future.result():
                         evaluated_count += 1
 
+            # Surface (do not block on) evaluations flagged for review so the
+            # instructor releases an informed result set. The release gate itself
+            # is unchanged.
+            flagged_count = 0
+            try:
+                flagged_count = self.results_aggregator.get_flagged_evaluations(assessment_id).get("flaggedCount", 0)
+            except Exception as flag_error:
+                logger.warning("Could not compute flagged evaluations at release: %s", flag_error)
+
             self.table.update_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
                 UpdateExpression="SET resultsReleased = :r, updatedAt = :ua",
@@ -500,11 +579,16 @@ class InstructorAssessmentService:
                     ":ua": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            logger.info("Released results for assessment %s", assessment_id)
+            logger.info("Released results for assessment %s (%d flagged for review)", assessment_id, flagged_count)
             warning = None
             if evaluated_count < len(submitted):
                 warning = f"Only {evaluated_count}/{len(submitted)} submitted students have been evaluated"
-            return {"assessmentId": assessment_id, "resultsReleased": True, "warning": warning}
+            return {
+                "assessmentId": assessment_id,
+                "resultsReleased": True,
+                "warning": warning,
+                "flaggedCount": flagged_count,
+            }
         except InstructorAssessmentServiceError:
             raise
         except Exception as e:

@@ -9,6 +9,8 @@ import boto3
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 
+from src.main.service.ScoringConfig import ScoringConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +97,8 @@ class OralAssessmentResultsAggregator:
         if not evaluations_map:
             raise ValueError(f"Results not available yet for student {student_id}")
 
+        scoring = ScoringConfig.from_metadata(assessment)
+
         question_results = []
         total_score = 0
         max_score = 0
@@ -104,7 +108,7 @@ class OralAssessmentResultsAggregator:
             evaluation = evaluations_map.get(question_id, {})
 
             score = int(evaluation.get("totalScore", 0)) if evaluation.get("totalScore") is not None else None
-            q_max_score = int(evaluation.get("maxScore", 10)) if evaluation.get("maxScore") is not None else 10
+            q_max_score = int(evaluation.get("maxScore", scoring.max_score_per_question)) if evaluation.get("maxScore") is not None else scoring.max_score_per_question
             correctness = int(evaluation.get("correctnessScore", 0)) if evaluation.get("correctnessScore") is not None else 0
             understanding = int(evaluation.get("understandingScore", 0)) if evaluation.get("understandingScore") is not None else 0
 
@@ -142,15 +146,7 @@ class OralAssessmentResultsAggregator:
             )
 
         percentage = round((total_score / max_score * 100), 1) if max_score > 0 else 0
-
-        if percentage >= 90:
-            grade = "Excellent"
-        elif percentage >= 75:
-            grade = "Competent"
-        elif percentage >= 60:
-            grade = "Developing"
-        else:
-            grade = "Unsatisfactory"
+        grade = scoring.grade(percentage)
 
         return {
             "studentId": student_id,

@@ -188,3 +188,148 @@ class TestEffectiveScore:
 
     def test_zero_fallback(self):
         assert _effective_score({}) == 0
+
+
+# ── Task 3: AI-vs-human agreement ───────────────────────────────────────────
+
+class TestScoreAgreement:
+    def test_agreement_metrics(self, table):
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        # exact match (diff 0)
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1", "totalScore": 8,
+            "correctnessScore": 4, "understandingScore": 4,
+            "humanTotalScore": 8, "humanCorrectnessScore": 4, "humanUnderstandingScore": 4,
+        })
+        # within-1 (diff -1)
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-2", "totalScore": 6,
+            "correctnessScore": 3, "understandingScore": 3,
+            "humanTotalScore": 7, "humanCorrectnessScore": 4, "humanUnderstandingScore": 3,
+        })
+        # no human score → excluded from agreement
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-3", "totalScore": 5,
+            "correctnessScore": 3, "understandingScore": 2,
+        })
+
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: [STUDENTS[0]])
+        result = agg.compute_score_agreement(ASSESSMENT_ID)
+
+        assert result["dualScoredCount"] == 2
+        assert result["exactMatchRate"] == 0.5  # 1 of 2 exact
+        assert result["within1Rate"] == 1.0  # both within 1
+        assert result["meanAbsoluteDifference"] == 0.5  # (0 + 1) / 2
+
+    def test_agreement_no_dual_scored(self, table):
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "EVALUATION#q-1", "totalScore": 8})
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: [STUDENTS[0]])
+        result = agg.compute_score_agreement(ASSESSMENT_ID)
+        assert result["dualScoredCount"] == 0
+        assert result["exactMatchRate"] is None
+        assert result["meanAbsoluteDifference"] is None
+
+
+# ── Task 5: flagged evaluations ─────────────────────────────────────────────
+
+class TestFlaggedEvaluations:
+    def test_flags_needs_review_and_divergence(self, table):
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1", "totalScore": 0,
+            "correctnessScore": 0, "understandingScore": 0,
+            "needsReview": True, "reviewReasons": ["empty_transcript"],
+        })
+        # large divergence between dimensions (|5 - 1| = 4 >= 3)
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-2", "totalScore": 6,
+            "correctnessScore": 5, "understandingScore": 1,
+        })
+        # clean
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-3", "totalScore": 8,
+            "correctnessScore": 4, "understandingScore": 4,
+        })
+
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: [STUDENTS[0]])
+        result = agg.get_flagged_evaluations(ASSESSMENT_ID)
+
+        assert result["flaggedCount"] == 2
+        reasons_by_q = {it["questionId"]: it["reasons"] for it in result["items"]}
+        assert "empty_transcript" in reasons_by_q["q-1"]
+        assert "score_divergence" in reasons_by_q["q-2"]
+        assert "q-3" not in reasons_by_q
+
+    def test_no_flags_when_all_clean(self, table):
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1", "totalScore": 8,
+            "correctnessScore": 4, "understandingScore": 4, "needsReview": False,
+        })
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: [STUDENTS[0]])
+        result = agg.get_flagged_evaluations(ASSESSMENT_ID)
+        assert result["flaggedCount"] == 0
+
+
+# ── Task 6: configurable grade cutoffs / max score ──────────────────────────
+
+class TestScoringConfigOverride:
+    def test_default_cutoffs_when_no_metadata(self, table):
+        _seed_enrollments(table)
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "EVALUATION#q-1", "totalScore": 6, "maxScore": 10})  # 60%
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        results = agg.get_assessment_results(ASSESSMENT_ID)
+        s1 = next(r for r in results if r["studentId"] == "s-1")
+        assert s1["percentage"] == 60.0
+        assert s1["grade"] == "Developing"  # default 60 cutoff
+
+    def test_metadata_cutoffs_override(self, table):
+        _seed_enrollments(table)
+        table.put_item(Item={
+            "PK": f"ASSESSMENT#{ASSESSMENT_ID}", "SK": "METADATA",
+            "gradeCutoffs": {"excellent": Decimal("50"), "competent": Decimal("30"), "developing": Decimal("10")},
+        })
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "EVALUATION#q-1", "totalScore": 6, "maxScore": 10})  # 60%
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        results = agg.get_assessment_results(ASSESSMENT_ID)
+        s1 = next(r for r in results if r["studentId"] == "s-1")
+        assert s1["percentage"] == 60.0
+        assert s1["grade"] == "Excellent"  # 60 >= overridden excellent cutoff of 50
+
+    def test_student_detail_respects_metadata_cutoffs(self, table):
+        _seed_enrollments(table)
+        table.put_item(Item={
+            "PK": f"ASSESSMENT#{ASSESSMENT_ID}", "SK": "METADATA",
+            "gradeCutoffs": {"excellent": Decimal("50"), "competent": Decimal("30"), "developing": Decimal("10")},
+        })
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "QUESTION#q-1", "text": "Q1"})
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1", "totalScore": 6, "maxScore": 10,
+            "correctnessScore": 3, "understandingScore": 3,
+        })
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        detail = agg.get_student_detail(ASSESSMENT_ID, "s-1")
+        assert detail["percentage"] == 60.0
+        assert detail["grade"] == "Excellent"
+
+    def test_student_detail_surfaces_review_flags(self, table):
+        _seed_enrollments(table)
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "QUESTION#q-1", "text": "Q1"})
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1", "totalScore": 0, "maxScore": 10,
+            "correctnessScore": 0, "understandingScore": 0,
+            "needsReview": True, "reviewReasons": ["low_confidence_transcript"],
+            "evaluationMethod": "text", "transcriptConfidence": Decimal("0.3"),
+            "humanCorrectnessScore": 4, "humanUnderstandingScore": 3, "humanTotalScore": 7,
+        })
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        q = agg.get_student_detail(ASSESSMENT_ID, "s-1")["questions"][0]
+        assert q["needsReview"] is True
+        assert "low_confidence_transcript" in q["reviewReasons"]
+        assert q["transcriptConfidence"] == 0.3
+        assert q["humanTotalScore"] == 7

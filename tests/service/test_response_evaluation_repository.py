@@ -92,6 +92,80 @@ class TestStoreEvaluation:
         assert item["feedback"] == "Good work"
 
 
+class TestStoreEvaluationReviewFlags:
+    EVAL_KEY = {"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1"}
+
+    def test_review_flags_persisted(self, repo):
+        repo.store_evaluation("s-1", "a-1", "q-1", {
+            "correctness_score": 0, "understanding_score": 0, "total_score": 0,
+            "feedback": "flagged", "needs_review": True,
+            "review_reasons": ["empty_transcript"], "evaluation_method": "unscored",
+        })
+        item = repo.table.get_item(Key=self.EVAL_KEY)["Item"]
+        assert item["needsReview"] is True
+        assert list(item["reviewReasons"]) == ["empty_transcript"]
+        assert item["evaluationMethod"] == "unscored"
+
+    def test_confidence_persisted_when_present(self, repo):
+        repo.store_evaluation("s-1", "a-1", "q-1", {
+            "correctness_score": 4, "understanding_score": 4, "total_score": 8,
+            "feedback": "f", "transcript_confidence": 0.42,
+        })
+        item = repo.table.get_item(Key=self.EVAL_KEY)["Item"]
+        assert float(item["transcriptConfidence"]) == 0.42
+
+    def test_safe_defaults_when_flags_absent(self, repo):
+        # A legacy-shaped evaluation dict with no flag fields stores safe defaults.
+        repo.store_evaluation("s-1", "a-1", "q-1", {
+            "correctness_score": 4, "understanding_score": 4, "total_score": 8, "feedback": "f",
+        })
+        item = repo.table.get_item(Key=self.EVAL_KEY)["Item"]
+        assert item["needsReview"] is False
+        assert list(item["reviewReasons"]) == []
+        assert "transcriptConfidence" not in item
+
+
+class TestHumanScore:
+    EVAL_KEY = {"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "EVALUATION#q-1"}
+
+    def _seed_ai_eval(self, repo):
+        repo.store_evaluation("s-1", "a-1", "q-1", {
+            "correctness_score": 4, "understanding_score": 3, "total_score": 7, "feedback": "ai",
+        })
+
+    def test_record_human_score(self, repo):
+        self._seed_ai_eval(repo)
+        result = repo.record_human_score(
+            "s-1", "a-1", "q-1",
+            human_correctness_score=5, human_understanding_score=4, scored_by="grader@example.edu",
+        )
+        assert result["humanTotalScore"] == 9
+        item = repo.table.get_item(Key=self.EVAL_KEY)["Item"]
+        assert int(item["humanCorrectnessScore"]) == 5
+        assert int(item["humanUnderstandingScore"]) == 4
+        assert int(item["humanTotalScore"]) == 9
+        assert item["humanScoredBy"] == "grader@example.edu"
+        # AI scores are untouched — the human score is a separate reference.
+        assert int(item["totalScore"]) == 7
+
+    def test_reevaluation_preserves_human_and_instructor_scores(self, repo):
+        self._seed_ai_eval(repo)
+        repo.record_human_score("s-1", "a-1", "q-1", human_correctness_score=5, human_understanding_score=5)
+        repo.table.update_item(
+            Key=self.EVAL_KEY,
+            UpdateExpression="SET instructorScore = :s",
+            ExpressionAttributeValues={":s": 9},
+        )
+        # Re-evaluate (put_item overwrite) with new AI scores.
+        repo.store_evaluation("s-1", "a-1", "q-1", {
+            "correctness_score": 2, "understanding_score": 2, "total_score": 4, "feedback": "re-run",
+        })
+        item = repo.table.get_item(Key=self.EVAL_KEY)["Item"]
+        assert int(item["totalScore"]) == 4  # AI scores updated
+        assert int(item["humanTotalScore"]) == 10  # human reference preserved
+        assert int(item["instructorScore"]) == 9  # instructor override preserved
+
+
 class TestEvaluationProgress:
     def test_set_and_get_progress(self, repo):
         repo.set_evaluation_progress("s-1", "a-1", questions_evaluated=3, total_questions=5)
