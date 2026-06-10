@@ -395,21 +395,49 @@ Generate the questions in JSON format as specified.
         
         print(f"[QuestionGenerationService] Stored {len(questions)} questions in DynamoDB")
 
+    # Expected per-student question mix (advisory; the instructor edit-before-open
+    # path is the real quality gate).
+    EXPECTED_SPECIFIC_COUNT = 5
+    EXPECTED_GENERAL_COUNT = 3
+
+    @staticmethod
+    def _normalize_question_text(text: str) -> str:
+        """Normalise question text for duplicate detection (case/whitespace-insensitive)."""
+        return re.sub(r"\s+", " ", (text or "").strip().lower())
+
     def _validate_questions(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Validate LLM-generated questions. Filters out items missing the 'question' field.
-        Logs warnings if question counts differ from expected (5 specific, 3 general).
+        Validate LLM-generated questions:
+          - drops items missing the 'question' field,
+          - de-duplicates questions with identical text within the set,
+          - corrects unexpected question_type values to 'general',
+          - logs a clear warning when counts differ from 5 specific + 3 general
+            (advisory only — never fails the batch).
 
         Returns:
-            Validated list of questions, or empty list if critically invalid.
+            Validated, de-duplicated list of questions, or empty list if no valid
+            question remains.
         """
         REQUIRED_FIELDS = {"question", "question_type", "question_number"}
 
-        valid = []
+        valid: List[Dict[str, Any]] = []
+        seen_text: set = set()
+        duplicates_dropped = 0
         for q in questions:
             if not q.get("question"):
                 logger.warning("Dropping question item with missing 'question' field: %s", q)
                 continue
+
+            norm = self._normalize_question_text(q.get("question", ""))
+            if norm in seen_text:
+                duplicates_dropped += 1
+                logger.warning(
+                    "Dropping duplicate question (number %s): %.80s",
+                    q.get("question_number", "?"), q.get("question", ""),
+                )
+                continue
+            seen_text.add(norm)
+
             missing = REQUIRED_FIELDS - set(q.keys())
             if missing:
                 logger.warning("Question %s missing fields %s, keeping anyway.", q.get("question_number", "?"), missing)
@@ -422,15 +450,24 @@ Generate the questions in JSON format as specified.
                 q["question_type"] = "general"
             valid.append(q)
 
+        if duplicates_dropped:
+            logger.warning("Removed %d duplicate question(s) from the generated set.", duplicates_dropped)
+
         if not valid:
             return []
 
         # Check counts (advisory, not fatal)
         specific_count = sum(1 for q in valid if q.get("question_type") == "specific")
         general_count = sum(1 for q in valid if q.get("question_type") == "general")
-        if specific_count != 5:
-            logger.warning("Expected ~5 specific questions, got %d.", specific_count)
-        if general_count != 3:
-            logger.warning("Expected ~3 general questions, got %d.", general_count)
+        if specific_count != self.EXPECTED_SPECIFIC_COUNT:
+            logger.warning(
+                "Question count mismatch: expected %d specific questions, got %d (after validation/dedupe).",
+                self.EXPECTED_SPECIFIC_COUNT, specific_count,
+            )
+        if general_count != self.EXPECTED_GENERAL_COUNT:
+            logger.warning(
+                "Question count mismatch: expected %d general questions, got %d (after validation/dedupe).",
+                self.EXPECTED_GENERAL_COUNT, general_count,
+            )
 
         return valid

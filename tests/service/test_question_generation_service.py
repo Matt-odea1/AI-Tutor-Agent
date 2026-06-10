@@ -184,3 +184,68 @@ class TestGenerateQuestions:
                 student_code="code",
                 student_name="test",
             )
+
+
+# ─────────────────────────────────────────────────────────────
+# Task 7: validation — dedupe + count-mismatch warning
+# ─────────────────────────────────────────────────────────────
+
+class TestValidateQuestions:
+    def _svc(self, mock_llm, temp_output_dir):
+        return QuestionGenerationService(agent_client=mock_llm, output_dir=temp_output_dir)
+
+    def test_dedupes_questions_within_set(self, mock_llm, temp_output_dir):
+        svc = self._svc(mock_llm, temp_output_dir)
+        questions = [
+            {"question_number": 1, "question_type": "specific", "question": "Explain your loop."},
+            {"question_number": 2, "question_type": "specific", "question": "  explain   YOUR loop. "},  # dup
+            {"question_number": 3, "question_type": "general", "question": "What is a list?"},
+        ]
+        valid = svc._validate_questions(questions)
+        assert len(valid) == 2
+        texts = [q["question"] for q in valid]
+        assert "Explain your loop." in texts
+        assert "What is a list?" in texts
+
+    def test_exact_duplicate_dropped(self, mock_llm, temp_output_dir):
+        svc = self._svc(mock_llm, temp_output_dir)
+        questions = [
+            {"question_number": 1, "question_type": "general", "question": "Same question?"},
+            {"question_number": 2, "question_type": "general", "question": "Same question?"},
+        ]
+        assert len(svc._validate_questions(questions)) == 1
+
+    def test_count_mismatch_warns_but_does_not_fail(self, mock_llm, temp_output_dir, caplog):
+        import logging
+        svc = self._svc(mock_llm, temp_output_dir)
+        questions = [
+            {"question_number": 1, "question_type": "specific", "question": "Q1"},
+            {"question_number": 2, "question_type": "general", "question": "Q2"},
+        ]
+        with caplog.at_level(logging.WARNING):
+            valid = svc._validate_questions(questions)
+        assert len(valid) == 2  # batch not failed
+        messages = " ".join(r.getMessage().lower() for r in caplog.records)
+        assert "count mismatch" in messages
+
+    def test_correct_counts_no_mismatch_warning(self, mock_llm, temp_output_dir, caplog):
+        import logging
+        svc = self._svc(mock_llm, temp_output_dir)
+        questions = (
+            [{"question_number": i, "question_type": "specific", "question": f"Specific {i}"} for i in range(1, 6)]
+            + [{"question_number": i, "question_type": "general", "question": f"General {i}"} for i in range(6, 9)]
+        )
+        with caplog.at_level(logging.WARNING):
+            valid = svc._validate_questions(questions)
+        assert len(valid) == 8
+        assert "count mismatch" not in " ".join(r.getMessage().lower() for r in caplog.records)
+
+    def test_missing_question_field_dropped(self, mock_llm, temp_output_dir):
+        svc = self._svc(mock_llm, temp_output_dir)
+        questions = [
+            {"question_number": 1, "question_type": "specific", "question": ""},
+            {"question_number": 2, "question_type": "general", "question": "Valid?"},
+        ]
+        valid = svc._validate_questions(questions)
+        assert len(valid) == 1
+        assert valid[0]["question"] == "Valid?"
