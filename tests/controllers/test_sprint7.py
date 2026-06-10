@@ -416,8 +416,11 @@ class TestEvaluateQaPairRubric:
     def test_evaluate_qa_pair_still_returns_evaluation(self):
         engine = self._make_engine()
         result = engine.evaluate_qa_pair(self._qa_pair(), rubric="Some rubric.")
-        assert result["correctness_score"] == 8
-        assert result["total_score"] == 7.5
+        # Scores are clamped to [0,5] per dimension and total is server-enforced as
+        # correctness + understanding (the model's own total_score is ignored).
+        assert result["correctness_score"] == 5  # clamped from 8
+        assert result["understanding_score"] == 5  # clamped from 7
+        assert result["total_score"] == 10  # 5 + 5, not the model's 7.5
 
 
 # ─────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from src.main.service.ScoringConfig import ScoringConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,9 +52,13 @@ class EvaluationWorkflowRunner:
             qa_pairs = self.match_questions_and_answers(questions_data, answers_data)
             total_questions = len(qa_pairs)
 
-            # Read assessment rubric and course context if available
-            rubric = self._read_assessment_rubric(assessment_id)
-            course_context = self._read_course_context(assessment_id)
+            # Read assessment metadata once for rubric, course context, and the
+            # configurable scoring (max score per question / grade cutoffs).
+            metadata = self._read_assessment_metadata(assessment_id)
+            rubric = metadata.get("rubric") or ""
+            course_context = self._course_context_from_metadata(metadata)
+            scoring = ScoringConfig.from_metadata(metadata)
+            max_per_question = scoring.max_score_per_question
 
             evaluations = []
             total_score = 0.0
@@ -60,6 +66,7 @@ class EvaluationWorkflowRunner:
             self.repository.set_evaluation_progress(student_id, assessment_id, 0, total_questions, "evaluating")
 
             for index, qa_pair in enumerate(qa_pairs):
+                question_id = qa_pair["question"]["id"]
                 try:
                     logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
                     try:
@@ -67,31 +74,37 @@ class EvaluationWorkflowRunner:
                     except Exception as first_error:
                         logger.warning("[Job %s] First attempt failed for question %d, retrying: %s", job_id, index + 1, first_error)
                         evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
+                    evaluation["max_score"] = max_per_question
                     evaluations.append(evaluation)
-                    total_score += evaluation["total_score"]
+                    total_score += evaluation.get("total_score", 0)
 
-                    self.repository.store_evaluation(
-                        student_id,
-                        assessment_id,
-                        qa_pair["question"]["id"],
-                        evaluation,
-                    )
-
+                    self.repository.store_evaluation(student_id, assessment_id, question_id, evaluation)
                     self.repository.set_evaluation_progress(student_id, assessment_id, index + 1, total_questions, "evaluating")
                 except Exception as error:
+                    # Never surface a raw error to the student: store a valid,
+                    # zero-score evaluation explicitly flagged for instructor review.
                     logger.error("[Job %s] Error evaluating question %d: %s", job_id, index + 1, error)
-                    evaluations.append(
-                        {
-                            "question_id": qa_pair["question"]["id"],
-                            "correctness_score": 0,
-                            "understanding_score": 0,
-                            "total_score": 0,
-                            "feedback": f"Evaluation failed: {str(error)}",
-                            "error": str(error),
-                        }
-                    )
+                    flagged = {
+                        "question_id": question_id,
+                        "correctness_score": 0,
+                        "understanding_score": 0,
+                        "total_score": 0,
+                        "max_score": max_per_question,
+                        "feedback": "This response could not be evaluated automatically and has been flagged for instructor review.",
+                        "strengths": [],
+                        "weaknesses": [],
+                        "suggested_improvements": [],
+                        "needs_review": True,
+                        "review_reasons": ["evaluation_error"],
+                        "evaluation_method": "unscored",
+                    }
+                    evaluations.append(flagged)
+                    try:
+                        self.repository.store_evaluation(student_id, assessment_id, question_id, flagged)
+                    except Exception as store_error:
+                        logger.error("[Job %s] Failed to store flagged evaluation for question %d: %s", job_id, index + 1, store_error)
 
-            max_score = total_questions * 10
+            max_score = total_questions * max_per_question
             percentage = (total_score / max_score * 100) if max_score > 0 else 0
 
             self.repository.set_evaluation_progress(student_id, assessment_id, total_questions, total_questions, "completed")
@@ -121,31 +134,21 @@ class EvaluationWorkflowRunner:
                 qa_pairs.append({"question": question, "answer": answer})
         return qa_pairs
 
-    def _read_course_context(self, assessment_id: str) -> str:
-        """Read course name and description from the assessment metadata. Returns '' if not set."""
+    def _read_assessment_metadata(self, assessment_id: str) -> Dict[str, Any]:
+        """Read the assessment METADATA item, or {} if not available."""
         try:
             resp = self.repository.table.get_item(
                 Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
             )
-            item = resp.get("Item") or {}
-            course_name = item.get("courseName") or ""
-            description = item.get("description") or ""
-            if course_name or description:
-                parts = [p for p in [course_name, description] if p]
-                return " — ".join(parts)
-            return ""
+            return resp.get("Item") or {}
         except Exception as e:
-            logger.warning("Could not read course context for assessment %s: %s", assessment_id, e)
-            return ""
+            logger.warning("Could not read metadata for assessment %s: %s", assessment_id, e)
+            return {}
 
-    def _read_assessment_rubric(self, assessment_id: str) -> str:
-        """Read the custom rubric from the assessment metadata item. Returns '' if not set."""
-        try:
-            resp = self.repository.table.get_item(
-                Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"}
-            )
-            item = resp.get("Item") or {}
-            return item.get("rubric") or ""
-        except Exception as e:
-            logger.warning("Could not read rubric for assessment %s: %s", assessment_id, e)
-            return ""
+    @staticmethod
+    def _course_context_from_metadata(metadata: Dict[str, Any]) -> str:
+        """Build the course-context string (course name + description) from metadata."""
+        course_name = metadata.get("courseName") or ""
+        description = metadata.get("description") or ""
+        parts = [p for p in [course_name, description] if p]
+        return " — ".join(parts) if parts else ""
