@@ -142,19 +142,26 @@ class TestEffectiveScore:
 # ─────────────────────────────────────────────────────────────
 
 class TestGetStudentDetail:
-    def _make_table(self, questions=None, answers=None, evaluations=None, chunks=None, enrollment=None):
+    def _make_table(self, questions=None, answers=None, evaluations=None, chunks=None, enrollment=None, metadata=None):
         table = MagicMock()
 
-        # get_student_detail calls query in this fixed order:
-        # 1) QUESTION#, 2) ANSWER#, 3) EVALUATION#, 4) PROCTORING#CHUNK#
-        call_results = [
-            {"Items": questions or []},
-            {"Items": answers or []},
-            {"Items": evaluations or []},
-            {"Items": chunks or []},
-        ]
-        table.query.side_effect = call_results
-        table.get_item.return_value = {"Item": enrollment or {"name": "Alice", "email": "a@b.com", "submittedAt": "2024-01-01"}}
+        # get_student_detail now issues ONE query for all items under the student
+        # PK (questions/answers/evaluations/chunks share the partition) and buckets
+        # them by SK prefix in code.
+        all_items = (questions or []) + (answers or []) + (evaluations or []) + (chunks or [])
+        table.query.return_value = {"Items": all_items}
+
+        # Two get_item calls: the assessment METADATA item (scoring config) and the
+        # enrollment record. Route by SK so each gets the right payload.
+        enrollment_item = enrollment or {"name": "Alice", "email": "a@b.com", "submittedAt": "2024-01-01"}
+
+        def _get_item(Key=None, **kwargs):
+            sk = (Key or {}).get("SK", "")
+            if sk == "METADATA":
+                return {"Item": metadata} if metadata else {}
+            return {"Item": enrollment_item}
+
+        table.get_item.side_effect = _get_item
         return table
 
     def test_basic_aggregation(self):

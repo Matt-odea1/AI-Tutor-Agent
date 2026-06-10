@@ -173,6 +173,11 @@ class TestTranscriptionService:
         table.query.return_value = {"Items": answers}
         deepgram = MagicMock()
         deepgram.transcribe.return_value = deepgram_text
+        # The service now reads transcript + confidence via transcribe_with_metadata.
+        deepgram.transcribe_with_metadata.return_value = {
+            "transcript": deepgram_text,
+            "confidence": 0.95,
+        }
         s3 = MagicMock()
         svc = TranscriptionService(table=table, s3_client=s3, deepgram_service=deepgram)
         return svc, table, deepgram, s3
@@ -212,7 +217,7 @@ class TestTranscriptionService:
     def test_failed_transcription_writes_failed_status(self):
         answer = {"questionId": "q-1", "answerType": "audio", "audioUrl": "https://b.s3.amazonaws.com/k.webm"}
         svc, table, deepgram, s3 = self._make_svc([answer])
-        deepgram.transcribe.side_effect = Exception("Deepgram down")
+        deepgram.transcribe_with_metadata.side_effect = Exception("Deepgram down")
         count = svc.transcribe_pending_answers("s-1", "a-1")
         assert count == 0
         update_kwargs = table.update_item.call_args.kwargs
