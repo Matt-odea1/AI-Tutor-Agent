@@ -42,6 +42,8 @@ export default function TakeAssessment() {
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards the draft-recovery effect to run at most once per mount.
+  const rehydrateAttemptedRef = useRef(false);
 
   // Wrapper to persist assessmentStarted to sessionStorage
   const setAssessmentStarted = (v: boolean) => {
@@ -81,6 +83,7 @@ export default function TakeAssessment() {
     skipCurrentQuestion,
     submitCompleteAssessment,
     setTextAnswer,
+    rehydrateDraft,
     setConsentGiven,
     startProctoring,
     restoreProctoring,
@@ -105,10 +108,17 @@ export default function TakeAssessment() {
     }
   }, [studentId, assessmentId, questions.length, loadQuestions, loadProgress]);
 
-  // Warn before accidental tab close mid-assessment
+  // Warn before accidental tab close/refresh mid-assessment. Modern Chromium
+  // ignores preventDefault() alone for the native "Leave site?" dialog — it
+  // requires a truthy returnValue — so we set BOTH. (The dialog text itself is
+  // not customizable in modern browsers; surfacing the native warning is enough,
+  // and an in-flight answer is now also persisted via draftStore as a backstop.)
   useEffect(() => {
     if (!assessmentStarted) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [assessmentStarted]);
@@ -221,6 +231,30 @@ export default function TakeAssessment() {
       }
     };
   }, [prepSecondsLeft, prepDone]);
+
+  // Recover a draft answer persisted before a refresh/crash. Runs at most once
+  // per mount, and only once the assessment is in-progress (drafts only exist
+  // after the student has started recording/typing). Gating on `assessmentStarted`
+  // also means this fires AFTER the per-question reset effect's setTextAnswer('')
+  // has run for the started-transition, so a recovered text draft isn't wiped.
+  // This effect is intentionally declared after that reset effect for the same
+  // within-commit ordering reason.
+  useEffect(() => {
+    if (rehydrateAttemptedRef.current) return;
+    if (!assessmentStarted || !assessmentId || questions.length === 0) return;
+    rehydrateAttemptedRef.current = true;
+    // No cancel-on-cleanup guard: the ref above already ensures rehydrateDraft
+    // runs exactly once, and addToast targets a global store (safe to call even
+    // if this component has unmounted). A cleanup-set `cancelled` flag would let
+    // StrictMode's dev mount→cleanup→mount cycle suppress the toast even though
+    // the draft WAS recovered by the first (un-cancelled) async run.
+    (async () => {
+      const recovered = await rehydrateDraft();
+      if (recovered) {
+        addToast('Recovered your unsaved answer from before the page reloaded.', 'info');
+      }
+    })();
+  }, [assessmentStarted, assessmentId, questions.length, currentQuestionIndex, rehydrateDraft, addToast]);
 
   const handleConsentAccepted = async () => {
     // Persist consent BEFORE camera request so refresh won't re-show modal

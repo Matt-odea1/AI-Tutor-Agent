@@ -28,6 +28,14 @@ const ensureStudentToken = async (studentId: string, assessmentId: string) => {
   }
 };
 import { uploadAudio, validateAudioBlob } from '../services/s3';
+import {
+  saveAudioDraft,
+  loadAudioDraft,
+  clearAudioDraft,
+  saveTextDraft,
+  loadTextDraft,
+  clearTextDraft,
+} from '../services/draftStore';
 import AudioRecorder from '../services/audio';
 import ProctoringRecorder from '../services/proctoring';
 import { isResultsStillPending } from '../utils/resultHelpers';
@@ -107,6 +115,10 @@ interface AssessmentStore {
   loadProgress: () => Promise<void>;
   setAnswerMode: (mode: 'oral' | 'written') => void;
   setTextAnswer: (text: string) => void;
+  // Restore an in-flight answer (audio blob and/or typed text) persisted by a
+  // prior session after a refresh/crash. Returns true if anything was recovered
+  // (so the caller can surface a recovery toast). Never throws.
+  rehydrateDraft: () => Promise<boolean>;
 
   // Recording actions (audio)
   initializeRecorder: () => Promise<void>;
@@ -201,6 +213,74 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
   setTextAnswer: (text: string) => {
     set({ textAnswer: text });
+    // Persist the draft so a refresh/crash can recover it. Only persist a
+    // NON-empty answer: this action is also called with '' by the per-question
+    // reset effect on mount/question-change, and persisting that empty value
+    // would clobber a still-good draft before rehydrate can read it. Explicit
+    // clearing happens on confirmed submit / skip / cancel / reset instead.
+    const { assessmentId, questions, currentQuestionIndex } = get();
+    const questionId = questions[currentQuestionIndex]?.id;
+    if (assessmentId && questionId && text.trim() !== '') {
+      saveTextDraft(assessmentId, questionId, text);
+    }
+  },
+
+  rehydrateDraft: async (): Promise<boolean> => {
+    const { assessmentId, questions, currentQuestionIndex } = get();
+    if (!assessmentId) return false;
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return false;
+
+    let recovered = false;
+
+    // ── Audio draft (IndexedDB) ──
+    try {
+      const draft = await loadAudioDraft(assessmentId);
+      if (draft) {
+        // Re-read the LIVE current question after the async load — the index may
+        // have advanced during the IndexedDB read, so matching against a stale
+        // pre-await snapshot could leak an old draft onto a new question.
+        const liveQuestion = get().questions[get().currentQuestionIndex];
+        if (liveQuestion && draft.questionId === liveQuestion.id) {
+          // Only restore when there is no fresh recording in memory — a draft
+          // must NEVER clobber a recording the student just made this session.
+          if (get().recordedBlob === null) {
+            set({ recordedBlob: draft.blob, recordingDuration: draft.durationSeconds });
+            recovered = true;
+          }
+        } else {
+          // Stale: the server has advanced past the question this draft belongs
+          // to. Discard it so it can't trigger a phantom recovery on this one.
+          await clearAudioDraft(assessmentId);
+        }
+      }
+    } catch (error) {
+      console.warn('[assessmentStore] audio rehydrate failed (non-fatal):', error);
+    }
+
+    // ── Text draft (sessionStorage) ──
+    try {
+      const textDraft = loadTextDraft(assessmentId);
+      if (textDraft) {
+        // Re-read the live current question here too (the audio load above was
+        // async), for the same stale-snapshot reason.
+        const liveQuestion = get().questions[get().currentQuestionIndex];
+        if (liveQuestion && textDraft.questionId === liveQuestion.id) {
+          // Only restore into an EMPTY field so we never overwrite something the
+          // student has already typed this session.
+          if (get().textAnswer.trim() === '' && textDraft.text.trim() !== '') {
+            set({ textAnswer: textDraft.text });
+            recovered = true;
+          }
+        } else {
+          clearTextDraft(assessmentId);
+        }
+      }
+    } catch (error) {
+      console.warn('[assessmentStore] text rehydrate failed (non-fatal):', error);
+    }
+
+    return recovered;
   },
 
   // Load questions from backend
@@ -342,6 +422,17 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       const blob = await audioRecorder.stop();
       const duration = audioRecorder.getDuration();
       set({ isRecording: false, isPaused: false, recordedBlob: blob, recordingDuration: duration, isStopping: false });
+
+      // Durably persist the captured answer so a refresh/crash before upload can
+      // recover it (forward-only flow has no other recovery path). Fire-and-forget:
+      // never block the UI state update above, and never let a persistence failure
+      // throw out of stopRecording — draftStore already swallows its own errors,
+      // the extra .catch is belt-and-braces.
+      const { assessmentId, questions, currentQuestionIndex } = get();
+      const questionId = questions[currentQuestionIndex]?.id;
+      if (assessmentId && questionId) {
+        void saveAudioDraft({ assessmentId, questionId, blob, durationSeconds: duration }).catch(() => {});
+      }
     } catch (error) {
       set({
         error: {
@@ -368,11 +459,16 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   },
 
   cancelRecording: () => {
-    const { audioRecorder } = get();
-    if (!audioRecorder) return;
+    const { audioRecorder, assessmentId } = get();
 
+    // Stop the live recorder if one is active. This is deliberately NOT an early
+    // return on a missing recorder: after a refresh, rehydrateDraft can restore
+    // recordedBlob from IndexedDB while audioRecorder is still null (its async
+    // init/getUserMedia is pending, or the mic was denied), yet AudioRecorder
+    // renders "Re-record" purely from recordedBlob — so discarding must clear the
+    // state + draft even when there is no recorder to stop.
     try {
-      if (audioRecorder.getState() !== 'inactive') audioRecorder.stop();
+      if (audioRecorder && audioRecorder.getState() !== 'inactive') audioRecorder.stop();
     } catch (error) {
       console.error('Error stopping recorder:', error);
     }
@@ -385,6 +481,10 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       recordingStartTime: null,
       playbackUrl: null,
     });
+
+    // The student explicitly discarded this take — drop the persisted draft so a
+    // later refresh can't resurrect it.
+    if (assessmentId) void clearAudioDraft(assessmentId);
   },
 
   playRecording: () => {
@@ -529,6 +629,11 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       // anchored to its OWN recording start (see QuestionTimer wiring in TakeAssessment).
       set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, recordingStartTime: null, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
 
+      // Upload confirmed — drop the durable draft so it can't resurface as a
+      // phantom recovery on the next question. Only AFTER success (a failed
+      // upload keeps recordedBlob + draft intact for retryLastAction).
+      void clearAudioDraft(assessmentId);
+
       // Re-fetch: server has advanced currentQuestionIdx, next question content is now available
       await get().loadQuestions();
       await get().loadProgress();
@@ -567,6 +672,10 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       newAnsweredIds.add(currentQuestion.id);
       set({ isUploading: false, textAnswer: '', answeredQuestionIds: newAnsweredIds });
 
+      // Submit confirmed — drop the durable text draft so it can't resurface on
+      // the next question.
+      clearTextDraft(assessmentId);
+
       // Re-fetch: server has advanced currentQuestionIdx
       await get().loadQuestions();
       await get().loadProgress();
@@ -592,6 +701,10 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       const newSkippedIds = new Set(get().skippedQuestionIds);
       newSkippedIds.add(currentQuestion.id);
       set({ isUploading: false, skippedQuestionIds: newSkippedIds, textAnswer: '' });
+      // Drop both durable drafts for this assessment — the question is resolved
+      // with no answer, so neither a typed nor a recorded draft should survive.
+      clearTextDraft(assessmentId);
+      void clearAudioDraft(assessmentId);
       await get().loadQuestions();
       await get().loadProgress();
     };
@@ -725,10 +838,16 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   },
 
   reset: () => {
-    const { audioRecorder, proctoring, proctorStream } = get();
+    const { audioRecorder, proctoring, proctorStream, assessmentId } = get();
     if (audioRecorder) audioRecorder.cleanup();
     if (proctoring) { proctoring.stop(); }
     if (proctorStream) proctorStream.getTracks().forEach((t) => t.stop());
+
+    // Drop any durable drafts for this assessment before we lose its id below.
+    if (assessmentId) {
+      clearTextDraft(assessmentId);
+      void clearAudioDraft(assessmentId);
+    }
 
     set({
       studentId: null,
