@@ -10,6 +10,10 @@ interface ProgressTrackerProps {
   answeredCount: number;
   questionIds?: string[];
   answeredQuestionIds?: Set<string>;
+  // Questions resolved by a skip (time expired, nothing submitted). Rendered
+  // with a distinct neutral marker — NOT the green check used for real answers.
+  // Optional: when omitted, the tracker behaves exactly as before.
+  skippedQuestionIds?: Set<string>;
 }
 
 export default function ProgressTracker({
@@ -18,6 +22,7 @@ export default function ProgressTracker({
   answeredCount,
   questionIds,
   answeredQuestionIds,
+  skippedQuestionIds,
 }: ProgressTrackerProps) {
   const percentage = calculatePercentage(answeredCount, totalQuestions);
 
@@ -44,10 +49,23 @@ export default function ProgressTracker({
       {/* Question Indicators */}
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: totalQuestions }, (_, i) => {
+          const qId = questionIds?.[i] ?? '';
           const isCurrent = i === currentIndex;
+          // Skipped takes visual precedence over answered (but not over current):
+          // a time-expired skip must never wear the green "answered" check, even
+          // if the server's authoritative answered list happens to include the id.
+          const isSkipped = !!skippedQuestionIds && skippedQuestionIds.has(qId);
           const isAnswered = answeredQuestionIds && questionIds
-            ? answeredQuestionIds.has(questionIds[i] ?? '')
+            ? answeredQuestionIds.has(qId)
             : i < answeredCount;
+
+          const state = isCurrent
+            ? 'current'
+            : isSkipped
+            ? 'skipped'
+            : isAnswered
+            ? 'answered'
+            : 'unanswered';
 
           return (
             <div
@@ -56,15 +74,22 @@ export default function ProgressTracker({
                 w-8 h-8 rounded-lg font-medium text-xs flex items-center justify-center
                 ${isCurrent
                   ? 'bg-primary-600 text-white ring-2 ring-primary-300'
+                  : isSkipped
+                  ? 'bg-amber-100 text-amber-800'
                   : isAnswered
                   ? 'bg-green-100 text-green-800'
                   : 'bg-gray-100 text-gray-400'
                 }
               `}
-              aria-label={`Question ${i + 1}`}
+              aria-label={`Question ${i + 1}, ${state}`}
               aria-current={isCurrent ? 'step' : undefined}
             >
-              {isAnswered && !isCurrent ? (
+              {!isCurrent && isSkipped ? (
+                /* Skipped — neutral dash, deliberately NOT the answered check */
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 20 20" stroke="currentColor">
+                  <path strokeLinecap="round" strokeWidth={2} d="M5 10h10" />
+                </svg>
+              ) : !isCurrent && isAnswered ? (
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"

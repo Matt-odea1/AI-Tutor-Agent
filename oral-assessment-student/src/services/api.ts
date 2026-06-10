@@ -269,7 +269,14 @@ export async function getProgress(
     const response = await apiClient.get(
       `/api/student/${studentId}/assessment/${assessmentId}/progress`
     );
-    return response.data;
+    const data = response.data;
+    // Surface the server's authoritative answered-id list when present (accept
+    // either snake or camel casing). Left `undefined` when the backend doesn't
+    // send it, so the store degrades to the legacy index heuristic — see the
+    // `answeredQuestionIds` doc on the Progress type.
+    const answeredQuestionIds: string[] | undefined =
+      data?.answeredQuestionIds ?? data?.answered_question_ids ?? undefined;
+    return { ...data, answeredQuestionIds };
   } catch (error) {
     return handleApiError(error as AxiosError);
   }

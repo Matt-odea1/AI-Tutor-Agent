@@ -86,6 +86,10 @@ interface AssessmentStore {
 
   // Per-question answered tracking
   answeredQuestionIds: Set<string>;
+  // Questions resolved by a skip (time expired with nothing to submit). Tracked
+  // separately from answeredQuestionIds so the UI can render them distinctly —
+  // a skip is NOT an answer and must never show the green "answered" check.
+  skippedQuestionIds: Set<string>;
 
   // Proctoring warning (non-blocking)
   proctoringWarning: string | null;
@@ -178,6 +182,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   resultsPollCount: 0,
   resultsPollExhausted: false,
   answeredQuestionIds: new Set<string>(),
+  skippedQuestionIds: new Set<string>(),
   proctoringWarning: null,
   lastFailedAction: null,
   isLoading: false,
@@ -243,10 +248,20 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
     try {
       const progress = await getProgress(studentId, assessmentId);
-      // Best-effort: assume first answeredQuestions questions (by index) are answered
-      const ids = new Set<string>(
-        questions.slice(0, progress.answeredQuestions).map((q) => q.id)
-      );
+      // Prefer the server's authoritative answered-id list when it ships: gate
+      // Next/Submit on real answer IDENTITY, not array position. Union it with
+      // the ids tracked in the store RIGHT NOW — re-read after the await, not a
+      // stale pre-await snapshot — so an answer recorded while this fetch was in
+      // flight isn't briefly un-marked by the progress read.
+      //
+      // When the field is absent (today's backend), fall back to the legacy
+      // "first N questions by current array order are answered" heuristic so
+      // behavior against the current backend is unchanged.
+      const ids = progress.answeredQuestionIds
+        ? new Set<string>([...progress.answeredQuestionIds, ...get().answeredQuestionIds])
+        : new Set<string>(
+            questions.slice(0, progress.answeredQuestions).map((q) => q.id)
+          );
       set({ progress, answeredQuestionIds: ids });
     } catch (error) {
       console.error('Failed to load progress:', error);
@@ -571,9 +586,12 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     if (!currentQuestion) return;
 
     const advance = async () => {
-      const newAnsweredIds = new Set(get().answeredQuestionIds);
-      newAnsweredIds.add(currentQuestion.id);
-      set({ isUploading: false, answeredQuestionIds: newAnsweredIds });
+      // A skip is NOT an answer: record it in skippedQuestionIds (so the
+      // ProgressTracker renders it distinctly, never as a green check) and
+      // clear any stale draft so it can't leak into the next written question.
+      const newSkippedIds = new Set(get().skippedQuestionIds);
+      newSkippedIds.add(currentQuestion.id);
+      set({ isUploading: false, skippedQuestionIds: newSkippedIds, textAnswer: '' });
       await get().loadQuestions();
       await get().loadProgress();
     };
@@ -744,6 +762,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       resultsPollCount: 0,
       resultsPollExhausted: false,
       answeredQuestionIds: new Set<string>(),
+      skippedQuestionIds: new Set<string>(),
       proctoringWarning: null,
       lastFailedAction: null,
       isLoading: false,

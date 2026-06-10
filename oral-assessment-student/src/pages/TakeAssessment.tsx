@@ -58,6 +58,7 @@ export default function TakeAssessment() {
     cameraRevoked,
     consentGiven,
     answeredQuestionIds,
+    skippedQuestionIds,
     proctoringWarning,
     lastFailedAction,
     setStudentInfo,
@@ -156,6 +157,10 @@ export default function TakeAssessment() {
     setPrepDone(false);
     setIsSubmittingAnswer(false);
     clearError(); // clear errors from previous question
+    // Defensive: clear any leftover written draft so text never leaks from the
+    // previous question into this one, regardless of which advance path ran
+    // (normal submit, skip, or a server-driven index change on refetch).
+    setTextAnswer('');
     if (prepTimerRef.current) {
       clearInterval(prepTimerRef.current);
       prepTimerRef.current = null;
@@ -395,12 +400,12 @@ export default function TakeAssessment() {
               </p>
               {fallbackAnsweredCount < questions.length && (
                 <p className="text-orange-600 text-sm mb-4">
-                  {questions.length - fallbackAnsweredCount} question(s) are unanswered. Go back and answer them before submitting.
+                  Answers are submitted in order and are final. The {questions.length - fallbackAnsweredCount} unanswered question(s) can't be revisited.
                 </p>
               )}
               {fallbackAnsweredCount >= questions.length && (
                 <p className="text-gray-500 text-sm mb-6">
-                  Once submitted, your assessment will be sent for evaluation.
+                  Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.
                 </p>
               )}
               {error && (
@@ -567,6 +572,7 @@ export default function TakeAssessment() {
               answeredCount={answeredCount}
               questionIds={questions.map((q) => q.id)}
               answeredQuestionIds={answeredQuestionIds}
+              skippedQuestionIds={skippedQuestionIds}
             />
           </div>
 
@@ -672,12 +678,12 @@ export default function TakeAssessment() {
             </p>
             {answeredCount < questions.length && (
               <p className="text-orange-600 text-sm mb-4">
-                {questions.length - answeredCount} question(s) are unanswered. Go back and answer them before submitting.
+                Answers are submitted in order and are final. The {questions.length - answeredCount} unanswered question(s) can't be revisited.
               </p>
             )}
             {answeredCount >= questions.length && (
               <p className="text-gray-500 text-sm mb-6">
-                Once submitted, your assessment will be sent for evaluation.
+                Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.
               </p>
             )}
             {error && (

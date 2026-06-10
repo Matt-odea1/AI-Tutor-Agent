@@ -33,6 +33,18 @@ export interface Progress {
   status: 'not-started' | 'in-progress' | 'submitted';
   startedAt?: string;
   submittedAt?: string;
+  /**
+   * Authoritative list of question ids the student has actually answered.
+   * BACKEND CONTRACT introduced by the client — the FastAPI backend on :8000
+   * may not send it yet, so all consumers MUST work when this is `undefined`
+   * (see `loadProgress` in store/assessmentStore.ts: it falls back to the
+   * legacy "first N by array order" heuristic). When present, the client
+   * prefers this list over the heuristic so Next/Submit gate on real answer
+   * identity, not array position. Server should return it from
+   *   GET /api/student/{studentId}/assessment/{assessmentId}/progress
+   * as `answeredQuestionIds` (camel) or `answered_question_ids` (snake).
+   */
+  answeredQuestionIds?: string[];
 }
 
 export interface QuestionResult {
