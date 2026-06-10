@@ -134,3 +134,48 @@ class TestTranscribe:
         svc = DeepgramTranscribeService()
         result = svc.transcribe(audio_file)
         assert result == "raw text response"
+
+
+def _make_deepgram_response_with_confidence(transcript: str, confidence: float) -> dict:
+    return {
+        "results": {
+            "channels": [
+                {"alternatives": [{"transcript": transcript, "confidence": confidence}]}
+            ]
+        }
+    }
+
+
+class TestTranscribeWithMetadata:
+    @patch("src.main.service.SpeechToTextService.requests.post")
+    def test_returns_transcript_and_confidence(self, mock_post, api_key, audio_file):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = _make_deepgram_response_with_confidence("hello world", 0.97)
+        mock_post.return_value = mock_resp
+
+        result = DeepgramTranscribeService().transcribe_with_metadata(audio_file)
+        assert result["transcript"] == "hello world"
+        assert result["confidence"] == 0.97
+
+    @patch("src.main.service.SpeechToTextService.requests.post")
+    def test_confidence_none_when_absent(self, mock_post, api_key, audio_file):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = _make_deepgram_response("hello")  # no confidence key
+        mock_post.return_value = mock_resp
+
+        result = DeepgramTranscribeService().transcribe_with_metadata(audio_file)
+        assert result["transcript"] == "hello"
+        assert result["confidence"] is None
+
+    @patch("src.main.service.SpeechToTextService.requests.post")
+    def test_non_json_returns_text_with_none_confidence(self, mock_post, api_key, audio_file):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.side_effect = ValueError("Not JSON")
+        mock_resp.text = "raw text"
+        mock_post.return_value = mock_resp
+
+        result = DeepgramTranscribeService().transcribe_with_metadata(audio_file)
+        assert result == {"transcript": "raw text", "confidence": None}

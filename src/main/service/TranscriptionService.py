@@ -17,6 +17,7 @@ import logging
 import os
 import tempfile
 import time
+from decimal import Decimal
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -87,9 +88,12 @@ class TranscriptionService:
                 self._write_transcript_status(pk, question_id, "", "missing_url")
                 continue
 
-            transcript = self._transcribe_url_with_retry(media_url, student_id, question_id)
-            if transcript is not None:
-                self._write_transcript_status(pk, question_id, transcript, "completed")
+            result = self._transcribe_url_with_retry(media_url, student_id, question_id)
+            if result is not None:
+                self._write_transcript_status(
+                    pk, question_id, result["transcript"], "completed",
+                    confidence=result.get("confidence"),
+                )
                 transcribed += 1
             else:
                 self._write_transcript_status(pk, question_id, "", "failed")
@@ -102,8 +106,12 @@ class TranscriptionService:
 
     def _transcribe_url_with_retry(
         self, url: str, student_id: str, question_id: str
-    ) -> Optional[str]:
-        """Download S3 file and call Deepgram with retry. Returns transcript or None."""
+    ) -> Optional[dict]:
+        """Download S3 file and call Deepgram with retry.
+
+        Returns {"transcript": str, "confidence": Optional[float]} on success, or
+        None if all attempts fail or the media is missing.
+        """
         bucket, key = _parse_s3_url(url)
         if not bucket or not key:
             logger.error(
@@ -131,12 +139,18 @@ class TranscriptionService:
                         return None  # not retryable
                     raise
 
-                transcript = self.deepgram.transcribe(tmp_path)
+                if hasattr(self.deepgram, "transcribe_with_metadata"):
+                    meta = self.deepgram.transcribe_with_metadata(tmp_path)
+                    transcript = (meta.get("transcript") or "") if isinstance(meta, dict) else (meta or "")
+                    confidence = meta.get("confidence") if isinstance(meta, dict) else None
+                else:
+                    transcript = self.deepgram.transcribe(tmp_path) or ""
+                    confidence = None
                 logger.info(
-                    "[Transcription] Transcribed student=%s question=%s (%d chars)",
-                    student_id, question_id, len(transcript),
+                    "[Transcription] Transcribed student=%s question=%s (%d chars, confidence=%s)",
+                    student_id, question_id, len(transcript), confidence,
                 )
-                return transcript
+                return {"transcript": transcript, "confidence": confidence}
 
             except Exception as e:
                 if attempt < _RETRYABLE_ATTEMPTS:
@@ -165,13 +179,21 @@ class TranscriptionService:
         question_id: str,
         transcript: str,
         status: str,
+        confidence: Optional[float] = None,
     ) -> None:
-        """Write transcript and transcript_status back to the DynamoDB answer item."""
+        """Write transcript, transcript_status, and (when available) transcript
+        confidence back to the DynamoDB answer item. The confidence is later read
+        by the evaluation engine to flag low-confidence transcripts for review."""
+        update_expr = "SET transcript = :t, transcript_status = :s"
+        values = {":t": transcript, ":s": status}
+        if confidence is not None:
+            update_expr += ", transcriptConfidence = :c"
+            values[":c"] = Decimal(str(confidence))
         try:
             self.table.update_item(
                 Key={"PK": pk, "SK": f"ANSWER#{question_id}"},
-                UpdateExpression="SET transcript = :t, transcript_status = :s",
-                ExpressionAttributeValues={":t": transcript, ":s": status},
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=values,
             )
         except ClientError as e:
             logger.error(

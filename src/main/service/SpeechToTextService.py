@@ -57,6 +57,17 @@ class DeepgramTranscribeService:
         Returns:
             The transcript string.
         """
+        return self.transcribe_with_metadata(audio_path, language=language)["transcript"]
+
+    def transcribe_with_metadata(self, audio_path: str, language: Optional[str] = None) -> dict:
+        """
+        Transcribe a local audio file and return both the transcript and Deepgram's
+        per-utterance confidence.
+
+        Returns:
+            {"transcript": str, "confidence": Optional[float]} — confidence is None
+            when Deepgram does not report it (e.g. non-JSON or fallback shapes).
+        """
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
@@ -81,25 +92,33 @@ class DeepgramTranscribeService:
             data = resp.json()
         except ValueError:
             # If Deepgram returned non-json (unlikely), return raw text
-            return resp.text or ""
+            return {"transcript": resp.text or "", "confidence": None}
 
-        # Deepgram response common shape: {"results": {"channels": [{"alternatives": [{"transcript": "..."}] }]}}
+        return self._parse_response(data)
+
+    @staticmethod
+    def _parse_response(data: dict) -> dict:
+        """Extract transcript + confidence from a Deepgram JSON response."""
+        # Common shape: {"results": {"channels": [{"alternatives": [{"transcript": "...", "confidence": 0.97}]}]}}
         try:
             results = data.get("results", {})
             channels = results.get("channels", [])
             if channels and isinstance(channels, list):
                 alts = channels[0].get("alternatives", [])
                 if alts and isinstance(alts, list):
-                    transcript = alts[0].get("transcript", "")
-                    return transcript or ""
+                    alt = alts[0]
+                    transcript = alt.get("transcript", "") or ""
+                    raw_conf = alt.get("confidence")
+                    confidence = float(raw_conf) if isinstance(raw_conf, (int, float)) else None
+                    return {"transcript": transcript, "confidence": confidence}
 
             # Fallbacks: some configs return `results.transcripts[0].transcript`
             transcripts = results.get("transcripts", [])
             if transcripts and isinstance(transcripts, list):
-                return transcripts[0].get("transcript", "") or ""
+                return {"transcript": transcripts[0].get("transcript", "") or "", "confidence": None}
 
             # As a last resort, stringify the JSON response
-            return json.dumps(data)
+            return {"transcript": json.dumps(data), "confidence": None}
         except Exception as e:
             raise Exception(f"Failed to parse Deepgram response: {e}") from e
 
