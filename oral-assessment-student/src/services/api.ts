@@ -128,6 +128,11 @@ export async function getQuestions(
       `/api/student/${studentId}/assessment/${assessmentId}/questions`
     );
     return {
+      // Questions pass straight through, so any field the backend includes on a
+      // question survives — including the optional `questionStartedAt` (ISO,
+      // ASSUMED backend contract; see types/index.ts). The client must NOT assume
+      // it is present and falls back to a locally persisted timer anchor when it
+      // is absent.
       questions: response.data.questions || [],
       currentQuestionIndex: response.data.currentQuestionIndex ?? 0,
       answerMode: response.data.answerMode || 'oral',

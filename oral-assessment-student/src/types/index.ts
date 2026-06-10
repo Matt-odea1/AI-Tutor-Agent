@@ -14,6 +14,17 @@ export interface Question {
   questionType?: 'specific' | 'general';
   timeLimit?: number; // per-question time limit in seconds (null = assessment default)
   createdAt: string;
+  /**
+   * Optional server-stamped time (ISO 8601, server clock) at which the backend
+   * first served this question to this student. ASSUMED BACKEND CONTRACT
+   * introduced by the client — GET /api/student/{id}/assessment/{aid}/questions
+   * MAY return it, so all consumers MUST work when it is `undefined`. When
+   * present, QuestionTimer anchors the per-question countdown to it so the clock
+   * is authoritative across refreshes; when absent, the client falls back to a
+   * locally persisted anchor (sessionStorage `qtimer_start_*`). The backend is
+   * out of scope here — no endpoint is added or called.
+   */
+  questionStartedAt?: string;
 }
 
 export interface Answer {

@@ -22,12 +22,96 @@ interface QuestionTimerProps {
    * and the timer doesn't force-submit early after a pause.
    */
   paused?: boolean;
+  /**
+   * Optional server-stamped start time for this question (ms since epoch). When
+   * a finite number it anchors the countdown and OVERRIDES any local anchor —
+   * see the `questionStartedAt` ASSUMED backend contract in types/index.ts.
+   */
+  serverStartedAtMs?: number | null;
+  /**
+   * Optional namespaced sessionStorage key under which to persist/read the
+   * per-question start anchor so the countdown SURVIVES REFRESH (P4). When
+   * omitted, the timer anchors to the live wall clock on each mount and persists
+   * nothing — the ORAL recording-elapsed timer relies on this unchanged
+   * behaviour (a refresh ends the recording, so its clock must restart).
+   */
+  persistKey?: string;
 }
 
 const ANNOUNCE_THRESHOLDS = new Set([30, 10, 0]);
 
-export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey, paused = false }: QuestionTimerProps) {
-  const [remaining, setRemaining] = useState<number>(timeLimitSeconds ?? 0);
+/**
+ * Refresh-fairness anchoring (P4). A WRITTEN timer that re-anchored to
+ * `Date.now()` on every mount handed the student a fresh full clock on every
+ * page refresh, defeating timed questions. Callers opt into persistence by
+ * passing `persistKey` (a collision-free, per-assessment+question key — see
+ * TakeAssessment, which uses `qtimer_start_<assessmentId>_<questionId>`, NOT the
+ * `draft_*` namespace owned by the durable-drafts task). A server-stamped start
+ * (`serverStartedAtMs`) always wins over the local anchor.
+ */
+
+/** Read a persisted start anchor (ms since epoch) for `key`, or null. */
+function readPersistedAnchor(key?: string): number | null {
+  if (!key) return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (raw === null) return null;
+    const ms = Number(raw);
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null; // storage disabled (e.g. private mode) — degrade to live clock
+  }
+}
+
+/** Persist a start anchor (ms since epoch) for `key`; no-op if storage throws. */
+function writePersistedAnchor(key: string, ms: number): void {
+  try {
+    sessionStorage.setItem(key, String(ms));
+  } catch {
+    /* storage disabled — the timer still works, just not across refresh */
+  }
+}
+
+/**
+ * The existing start anchor for this mount, in priority order:
+ * server-stamped start > persisted local anchor. Returns null when neither
+ * exists yet (i.e. this is the first time the timed phase has been shown).
+ */
+function existingAnchorMs(serverStartedAtMs?: number | null, persistKey?: string): number | null {
+  if (typeof serverStartedAtMs === 'number' && Number.isFinite(serverStartedAtMs)) {
+    return serverStartedAtMs;
+  }
+  return readPersistedAnchor(persistKey);
+}
+
+/**
+ * Initial remaining seconds for the first paint, derived from any existing
+ * anchor so a refresh of an in-progress (or already-elapsed) timed question
+ * renders the REDUCED time immediately rather than flashing the full limit.
+ * A brand-new question (no anchor yet) falls back to the full limit, unchanged.
+ */
+function computeInitialRemaining(
+  timeLimitSeconds: number | null | undefined,
+  serverStartedAtMs?: number | null,
+  persistKey?: string,
+): number {
+  if (!timeLimitSeconds) return 0;
+  const anchor = existingAnchorMs(serverStartedAtMs, persistKey);
+  if (anchor === null) return timeLimitSeconds;
+  return Math.max(0, Math.round((anchor + timeLimitSeconds * 1000 - Date.now()) / 1000));
+}
+
+export default function QuestionTimer({
+  timeLimitSeconds,
+  onExpire,
+  resetKey,
+  paused = false,
+  serverStartedAtMs,
+  persistKey,
+}: QuestionTimerProps) {
+  const [remaining, setRemaining] = useState<number>(() =>
+    computeInitialRemaining(timeLimitSeconds, serverStartedAtMs, persistKey),
+  );
   const expiredRef = useRef(false);
   const endTimeRef = useRef<number>(0);
   const pausedRef = useRef(paused);
@@ -55,7 +139,9 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey, pa
   const [prevResetKey, setPrevResetKey] = useState(resetKey);
   if (resetKey !== prevResetKey) {
     setPrevResetKey(resetKey);
-    setRemaining(timeLimitSeconds ?? 0);
+    // Re-seed from any existing anchor (refresh-fairness) — a brand-new question
+    // has no anchor yet, so this falls back to the full limit exactly as before.
+    setRemaining(computeInitialRemaining(timeLimitSeconds, serverStartedAtMs, persistKey));
     setAnnouncement('');
   }
 
@@ -65,39 +151,53 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey, pa
     onExpireRef.current?.();
   }, []);
 
-  // Tick down using Date.now() anchor for accuracy
+  // Tick down using a start anchor (server > persisted > now) for accuracy and
+  // refresh-fairness. The anchor is resolved once per (timeLimit, resetKey) here.
   useEffect(() => {
     expiredRef.current = false;
     pausedAtRef.current = null;
-    if (!timeLimitSeconds) return;
-    endTimeRef.current = Date.now() + timeLimitSeconds * 1000;
+    if (!timeLimitSeconds) return; // criterion (e): no anchor written for null/0 limits
 
-    const interval = setInterval(() => {
+    // Resolve the start anchor: server-stamped > persisted local > first sighting
+    // (now). On the first sighting, persist it (only when a persistKey is given)
+    // so a later refresh continues this SAME countdown instead of restarting it.
+    let startMs = existingAnchorMs(serverStartedAtMs, persistKey);
+    if (startMs === null) {
+      startMs = Date.now();
+      if (persistKey) writePersistedAnchor(persistKey, startMs);
+    }
+    endTimeRef.current = startMs + timeLimitSeconds * 1000;
+
+    const tick = (): boolean => {
       // Freeze while paused — endTimeRef is pushed forward on resume so the
       // remaining time is preserved exactly (recording-elapsed, not wall-clock).
-      if (pausedRef.current) return;
+      if (pausedRef.current) return false;
 
-      const now = Date.now();
-      const secsLeft = Math.max(0, Math.round((endTimeRef.current - now) / 1000));
-
+      const secsLeft = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setRemaining(secsLeft);
 
       if (ANNOUNCE_THRESHOLDS.has(secsLeft)) {
-        if (secsLeft === 0) {
-          setAnnouncement("Time's up!");
-        } else {
-          setAnnouncement(`${secsLeft} seconds remaining`);
-        }
+        setAnnouncement(secsLeft === 0 ? "Time's up!" : `${secsLeft} seconds remaining`);
       }
 
       if (secsLeft <= 0) {
-        clearInterval(interval);
         handleExpire();
+        return true; // expired — caller should stop ticking
       }
+      return false;
+    };
+
+    // Evaluate once synchronously so an anchor whose deadline has ALREADY passed
+    // (e.g. refreshed after expiry) reads 0 and fires onExpire immediately,
+    // without waiting for the first interval tick.
+    if (tick()) return;
+
+    const interval = setInterval(() => {
+      if (tick()) clearInterval(interval);
     }, 250);
 
     return () => clearInterval(interval);
-  }, [timeLimitSeconds, resetKey, handleExpire]);
+  }, [timeLimitSeconds, resetKey, handleExpire, serverStartedAtMs, persistKey]);
 
   if (!timeLimitSeconds) return null;
 

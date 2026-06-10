@@ -16,6 +16,18 @@ import { parseUrlParams, checkBrowserSupport } from '../utils/helpers';
 import { runTimerExpiry } from '../utils/timerExpiry';
 import { useToastStore } from '../store/toastStore';
 
+/**
+ * Parse an optional ISO 8601 timestamp into ms-since-epoch for QuestionTimer's
+ * server anchor, or null when absent/unparseable (the timer then falls back to
+ * its locally persisted anchor). See the `questionStartedAt` ASSUMED backend
+ * contract in types/index.ts.
+ */
+function parseServerStartedAtMs(iso?: string): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 export default function TakeAssessment() {
   const navigate = useNavigate();
   const { addToast } = useToastStore();
@@ -528,6 +540,23 @@ export default function TakeAssessment() {
                   timeLimitSeconds={answerMode === 'oral' ? (currentQuestion.timeLimit ?? 300) : currentQuestion.timeLimit}
                   resetKey={answerMode === 'oral' ? `${currentQuestion.id}-rec-${recordingStartTime}` : currentQuestion.id}
                   paused={answerMode === 'oral' && isPaused}
+                  /* Refresh-fairness (P4): only the WRITTEN timer persists a start
+                     anchor (keyed per assessment + question) so a refresh continues
+                     the countdown instead of granting a fresh full clock. The ORAL
+                     timer is recording-elapsed (anchored to recording start) and is
+                     deliberately NOT persisted — a refresh ends the recording, so its
+                     clock restarts by design. The key namespace `qtimer_start_*` is
+                     distinct from the `draft_*` keys owned by the durable-drafts task.
+                     A server-stamped questionStartedAt (assumed backend contract) wins
+                     over the local anchor when present. */
+                  persistKey={
+                    answerMode === 'written' && assessmentId
+                      ? `qtimer_start_${assessmentId}_${currentQuestion.id}`
+                      : undefined
+                  }
+                  serverStartedAtMs={
+                    answerMode === 'written' ? parseServerStartedAtMs(currentQuestion.questionStartedAt) : undefined
+                  }
                   onExpire={handleTimerExpire}
                 />
               )}
