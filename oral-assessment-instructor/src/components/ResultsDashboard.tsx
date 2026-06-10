@@ -17,6 +17,9 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
   const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [resultsReleased, setResultsReleased] = useState<boolean | null>(null);
+  const [flagged, setFlagged] = useState<{ flaggedCount: number; items: Array<{ studentId: string; questionId: string; reasons: string[]; aiScore?: number; evaluationMethod?: string }> } | null>(null);
+  const [agreement, setAgreement] = useState<{ dualScoredCount: number; exactMatchRate: number | null; within1Rate: number | null; meanAbsoluteDifference: number | null } | null>(null);
+  const [showFlagged, setShowFlagged] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -25,7 +28,21 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
     loadResults();
     loadReleasedState();
     loadProgress();
+    loadFlagged();
+    loadAgreement();
   }, [assessmentId]);
+
+  const loadFlagged = async () => {
+    try {
+      setFlagged(await apiService.getFlaggedEvaluations(assessmentId));
+    } catch { /* non-critical */ }
+  };
+
+  const loadAgreement = async () => {
+    try {
+      setAgreement(await apiService.getScoreAgreement(assessmentId));
+    } catch { /* non-critical */ }
+  };
 
   useEffect(() => {
     if (!evalJobId) return;
@@ -183,6 +200,56 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       {gradeSummary && (
         <p className="text-sm text-gray-600">{resultsArray.length} students evaluated — {gradeSummary}</p>
       )}
+
+      {/* Review & validity (Tasks 3 & 5) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-900">Flagged for review</p>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${flagged && flagged.flaggedCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+              {flagged ? flagged.flaggedCount : '—'}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Evaluations needing a human glance before release (low confidence, AI fallback, or divergent scores).
+          </p>
+          {flagged && flagged.flaggedCount > 0 && (
+            <button onClick={() => setShowFlagged(v => !v)} className="mt-2 text-xs text-primary-600 hover:underline">
+              {showFlagged ? 'Hide flagged items' : 'View flagged items'}
+            </button>
+          )}
+          {showFlagged && flagged && (
+            <ul className="mt-2 max-h-44 overflow-y-auto text-xs text-gray-600 space-y-1">
+              {flagged.items.map((it, idx) => (
+                <li key={`${it.studentId}-${it.questionId}-${idx}`} className="flex items-center justify-between gap-2">
+                  <button
+                    className="text-primary-600 hover:underline truncate"
+                    onClick={() => navigate(`/assessments/${assessmentId}/student/${it.studentId}/results`)}
+                  >
+                    {it.studentId}
+                  </button>
+                  <span className="text-gray-400 truncate">{it.reasons.join(', ')}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <p className="text-sm font-medium text-gray-900">AI vs human agreement</p>
+          {agreement && agreement.dualScoredCount > 0 ? (
+            <div className="mt-1 text-xs text-gray-600 space-y-0.5">
+              <p>Dual-scored items: <span className="font-medium text-gray-900">{agreement.dualScoredCount}</span></p>
+              <p>Exact match: <span className="font-medium text-gray-900">{agreement.exactMatchRate != null ? `${(agreement.exactMatchRate * 100).toFixed(0)}%` : '—'}</span></p>
+              <p>Within 1 mark: <span className="font-medium text-gray-900">{agreement.within1Rate != null ? `${(agreement.within1Rate * 100).toFixed(0)}%` : '—'}</span></p>
+              <p>Mean abs. difference: <span className="font-medium text-gray-900">{agreement.meanAbsoluteDifference != null ? agreement.meanAbsoluteDifference.toFixed(2) : '—'}</span></p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1">
+              No human reference scores recorded yet. Enter human scores on a student's detail page to measure agreement.
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Results Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

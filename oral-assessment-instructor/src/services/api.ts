@@ -231,6 +231,41 @@ class ApiService {
     return response.data;
   }
 
+  // Dual-scoring validity harness: record a human reference score for a question.
+  async recordHumanScore(
+    assessmentId: string,
+    studentId: string,
+    questionId: string,
+    humanCorrectnessScore: number,
+    humanUnderstandingScore: number,
+    scoredBy?: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    const response = await this.client.put(
+      `/api/assessment/${assessmentId}/student/${studentId}/question/${questionId}/human-score`,
+      { humanCorrectnessScore, humanUnderstandingScore, scoredBy }
+    );
+    return response.data;
+  }
+
+  // AI-vs-human agreement summary across all dual-scored items.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getScoreAgreement(assessmentId: string): Promise<any> {
+    const response = await this.client.get(
+      `/api/assessment/${assessmentId}/score-agreement`
+    );
+    return response.data;
+  }
+
+  // Evaluations flagged for human review (needs-review / fallback / score divergence).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getFlaggedEvaluations(assessmentId: string): Promise<any> {
+    const response = await this.client.get(
+      `/api/assessment/${assessmentId}/flagged-evaluations`
+    );
+    return response.data;
+  }
+
   async sendInvites(assessmentId: string, options?: { subject?: string; message?: string }): Promise<{ ok: boolean; sent: number; skipped: number; total: number }> {
     const response = await this.client.post(
       `/api/assessment/${assessmentId}/send-invites`,
