@@ -37,7 +37,11 @@ export default function AudioRecorder({
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [autoStopped, setAutoStopped] = useState(false);
+
+  // Seconds remaining in the recording budget. Mirrors the header QuestionTimer,
+  // which is the single clock that triggers stop+submit on expiry. recordingDuration
+  // and the header countdown are both anchored to recording start, so they agree.
+  const remainingSeconds = Math.max(0, timeLimit - recordingDuration);
 
   // Initialize recorder on mount
   useEffect(() => {
@@ -60,12 +64,10 @@ export default function AudioRecorder({
     }
   }, [initializeRecorder, isInitialized, disabled]);
 
-  // Stop recording when time limit reached
-  useEffect(() => {
-    if (isRecording && recordingDuration >= timeLimit) {
-      stopRecording().then(() => setAutoStopped(true));
-    }
-  }, [isRecording, recordingDuration, timeLimit, stopRecording]);
+  // NOTE: the auto-stop-at-time-limit effect was removed deliberately. The header
+  // QuestionTimer is now the single clock that stops + submits on expiry, anchored
+  // to recording start. Two independent clocks racing on the same blob caused
+  // truncated/double submissions; this component no longer runs its own.
 
   // Create audio URL when blob is available; revoke previous URL to prevent memory leak
   useEffect(() => {
@@ -82,7 +84,6 @@ export default function AudioRecorder({
 
   const handleStartRecording = () => {
     if (error) clearError();
-    setAutoStopped(false);
     startRecording();
   };
 
@@ -130,15 +131,15 @@ export default function AudioRecorder({
             <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse mr-3" />
           )}
           
-          {/* Duration */}
+          {/* Time remaining (mirrors the header countdown — same record-start anchor) */}
           <div className="text-4xl font-mono font-bold text-gray-900">
-            {formatDuration(recordingDuration)}
+            {formatDuration(remainingSeconds)}
           </div>
-          
+
         </div>
-        
+
         {isRecordingState && (
-          <p className="mt-2 text-sm text-gray-600">Recording in progress...</p>
+          <p className="mt-2 text-sm text-gray-600">Recording in progress — {formatDuration(remainingSeconds)} remaining</p>
         )}
         {isPaused && (
           <p className="mt-2 text-sm text-yellow-600">Recording paused</p>
@@ -276,15 +277,6 @@ export default function AudioRecorder({
           </div>
         )}
       </div>
-
-      {/* Auto-stop notification */}
-      {autoStopped && isRecordedState && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-yellow-800">
-            Recording stopped automatically — time limit reached ({formatDuration(timeLimit)}).
-          </p>
-        </div>
-      )}
 
       {/* Error Display */}
       {error && (

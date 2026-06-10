@@ -13,6 +13,7 @@ import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import { parseUrlParams, checkBrowserSupport } from '../utils/helpers';
+import { runTimerExpiry } from '../utils/timerExpiry';
 import { useToastStore } from '../store/toastStore';
 
 export default function TakeAssessment() {
@@ -49,6 +50,9 @@ export default function TakeAssessment() {
     answerMode,
     preparationTime,
     textAnswer,
+    isRecording,
+    isPaused,
+    recordingStartTime,
     proctorStream,
     isProctoringActive,
     cameraRevoked,
@@ -230,29 +234,25 @@ export default function TakeAssessment() {
   };
 
   const handleTimerExpire = async () => {
+    // All decision logic lives in runTimerExpiry (pure + unit-tested). We wire it
+    // to the live store here, reading recording state LAZILY so the blob captured
+    // by stopRecording is seen. isSubmittingAnswer is local component state, so it
+    // is folded into the re-entrancy guard alongside the store's isUploading.
     const store = useAssessmentStore.getState();
-    const { answerMode, isRecording, isUploading, recordedBlob, textAnswer } = store;
-
-    // If an upload/submission is already in-flight, don't double-submit
-    if (isUploading || isSubmittingAnswer) return;
-
-    if (isRecording) {
-      await store.stopRecording();
-    }
-
-    const state = useAssessmentStore.getState();
-
-    if (answerMode === 'oral' && (recordedBlob || state.recordedBlob)) {
-      addToast('Time\'s up! Submitting your audio answer.', 'warning');
-      await handleSubmitAudioAnswer();
-    } else if (answerMode === 'written' && textAnswer.trim().length >= 20) {
-      addToast('Time\'s up! Submitting your written answer.', 'warning');
-      await handleSubmitTextAnswer();
-    } else {
-      // Nothing to submit — skip with a marker so the server advances
-      addToast('Time\'s up! Moving to the next question.', 'warning');
-      await skipCurrentQuestion();
-    }
+    await runTimerExpiry({
+      // isStopping guards the manual-Stop-vs-expiry race: if a stop is already in
+      // flight, the expiry handler must not independently stop + skip.
+      inFlight: store.isUploading || isSubmittingAnswer || store.isStopping,
+      answerMode: store.answerMode,
+      getIsRecording: () => useAssessmentStore.getState().isRecording,
+      getRecordedBlob: () => useAssessmentStore.getState().recordedBlob,
+      getTextAnswer: () => useAssessmentStore.getState().textAnswer,
+      stopRecording: () => useAssessmentStore.getState().stopRecording(),
+      notify: (msg) => addToast(msg, 'warning'),
+      submitAudio: handleSubmitAudioAnswer,
+      submitText: handleSubmitTextAnswer,
+      skip: (mode) => skipCurrentQuestion(mode),
+    });
   };
 
   const handleSubmitAudioAnswer = async () => {
@@ -511,11 +511,18 @@ export default function TakeAssessment() {
               <div className="text-sm font-medium text-gray-700">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </div>
-              {/* Per-question countdown timer — for oral, only starts after prep phase */}
-              {(answerMode === 'written' || prepDone) && (
+              {/* Per-question countdown — the SINGLE source of truth for the answer clock.
+                  Written: counts from when the question mounts.
+                  Oral: anchored to RECORDING START and shown only while actively
+                  recording, so a student who reads/thinks before pressing Start still
+                  gets the full timeLimit. The AudioRecorder no longer runs its own
+                  auto-stop clock — this timer is the only thing that triggers stop+submit
+                  on expiry (via handleTimerExpire). */}
+              {(answerMode === 'written' || (answerMode === 'oral' && isRecording && recordingStartTime !== null)) && (
                 <QuestionTimer
-                  timeLimitSeconds={currentQuestion.timeLimit}
-                  resetKey={`${currentQuestion.id}-${prepDone}`}
+                  timeLimitSeconds={answerMode === 'oral' ? (currentQuestion.timeLimit ?? 300) : currentQuestion.timeLimit}
+                  resetKey={answerMode === 'oral' ? `${currentQuestion.id}-rec-${recordingStartTime}` : currentQuestion.id}
+                  paused={answerMode === 'oral' && isPaused}
                   onExpire={handleTimerExpire}
                 />
               )}

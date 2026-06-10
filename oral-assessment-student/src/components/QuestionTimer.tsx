@@ -15,15 +15,36 @@ interface QuestionTimerProps {
   onExpire?: () => void;
   /** Key that resets the timer when it changes (e.g. question ID). */
   resetKey?: string;
+  /**
+   * When true, the countdown freezes (e.g. oral recording is paused). This keeps
+   * the header clock anchored to RECORDING-elapsed time — matching the recorder's
+   * recordingDuration, which also excludes paused time — so the two never diverge
+   * and the timer doesn't force-submit early after a pause.
+   */
+  paused?: boolean;
 }
 
 const ANNOUNCE_THRESHOLDS = new Set([30, 10, 0]);
 
-export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey }: QuestionTimerProps) {
+export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey, paused = false }: QuestionTimerProps) {
   const [remaining, setRemaining] = useState<number>(timeLimitSeconds ?? 0);
   const expiredRef = useRef(false);
   const endTimeRef = useRef<number>(0);
+  const pausedRef = useRef(paused);
+  const pausedAtRef = useRef<number | null>(null);
   const [announcement, setAnnouncement] = useState('');
+
+  // Track pause transitions: while paused, the tick freezes; on resume we push the
+  // end time forward by the paused duration so no recording time is silently burned.
+  useEffect(() => {
+    pausedRef.current = paused;
+    if (paused) {
+      pausedAtRef.current = Date.now();
+    } else if (pausedAtRef.current !== null) {
+      endTimeRef.current += Date.now() - pausedAtRef.current;
+      pausedAtRef.current = null;
+    }
+  }, [paused]);
   // Stable ref so the interval always calls the latest onExpire without re-creating
   const onExpireRef = useRef(onExpire);
   useEffect(() => {
@@ -47,10 +68,15 @@ export default function QuestionTimer({ timeLimitSeconds, onExpire, resetKey }: 
   // Tick down using Date.now() anchor for accuracy
   useEffect(() => {
     expiredRef.current = false;
+    pausedAtRef.current = null;
     if (!timeLimitSeconds) return;
     endTimeRef.current = Date.now() + timeLimitSeconds * 1000;
 
     const interval = setInterval(() => {
+      // Freeze while paused — endTimeRef is pushed forward on resume so the
+      // remaining time is preserved exactly (recording-elapsed, not wall-clock).
+      if (pausedRef.current) return;
+
       const now = Date.now();
       const secsLeft = Math.max(0, Math.round((endTimeRef.current - now) / 1000));
 

@@ -44,12 +44,22 @@ export interface QuestionResult {
   transcript?: string;
   correctnessScore: number;
   understandingScore: number;
-  totalScore: number;
+  // `null` when the question wasn't graded (server sends null for ungraded items).
+  totalScore: number | null;
   maxScore?: number;
   feedback: string;
   strengths?: string[];
   weaknesses?: string[];
   suggestedImprovements?: string[];
+  /**
+   * Per-question status. BACKEND CONTRACT introduced by the client — the server
+   * may not send it yet, so all rendering MUST work when this is `undefined`
+   * (see `deriveResultStatus` in utils/resultHelpers for the client fallback).
+   * Server should set: 'skipped' for skipped questions, 'grading-failed' when
+   * evaluation errored, 'not-attempted' for unanswered, and 'graded' (or omit)
+   * for normal results.
+   */
+  status?: 'graded' | 'skipped' | 'not-attempted' | 'grading-failed';
 }
 
 export interface Results {

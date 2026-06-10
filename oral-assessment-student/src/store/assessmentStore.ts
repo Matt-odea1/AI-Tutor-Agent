@@ -16,6 +16,7 @@ import {
   type QuestionsResponse,
   submitAnswer,
   submitTextAnswer,
+  submitSkip,
   submitAssessment,
   getProgress,
   getResults,
@@ -29,6 +30,7 @@ const ensureStudentToken = async (studentId: string, assessmentId: string) => {
 import { uploadAudio, validateAudioBlob } from '../services/s3';
 import AudioRecorder from '../services/audio';
 import ProctoringRecorder from '../services/proctoring';
+import { isResultsStillPending } from '../utils/resultHelpers';
 
 interface AssessmentStore {
   // Student info
@@ -45,6 +47,7 @@ interface AssessmentStore {
 
   // Recording state (audio)
   isRecording: boolean;
+  isStopping: boolean; // a stop() is in flight — dedupes manual-Stop vs timer-expiry race
   isPaused: boolean;
   recordingDuration: number;
   recordedBlob: Blob | null;
@@ -74,6 +77,12 @@ interface AssessmentStore {
   // Results
   results: Results | null;
   isResultsReady: boolean;
+  // Grading still in progress (drives the "Evaluating Your Assessment" panel)
+  isResultsPending: boolean;
+  // Number of background polls performed (the foreground/initial fetch is not counted)
+  resultsPollCount: number;
+  // True once the polling cap is reached — UI shows a manual "Check again" instead
+  resultsPollExhausted: boolean;
 
   // Per-question answered tracking
   answeredQuestionIds: Set<string>;
@@ -121,11 +130,13 @@ interface AssessmentStore {
   // Submission
   submitCurrentAnswer: () => Promise<void>;
   submitCurrentTextAnswer: () => Promise<void>;
-  skipCurrentQuestion: () => Promise<void>;
+  skipCurrentQuestion: (mode?: 'oral' | 'written') => Promise<void>;
   submitCompleteAssessment: () => Promise<boolean>;
 
   // Results
-  loadResults: () => Promise<void>;
+  loadResults: (options?: { background?: boolean }) => Promise<void>;
+  setResultsPollExhausted: (exhausted: boolean) => void;
+  resetResultsPolling: () => void;
 
   // Utility
   clearError: () => void;
@@ -143,6 +154,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   currentQuestionIndex: 0,
   progress: null,
   isRecording: false,
+  isStopping: false,
   isPaused: false,
   recordingDuration: 0,
   recordedBlob: null,
@@ -162,6 +174,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   consentGiven: false,
   results: null,
   isResultsReady: false,
+  isResultsPending: false,
+  resultsPollCount: 0,
+  resultsPollExhausted: false,
   answeredQuestionIds: new Set<string>(),
   proctoringWarning: null,
   lastFailedAction: null,
@@ -274,11 +289,16 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       });
 
       const interval = setInterval(() => {
-        const { isRecording, audioRecorder } = get();
+        const { isRecording, isPaused, audioRecorder } = get();
         if (!isRecording || !audioRecorder) {
           clearInterval(interval);
           return;
         }
+        // Freeze the clock while paused so the recorder's remaining-time display
+        // stays equal to the (also-frozen) header QuestionTimer. getDuration() keeps
+        // growing on wall-clock during a pause (startTime is only corrected on
+        // resume), so we must skip the update rather than read it here.
+        if (isPaused) return;
         set({ recordingDuration: audioRecorder.getDuration() });
       }, 1000);
     } catch (error) {
@@ -291,19 +311,29 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   },
 
   stopRecording: async () => {
-    const { audioRecorder } = get();
+    const { audioRecorder, isStopping } = get();
     if (!audioRecorder) return;
+
+    // Dedupe concurrent stops (manual Stop button racing the timer-expiry handler).
+    // Without this the second caller hits audioRecorder.stop() in the 'inactive'
+    // state, which rejects; recordedBlob stays null and the expiry path would then
+    // SKIP the question — permanently losing a recorded answer on a forward-only flow.
+    // isStopping is also folded into handleTimerExpire's re-entrancy guard so the
+    // expiry handler never independently stops + skips while a manual stop is underway.
+    if (isStopping) return;
+    set({ isStopping: true });
 
     try {
       const blob = await audioRecorder.stop();
       const duration = audioRecorder.getDuration();
-      set({ isRecording: false, isPaused: false, recordedBlob: blob, recordingDuration: duration });
+      set({ isRecording: false, isPaused: false, recordedBlob: blob, recordingDuration: duration, isStopping: false });
     } catch (error) {
       set({
         error: {
           message: error instanceof Error ? error.message : 'Failed to stop recording',
         },
         isRecording: false,
+        isStopping: false,
       });
     }
   },
@@ -480,7 +510,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       // Only clear blob AFTER successful submission (preserves blob for retry on failure)
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
-      set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
+      // Reset recordingStartTime too so the next question's header timer stays
+      // anchored to its OWN recording start (see QuestionTimer wiring in TakeAssessment).
+      set({ isUploading: false, uploadProgress: 0, recordedBlob: null, recordingDuration: 0, recordingStartTime: null, playbackUrl: null, answeredQuestionIds: newAnsweredIds });
 
       // Re-fetch: server has advanced currentQuestionIdx, next question content is now available
       await get().loadQuestions();
@@ -528,23 +560,56 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     }
   },
 
-  skipCurrentQuestion: async () => {
+  // Record an explicit non-answer when a question expires with nothing to submit.
+  // `mode` controls how we degrade if the backend rejects the new 'skipped' contract:
+  // oral falls back to a machine-detectable sentinel, written keeps the legacy marker.
+  skipCurrentQuestion: async (mode: 'oral' | 'written' = get().answerMode) => {
     const { studentId, assessmentId, questions, currentQuestionIndex } = get();
     if (!studentId || !assessmentId) return;
 
     const currentQuestion = questions[currentQuestionIndex];
     if (!currentQuestion) return;
 
-    set({ isUploading: true, error: null });
-    try {
-      await submitTextAnswer(studentId, currentQuestion.id, assessmentId, '(time expired)');
+    const advance = async () => {
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
       set({ isUploading: false, answeredQuestionIds: newAnsweredIds });
       await get().loadQuestions();
       await get().loadProgress();
+    };
+
+    set({ isUploading: true, error: null });
+    try {
+      // Preferred path: an explicit 'skipped' answer so an oral question is NEVER
+      // recorded as a substantive text response (see submitSkip contract in api.ts).
+      await submitSkip(studentId, currentQuestion.id, assessmentId, mode);
+      await advance();
     } catch (error) {
-      set({ error: error as ApiError, isUploading: false });
+      const apiErr = error as ApiError;
+      // The backend may not support answer_type:'skipped' yet and reject it with
+      // 400/422. Degrade gracefully so the server still advances — but with a marker
+      // an evaluator can never mistake for a real answer.
+      const unsupportedType = apiErr?.status === 400 || apiErr?.status === 422;
+      if (!unsupportedType) {
+        // Auth/network/not-found etc. — surface it, don't paper over with a fake answer.
+        set({ error: apiErr, isUploading: false });
+        return;
+      }
+      // Oral: an unambiguous, machine-detectable "no oral answer" sentinel
+      // (NOT '(time expired)', which reads like a written response).
+      // Written: preserve the historical '(time expired)' marker.
+      const marker = mode === 'oral' ? '[NO_ORAL_ANSWER]' : '(time expired)';
+      console.warn(
+        `[skip] backend rejected answer_type:'skipped' (status ${apiErr?.status}); ` +
+        `falling back to text marker "${marker}" for ${mode} mode. ` +
+        `Backend should implement the 'skipped' contract (see submitSkip in api.ts).`
+      );
+      try {
+        await submitTextAnswer(studentId, currentQuestion.id, assessmentId, marker);
+        await advance();
+      } catch (fallbackError) {
+        set({ error: fallbackError as ApiError, isUploading: false });
+      }
     }
   },
 
@@ -573,20 +638,54 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     }
   },
 
-  // Load results
-  loadResults: async () => {
+  // Load results.
+  //
+  // `background: true` is used by the auto-poll loop: it does NOT touch the
+  // global `isLoading` flag (so the full-screen spinner never flickers between
+  // polls) and increments `resultsPollCount`. The initial/foreground load keeps
+  // the original behavior (spinner on, error cleared).
+  loadResults: async (options?: { background?: boolean }) => {
+    const background = options?.background ?? false;
     const { studentId, assessmentId } = get();
     if (!studentId || !assessmentId) return;
 
-    set({ isLoading: true, error: null });
+    if (background) {
+      set({ resultsPollCount: get().resultsPollCount + 1 });
+    } else {
+      set({ isLoading: true, error: null });
+    }
 
     try {
       await ensureStudentToken(studentId, assessmentId);
       const results = await getResults(studentId, assessmentId);
-      set({ results, isResultsReady: true, isLoading: false });
+      set({
+        results,
+        isResultsReady: true,
+        isResultsPending: false,
+        isLoading: false,
+        error: null,
+      });
     } catch (error) {
-      set({ error: error as ApiError, isResultsReady: false, isLoading: false });
+      const apiErr = error as ApiError;
+      set({
+        error: apiErr,
+        isResultsReady: false,
+        // "Still pending" (not released / being evaluated) is not a hard error.
+        isResultsPending: isResultsStillPending(apiErr),
+        // Leave isLoading untouched on background polls; clear it on foreground.
+        ...(background ? {} : { isLoading: false }),
+      });
     }
+  },
+
+  setResultsPollExhausted: (exhausted: boolean) => {
+    set({ resultsPollExhausted: exhausted });
+  },
+
+  // Reset the poll counters and clear any pending error so a manual "Check again"
+  // starts a fresh foreground attempt and re-arms the auto-poll loop.
+  resetResultsPolling: () => {
+    set({ resultsPollCount: 0, resultsPollExhausted: false, error: null });
   },
 
   clearError: () => {
@@ -621,6 +720,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       currentQuestionIndex: 0,
       progress: null,
       isRecording: false,
+      isStopping: false,
       isPaused: false,
       recordingDuration: 0,
       recordedBlob: null,
@@ -640,6 +740,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       consentGiven: false,
       results: null,
       isResultsReady: false,
+      isResultsPending: false,
+      resultsPollCount: 0,
+      resultsPollExhausted: false,
       answeredQuestionIds: new Set<string>(),
       proctoringWarning: null,
       lastFailedAction: null,

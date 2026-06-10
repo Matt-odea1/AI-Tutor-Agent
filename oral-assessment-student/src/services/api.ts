@@ -186,6 +186,42 @@ export async function submitTextAnswer(
 }
 
 /**
+ * Submit an explicit "skipped / no answer" marker for a question.
+ *
+ * NEW CONTRACT — not yet implemented by the FastAPI backend on :8000.
+ *   POST /api/student/{studentId}/answer
+ *   { question_id, assessment_id, answer_type: 'skipped', mode: 'oral' | 'written' }
+ *
+ * The backend currently only accepts answer_type 'audio' | 'text'. This call
+ * lets the server record a genuine non-answer (zero credit) WITHOUT a fake
+ * transcript — critical for oral questions, where a placeholder text answer
+ * like '(time expired)' would otherwise be scored as a substantive response.
+ *
+ * Until the backend recognises 'skipped' it will likely reject this payload
+ * with 400/422; callers MUST guard the call and degrade gracefully (see
+ * skipCurrentQuestion in the store). Documented here so the backend team can
+ * wire the real contract: a 'skipped' answer must be stored as a non-answer
+ * and NEVER evaluated as text/audio content.
+ */
+export async function submitSkip(
+  studentId: string,
+  questionId: string,
+  assessmentId: string,
+  mode: 'oral' | 'written'
+): Promise<void> {
+  try {
+    await apiClient.post(`/api/student/${studentId}/answer`, {
+      question_id: questionId,
+      assessment_id: assessmentId,
+      answer_type: 'skipped',
+      mode,
+    });
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
  * Log a proctoring chunk manifest entry
  */
 export async function submitProctorChunk(
@@ -251,6 +287,28 @@ export async function getResults(
       `/api/student/${studentId}/assessment/${assessmentId}/results`
     );
     return response.data;
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
+ * Download the results PDF for a completed assessment.
+ *
+ * Routed through `apiClient` so it inherits the auth-injection and 401/403
+ * token-refresh interceptors (a raw `fetch` would bypass both). Returns the raw
+ * PDF blob; the caller is responsible for triggering the browser download.
+ */
+export async function getResultsPdf(
+  studentId: string,
+  assessmentId: string
+): Promise<Blob> {
+  try {
+    const response = await apiClient.get(
+      `/api/student/${studentId}/assessment/${assessmentId}/results/pdf`,
+      { responseType: 'blob' }
+    );
+    return response.data as Blob;
   } catch (error) {
     return handleApiError(error as AxiosError);
   }
@@ -330,10 +388,12 @@ export default {
   getQuestions,
   submitAnswer,
   submitTextAnswer,
+  submitSkip,
   submitProctorChunk,
   submitAssessment,
   getProgress,
   getResults,
+  getResultsPdf,
   getUploadUrl,
   uploadAudioToS3,
 };
