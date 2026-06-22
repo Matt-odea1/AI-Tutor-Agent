@@ -117,6 +117,18 @@ export interface Assessment {
   proctored?: boolean;
   /** Student may navigate back and revise answers before final submit (written v1). */
   allowReview?: boolean;
+  /**
+   * Optional instructor/support contact, surfaced by the in-assessment Help
+   * affordance. ASSUMED BACKEND CONTRACT introduced by the client — GET
+   * /api/student/{studentId}/assessment/{assessmentId}/questions MAY additionally
+   * return `instructorName` / `supportEmail` / `supportUrl`. All three are fully
+   * optional: existing responses lacking them must produce no type or runtime
+   * errors, and HelpButton falls back to generic copy when none are present. No
+   * real PII is hardcoded anywhere — these only ever carry server-provided values.
+   */
+  instructorName?: string;
+  supportEmail?: string;
+  supportUrl?: string;
 }
 
 export interface UploadUrlResponse {

@@ -1,4 +1,5 @@
 import type { Assessment } from '../types';
+import { estimateTotalMinutes } from '../utils/timeEstimate';
 
 interface PreAssessmentOverviewProps {
   assessment: Assessment;
@@ -7,6 +8,12 @@ interface PreAssessmentOverviewProps {
   /** Label for the action button. Defaults to "Start Assessment"; the oral flow now
    *  passes "Continue" because this step leads to the mic device check, not the exam. */
   startLabel?: string;
+  /**
+   * Optional real per-question limits (seconds). When supplied, the total-time
+   * estimate sums them (most accurate); otherwise it falls back to
+   * questionCount × the assessment's representative per-question limit.
+   */
+  perQuestionSeconds?: Array<number | null | undefined>;
 }
 
 export default function PreAssessmentOverview({
@@ -14,8 +21,16 @@ export default function PreAssessmentOverview({
   questionCount,
   onStart,
   startLabel = 'Start Assessment',
+  perQuestionSeconds,
 }: PreAssessmentOverviewProps) {
   const timeLimitMinutes = assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null;
+  // Whole-assessment estimate, clearly labelled as an estimate. Null when no
+  // per-question limit exists anywhere (then we show "No time limit" and omit it).
+  const estimatedTotalMinutes = estimateTotalMinutes({
+    questionCount,
+    perQuestionSeconds,
+    fallbackPerQuestionSeconds: assessment.timeLimit ?? null,
+  });
 
   return (
     <div className="fixed inset-0 bg-gray-50 flex items-center justify-center p-4 z-40">
@@ -42,6 +57,20 @@ export default function PreAssessmentOverview({
             )}
           </div>
         </div>
+
+        {/* Whole-assessment time estimate, clearly labelled an estimate. Hidden
+            when there is no per-question limit (the purple tile already shows
+            "No time limit" in that case). */}
+        {estimatedTotalMinutes !== null && (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-600 mb-6 -mt-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>
+              Estimated total: <span className="font-semibold text-gray-800">~{estimatedTotalMinutes} min</span>
+            </span>
+          </div>
+        )}
 
         {assessment.description && (
           <div className="mb-6">

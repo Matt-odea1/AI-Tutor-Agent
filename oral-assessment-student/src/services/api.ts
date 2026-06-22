@@ -205,6 +205,16 @@ export interface QuestionsResponse {
   assessmentTitle?: string;
   assessmentCourse?: string;
   assessmentDescription?: string;
+  /**
+   * Optional instructor/support contact for the Help affordance. ASSUMED BACKEND
+   * CONTRACT introduced by the client — the questions endpoint MAY additionally
+   * return these; all are optional and must never be assumed present (the mapper
+   * reads them defensively and HelpButton degrades to generic copy when absent).
+   * No real PII is hardcoded; these only carry server-provided values.
+   */
+  instructorName?: string;
+  supportEmail?: string;
+  supportUrl?: string;
 }
 
 export async function getQuestions(
@@ -230,6 +240,11 @@ export async function getQuestions(
       assessmentTitle: response.data.assessmentTitle,
       assessmentCourse: response.data.assessmentCourse,
       assessmentDescription: response.data.assessmentDescription,
+      // Optional contact fields — read defensively; left undefined when the
+      // backend omits them (the assumed contract above), so nothing throws.
+      instructorName: response.data.instructorName,
+      supportEmail: response.data.supportEmail,
+      supportUrl: response.data.supportUrl,
     };
   } catch (error) {
     return handleApiError(error as AxiosError);

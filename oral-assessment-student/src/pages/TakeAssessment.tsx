@@ -8,6 +8,7 @@ import TextAnswerInput from '../components/TextAnswerInput';
 import QuestionTimer from '../components/QuestionTimer';
 import ConsentModal from '../components/ConsentModal';
 import PreAssessmentOverview from '../components/PreAssessmentOverview';
+import HelpButton from '../components/HelpButton';
 import DeviceCheck from '../components/DeviceCheck';
 import ProctorCamera from '../components/ProctorCamera';
 import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
@@ -21,6 +22,7 @@ import {
 } from '../utils/helpers';
 import { runTimerExpiry } from '../utils/timerExpiry';
 import { deferSubmitWhileOffline } from '../utils/offlineDefer';
+import { estimateRemainingMinutes } from '../utils/timeEstimate';
 import { useToastStore } from '../store/toastStore';
 
 /**
@@ -721,6 +723,18 @@ export default function TakeAssessment() {
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
   const currentAnswered = currentQuestion ? answeredQuestionIds.has(currentQuestion.id) : false;
+  // Lightweight header indicators (in addition to "Question X of Y"): how many
+  // questions are still ahead, and a rough estimated time remaining. The estimate
+  // is null when no per-question limit exists, in which case we only show the count.
+  // The per-question QuestionTimer below remains the authoritative answer clock and
+  // is left entirely untouched.
+  const questionsLeft = Math.max(0, questions.length - (currentQuestionIndex + 1));
+  const remainingMinutesEstimate = estimateRemainingMinutes({
+    questionCount: questions.length,
+    currentIndex: currentQuestionIndex,
+    perQuestionSeconds: questions.map((q) => q.timeLimit),
+    fallbackPerQuestionSeconds: assessment?.timeLimit ?? null,
+  });
   // Review mode (written-only v1): free back-navigation + revise before final submit.
   const reviewMode = answerMode === 'written' && allowReview;
   const allAnswered = questions.length > 0 && answeredCount >= questions.length;
@@ -762,6 +776,7 @@ export default function TakeAssessment() {
         <PreAssessmentOverview
           assessment={assessmentInfo}
           questionCount={questions.length}
+          perQuestionSeconds={questions.map((q) => q.timeLimit)}
           startLabel={answerMode === 'written' ? 'Start Assessment' : 'Continue'}
           onStart={() => {
             if (answerMode === 'written') {
@@ -855,10 +870,29 @@ export default function TakeAssessment() {
             {assessment?.title ?? 'Assessment'}
           </h1>
           <div className="flex items-center justify-between mt-2">
-            <div />
+            {/* Help affordance (left). Contact comes from the store assessment when
+                the backend supplied it (assumed contract); otherwise HelpButton
+                renders generic fallback copy — no PII is hardcoded. */}
+            <HelpButton
+              instructorName={assessment?.instructorName}
+              supportEmail={assessment?.supportEmail}
+              supportUrl={assessment?.supportUrl}
+            />
             <div className="flex items-center space-x-4">
-              <div className="text-sm font-medium text-gray-700">
-                Question {currentQuestionIndex + 1} of {questions.length}
+              <div className="text-sm font-medium text-gray-700 text-right">
+                <div>
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </div>
+                {/* Remaining indicator — questions left, and an estimated time
+                    remaining when a per-question limit exists. */}
+                <div className="text-xs font-normal text-gray-500 mt-0.5">
+                  {questionsLeft > 0
+                    ? `${questionsLeft} question${questionsLeft === 1 ? '' : 's'} left`
+                    : 'Last question'}
+                  {remainingMinutesEstimate !== null && (
+                    <> · ~{remainingMinutesEstimate} min left</>
+                  )}
+                </div>
               </div>
               {/* Per-question countdown — the SINGLE source of truth for the answer clock.
                   Written: counts from when the question mounts.
