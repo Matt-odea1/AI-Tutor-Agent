@@ -9,6 +9,13 @@ interface ResultsDashboardProps {
   evalJobId?: string;
 }
 
+// completedAt is null for enrolled-but-unsubmitted students; `new Date(null)` is
+// epoch 1970 ("56 years ago"), so guard before formatting and show a dash instead.
+function isValidDate(value: unknown): value is string | number | Date {
+  if (value === null || value === undefined || value === '') return false;
+  return !Number.isNaN(new Date(value as string | number | Date).getTime());
+}
+
 export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDashboardProps) {
   const navigate = useNavigate();
   const { results, setResults, progress, setProgress, isLoading, setLoading, setError } = useAssessmentStore();
@@ -279,8 +286,13 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
                 <td className="px-4 py-3">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getGradeBadgeColor(result.grade)}`}>{result.grade}</span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500" title={new Date(result.completedAt).toLocaleString()}>
-                  {formatDistanceToNow(new Date(result.completedAt), { addSuffix: true })}
+                <td
+                  className="px-4 py-3 text-sm text-gray-500"
+                  title={isValidDate(result.completedAt) ? new Date(result.completedAt).toLocaleString() : undefined}
+                >
+                  {isValidDate(result.completedAt)
+                    ? formatDistanceToNow(new Date(result.completedAt), { addSuffix: true })
+                    : '—'}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <span className="text-primary-600 text-sm">View →</span>
