@@ -9,6 +9,29 @@ export interface RecordingState {
   blob: Blob | null;
 }
 
+/**
+ * Inputs to the pre-flight "is the mic confirmed working" gate. Kept as a pure,
+ * framework-agnostic predicate so the DeviceCheck Start-button gating can be
+ * unit-tested without a real mic. Confirmed === permission granted AND we have
+ * positive evidence the mic actually captures sound — either a live-meter signal
+ * crossed the threshold at least once, or the student recorded and played back a
+ * sample.
+ */
+export interface MicConfirmation {
+  permissionState: 'prompting' | 'granted' | 'denied' | 'error';
+  hasDetectedSound: boolean;
+  hasSample: boolean;
+}
+
+export function isMicConfirmed({
+  permissionState,
+  hasDetectedSound,
+  hasSample,
+}: MicConfirmation): boolean {
+  if (permissionState !== 'granted') return false;
+  return hasDetectedSound || hasSample;
+}
+
 export class AudioRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -23,16 +46,25 @@ export class AudioRecorder {
   /**
    * Initialize the recorder.
    *
-   * @param existingAudioTrack Optional LIVE audio track already granted elsewhere
-   *   (the proctoring camera's audio track). When provided and usable, the recorder
-   *   wraps it in a fresh MediaStream and does NOT call getUserMedia — avoiding a
-   *   second concurrent capture session (the Safari/iOS NotReadableError). In this
-   *   case the recorder does NOT own the track and cleanup() leaves it running so
-   *   proctoring keeps recording.
-   *   When omitted (or the passed track is not live), falls back to its own
-   *   getUserMedia({audio}) capture, which it owns and stops on cleanup().
+   * Overloaded argument:
+   *   - A LIVE `MediaStreamTrack` (the proctoring camera's audio track): the
+   *     recorder wraps it in a fresh MediaStream and does NOT call getUserMedia —
+   *     avoiding a second concurrent capture session (the Safari/iOS
+   *     NotReadableError). In this case the recorder does NOT own the track and
+   *     cleanup() leaves it running so proctoring keeps recording.
+   *   - A `deviceId` string (the pre-flight DeviceCheck): requests its OWN
+   *     getUserMedia stream constrained to `deviceId: { exact: deviceId }` so the
+   *     student can test a chosen input. The recorder owns this stream.
+   *   - Omitted (or a passed track that is not live): falls back to its own
+   *     getUserMedia({audio}) capture against the default device, which it owns
+   *     and stops on cleanup().
+   *
+   * The existing `echoCancellation` / `noiseSuppression` / `sampleRate` defaults
+   * and the error-name → friendly-message mapping are preserved on every path.
    */
-  async initialize(existingAudioTrack?: MediaStreamTrack): Promise<void> {
+  async initialize(arg?: MediaStreamTrack | string): Promise<void> {
+    const deviceId = typeof arg === 'string' ? arg : undefined;
+    const existingAudioTrack = typeof arg === 'string' ? undefined : arg;
     try {
       if (existingAudioTrack && existingAudioTrack.readyState === 'live') {
         // Reuse the already-granted proctoring audio track. Build the recorder
@@ -41,13 +73,18 @@ export class AudioRecorder {
         this.stream = new MediaStream([existingAudioTrack]);
       } else {
         // No usable track passed — request our own audio stream (we own it).
+        // When a deviceId is provided, pin capture to that exact input.
         this.ownsStream = true;
+        const audioConstraints: MediaTrackConstraints = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        };
+        if (deviceId) {
+          audioConstraints.deviceId = { exact: deviceId };
+        }
         this.stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            sampleRate: 44100,
-          },
+          audio: audioConstraints,
         });
       }
 
@@ -193,6 +230,16 @@ export class AudioRecorder {
   }
 
   /**
+   * Expose the current live MediaStream (or null when not initialized / cleaned
+   * up). The pre-flight DeviceCheck attaches its OWN AudioContext + AnalyserNode
+   * to this stream to drive a live input-level meter — keeping all React/rAF and
+   * AudioContext lifecycle out of this framework-agnostic class.
+   */
+  getStream(): MediaStream | null {
+    return this.stream;
+  }
+
+  /**
    * Create an audio URL for playback
    */
   createAudioUrl(blob: Blob): string {
@@ -224,6 +271,20 @@ export class AudioRecorder {
     this.audioChunks = [];
     this.startTime = 0;
     this.pausedTime = 0;
+  }
+
+  /**
+   * List available audio input devices via enumerateDevices(). Returns only
+   * `audioinput` entries. NOTE: device `label`s are blank until microphone
+   * permission has been granted, so callers should enumerate AFTER a successful
+   * getUserMedia (i.e. after initialize() resolves).
+   */
+  static async listInputDevices(): Promise<MediaDeviceInfo[]> {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+      return [];
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((d) => d.kind === 'audioinput');
   }
 
   /**

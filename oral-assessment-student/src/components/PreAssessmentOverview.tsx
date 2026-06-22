@@ -4,9 +4,17 @@ interface PreAssessmentOverviewProps {
   assessment: Assessment;
   questionCount: number;
   onStart: () => void;
+  /** Label for the action button. Defaults to "Start Assessment"; the oral flow now
+   *  passes "Continue" because this step leads to the mic device check, not the exam. */
+  startLabel?: string;
 }
 
-export default function PreAssessmentOverview({ assessment, questionCount, onStart }: PreAssessmentOverviewProps) {
+export default function PreAssessmentOverview({
+  assessment,
+  questionCount,
+  onStart,
+  startLabel = 'Start Assessment',
+}: PreAssessmentOverviewProps) {
   const timeLimitMinutes = assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null;
 
   return (
@@ -52,7 +60,7 @@ export default function PreAssessmentOverview({ assessment, questionCount, onSta
           onClick={onStart}
           className="w-full bg-primary-600 text-white py-3 rounded-xl font-semibold hover:bg-primary-700 transition-colors text-lg"
         >
-          Start Assessment
+          {startLabel}
         </button>
       </div>
     </div>

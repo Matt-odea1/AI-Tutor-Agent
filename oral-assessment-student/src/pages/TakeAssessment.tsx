@@ -8,6 +8,7 @@ import TextAnswerInput from '../components/TextAnswerInput';
 import QuestionTimer from '../components/QuestionTimer';
 import ConsentModal from '../components/ConsentModal';
 import PreAssessmentOverview from '../components/PreAssessmentOverview';
+import DeviceCheck from '../components/DeviceCheck';
 import ProctorCamera from '../components/ProctorCamera';
 import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -42,8 +43,21 @@ export default function TakeAssessment() {
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [isRestoringCamera, setIsRestoringCamera] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
-  const [browserError, setBrowserError] = useState<string | null>(null);
+  // Browser-feature support is checked once at first render (lazy init) rather than
+  // in an effect, so there's no setState-in-effect cascade.
+  const [browserError, setBrowserError] = useState<string | null>(() => {
+    const { supported, missing } = checkBrowserSupport();
+    return supported
+      ? null
+      : `Your browser is missing required features: ${missing.join(', ')}. ` +
+        'Please use a modern browser like Chrome, Firefox, or Safari.';
+  });
   const [assessmentStarted, setAssessmentStartedRaw] = useState(false);
+  // Overview confirmed → reveal the device check; device check passed → start the
+  // exam. Persisted to sessionStorage (like started_/consent_) so a mid-exam refresh
+  // never re-shows the pre-flight gate.
+  const [overviewConfirmed, setOverviewConfirmedRaw] = useState(false);
+  const [deviceCheckPassed, setDeviceCheckPassedRaw] = useState(false);
   // Preparation countdown for oral mode (counts down from preparationTime → 0)
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number | null>(null);
   const [prepDone, setPrepDone] = useState(false);
@@ -58,6 +72,12 @@ export default function TakeAssessment() {
   const setAssessmentStarted = (v: boolean) => {
     setAssessmentStartedRaw(v);
     if (v && assessmentId) sessionStorage.setItem(`started_${assessmentId}`, 'true');
+  };
+
+  // Wrapper to persist deviceCheckPassed to sessionStorage (mirrors started_/consent_).
+  const setDeviceCheckPassed = (v: boolean) => {
+    setDeviceCheckPassedRaw(v);
+    if (v && assessmentId) sessionStorage.setItem(`devicecheck_${assessmentId}`, 'true');
   };
 
   const {
@@ -112,7 +132,12 @@ export default function TakeAssessment() {
   // so a later camera-revoked overlay offers a "Continue without recording" escape
   // and the resume re-arm must NOT block them. We track decline separately from
   // consentGiven (which is true for both accept and decline).
-  const [proctoringDeclined, setProctoringDeclined] = useState(false);
+  // Initialised from sessionStorage (via the URL's assessmentId) on first render, so a
+  // mid-exam refresh restores the "declined recording" decision before the resume
+  // re-arm effect runs — no setState-in-effect needed.
+  const [proctoringDeclined, setProctoringDeclined] = useState<boolean>(() =>
+    hasDeclinedConsent(parseUrlParams(window.location.pathname)?.assessmentId)
+  );
   // Set when a silent resume re-arm fails (browser rejected getUserMedia without a
   // gesture) — shows a blocking re-grant overlay instead of continuing un-proctored.
   const [resumeRegrantNeeded, setResumeRegrantNeeded] = useState(false);
@@ -128,18 +153,8 @@ export default function TakeAssessment() {
     }
   }, [setStudentInfo]);
 
-  // Restore the "originally declined recording" decision across a mid-exam refresh.
-  // proctoringDeclined is React-only state lost on remount; without this, the resume
-  // re-arm effect (which skips re-arming when proctoringDeclined is true) would wrongly
-  // attempt ensureProctoring() for a student who declined. We persist the decline to
-  // sessionStorage in handleConsentDeclined / handleContinueWithoutRecording and
-  // restore it here before the resume effect runs.
-  useEffect(() => {
-    if (!assessmentId) return;
-    if (hasDeclinedConsent(assessmentId)) {
-      setProctoringDeclined(true);
-    }
-  }, [assessmentId]);
+  // (The "declined recording" decision is restored via lazy useState init above,
+  // before the resume re-arm effect runs.)
 
   // Load questions when student info is set
   useEffect(() => {
@@ -177,19 +192,37 @@ export default function TakeAssessment() {
     const hasAnswered = answeredQuestionIds.size > 0 || (progress?.answeredQuestions ?? 0) > 0;
     const sessionConsent = sessionStorage.getItem(`consent_${assessmentId}`) === 'true';
     const sessionStarted = sessionStorage.getItem(`started_${assessmentId}`) === 'true';
+    const sessionDeviceCheck = sessionStorage.getItem(`devicecheck_${assessmentId}`) === 'true';
 
+    // Load-time sync of pre-flight-gate state from server + sessionStorage — a
+    // one-shot restore write on mount, not a render-loop source. These setState calls
+    // are an intentional restore from external persistence on refresh, so the
+    // set-state-in-effect heuristic is suppressed for this block.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (serverInProgress || hasAnswered) {
+      // Already underway → past every pre-flight gate. Don't re-show consent,
+      // overview, or the device check.
       if (!consentGiven) setConsentGiven(true);
+      setOverviewConfirmedRaw(true);
+      setDeviceCheckPassedRaw(true);
       if (!assessmentStarted) setAssessmentStarted(true);
     } else {
       // Q1 but check sessionStorage (consented + started but haven't answered Q1 yet)
       if (sessionConsent && !consentGiven) {
         setConsentGiven(true);
       }
-      if (sessionStarted && !assessmentStarted) {
-        setAssessmentStartedRaw(true);
+      if (sessionStarted) {
+        // The student already cleared overview + device check this session.
+        setOverviewConfirmedRaw(true);
+        setDeviceCheckPassedRaw(true);
+        if (!assessmentStarted) setAssessmentStartedRaw(true);
+      } else if (sessionDeviceCheck) {
+        // Cleared the device-check gate but not yet started (rare refresh window).
+        setOverviewConfirmedRaw(true);
+        setDeviceCheckPassedRaw(true);
       }
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [questions.length, currentQuestionIndex, assessmentId, answeredQuestionIds.size, progress]);
 
   // Resume re-arm: after a mid-exam refresh the live proctoring stream is gone,
@@ -266,16 +299,7 @@ export default function TakeAssessment() {
     };
   }, []);
 
-  // Check browser support
-  useEffect(() => {
-    const { supported, missing } = checkBrowserSupport();
-    if (!supported) {
-      setBrowserError(
-        `Your browser is missing required features: ${missing.join(', ')}. ` +
-        'Please use a modern browser like Chrome, Firefox, or Safari.'
-      );
-    }
-  }, []);
+  // (Browser-support check moved to lazy useState init above — no effect needed.)
 
   // Block browser back button during assessment
   useEffect(() => {
@@ -289,8 +313,11 @@ export default function TakeAssessment() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [assessmentStarted]);
 
-  // Reset per-question state whenever the question changes
+  // Reset per-question state whenever the question changes. This is an intentional
+  // synchronous reset keyed to the question index changing (not a render-loop
+  // source), so the set-state-in-effect heuristic is suppressed for this effect body.
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setPrepDone(false);
     setIsSubmittingAnswer(false);
     clearError(); // clear errors from previous question
@@ -316,14 +343,18 @@ export default function TakeAssessment() {
         prepTimerRef.current = null;
       }
     };
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [currentQuestionIndex, assessmentStarted, answerMode, preparationTime]);
 
   // Prep countdown tick
   useEffect(() => {
     if (prepSecondsLeft === null || prepDone) return;
     if (prepSecondsLeft <= 0) {
+      // Already at/under zero on (re)mount — finish prep synchronously (intentional).
+      /* eslint-disable react-hooks/set-state-in-effect */
       setPrepDone(true);
       setPrepSecondsLeft(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
       return;
     }
     prepTimerRef.current = setInterval(() => {
@@ -721,15 +752,43 @@ export default function TakeAssessment() {
         />
       )}
 
-      {/* Pre-assessment overview — shown after consent (or immediately when un-proctored),
-          before question 1 */}
-      {(consentGiven || !proctored) && !assessmentStarted && (
+      {/* Pre-flight flow (after consent, or immediately when un-proctored, before Q1):
+          overview → device check → start. The per-question timer has NOT started at
+          any point here. Overview "Start" now reveals the device check rather than
+          jumping straight into the exam:
+            - written mode has no mic to test → overview goes straight to start;
+            - oral mode shows DeviceCheck, whose onReady is what finally starts. */}
+      {(consentGiven || !proctored) && !assessmentStarted && !overviewConfirmed && (
         <PreAssessmentOverview
           assessment={assessmentInfo}
           questionCount={questions.length}
-          onStart={() => setAssessmentStarted(true)}
+          startLabel={answerMode === 'written' ? 'Start Assessment' : 'Continue'}
+          onStart={() => {
+            if (answerMode === 'written') {
+              // No mic to check — skip the device-check screen entirely.
+              setDeviceCheckPassed(true);
+              setAssessmentStarted(true);
+            } else {
+              setOverviewConfirmedRaw(true);
+            }
+          }}
         />
       )}
+
+      {/* Device check — oral pre-flight gate between overview and Q1. */}
+      {(consentGiven || !proctored) &&
+        !assessmentStarted &&
+        overviewConfirmed &&
+        !deviceCheckPassed && (
+          <DeviceCheck
+            answerMode={answerMode === 'written' ? 'written' : 'oral'}
+            requireCamera={isProctoringActive}
+            onReady={() => {
+              setDeviceCheckPassed(true);
+              setAssessmentStarted(true);
+            }}
+          />
+        )}
 
       {/* Main assessment UI — only rendered after the student clicks Start */}
       {assessmentStarted && <div>
