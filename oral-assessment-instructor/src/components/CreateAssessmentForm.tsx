@@ -4,6 +4,17 @@ import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
 import type { CreateAssessmentRequest } from '../../../shared/types/assessment';
 
+type AssessmentType = 'proctored-exam' | 'formative-practice' | 'custom';
+
+// Presets only set the three behaviour flags; answerMode is chosen independently.
+const PRESETS: Record<
+  Exclude<AssessmentType, 'custom'>,
+  Pick<CreateAssessmentRequest, 'proctored' | 'allowReview' | 'feedbackRelease'>
+> = {
+  'proctored-exam': { proctored: true, allowReview: false, feedbackRelease: 'manual' },
+  'formative-practice': { proctored: false, allowReview: true, feedbackRelease: 'immediate' },
+};
+
 export default function CreateAssessmentForm() {
   const navigate = useNavigate();
   const { addAssessment, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
@@ -20,11 +31,30 @@ export default function CreateAssessmentForm() {
     scheduledWindowEnd: undefined,
     answerMode: 'oral',
     preparationTime: 60,
+    // Behaviour flags — default to the "Proctored exam" preset, i.e. today's behaviour.
+    proctored: true,
+    allowReview: false,
+    feedbackRelease: 'manual',
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest | string, string>>>({});
+  const [assessmentType, setAssessmentType] = useState<AssessmentType>('proctored-exam');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const initialFormData = useRef(formData);
   const hasSubmitted = useRef(false);
+
+  const applyPreset = (type: AssessmentType) => {
+    setAssessmentType(type);
+    if (type !== 'custom') {
+      setFormData((prev) => ({ ...prev, ...PRESETS[type] }));
+    }
+  };
+
+  // Editing an individual flag means the config no longer matches a named preset.
+  const setFlag = (patch: Partial<CreateAssessmentRequest>) => {
+    setFormData((prev) => ({ ...prev, ...patch }));
+    setAssessmentType('custom');
+  };
 
   // Warn on unsaved changes
   useEffect(() => {
@@ -382,6 +412,117 @@ export default function CreateAssessmentForm() {
         />
         <p className="mt-1 text-sm text-gray-500">Optional: 1-30 minutes per question. Leave blank for no time limit.</p>
         {errors.timeLimit && <p className="mt-1 text-sm text-red-400">{errors.timeLimit}</p>}
+      </div>
+
+      {/* Assessment Type (presets) */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Assessment Type
+        </label>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-start space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="assessmentType"
+              checked={assessmentType === 'proctored-exam'}
+              onChange={() => applyPreset('proctored-exam')}
+              className="mt-1 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-700">Proctored exam</span>
+              <span className="block text-gray-500">Webcam proctoring on, answers locked once submitted, results released manually.</span>
+            </span>
+          </label>
+          <label className="flex items-start space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="assessmentType"
+              checked={assessmentType === 'formative-practice'}
+              onChange={() => applyPreset('formative-practice')}
+              className="mt-1 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-700">Formative practice</span>
+              <span className="block text-gray-500">No camera, students can revise their answers, feedback shown immediately.</span>
+            </span>
+          </label>
+          <label className="flex items-start space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="assessmentType"
+              checked={assessmentType === 'custom'}
+              onChange={() => setAssessmentType('custom')}
+              className="mt-1 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-700">Custom</span>
+              <span className="block text-gray-500">Configure proctoring, review and feedback individually.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {/* Advanced settings — per-flag override */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((s) => !s)}
+          className="text-sm font-medium text-primary-700 hover:text-primary-800"
+        >
+          {showAdvanced || assessmentType === 'custom' ? '▾' : '▸'} Advanced settings
+        </button>
+        {(showAdvanced || assessmentType === 'custom') && (
+          <div className="mt-3 bg-gray-100 rounded-lg p-4 space-y-4">
+            {/* Proctoring */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Webcam proctoring</span>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="proctored" checked={formData.proctored === true} onChange={() => setFlag({ proctored: true })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">On</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="proctored" checked={formData.proctored === false} onChange={() => setFlag({ proctored: false })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Off</span>
+                </label>
+              </div>
+            </div>
+            {/* Answer review */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Answer review</span>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="allowReview" checked={formData.allowReview === false} onChange={() => setFlag({ allowReview: false })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Locked (one-shot, in order)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="allowReview" checked={formData.allowReview === true} onChange={() => setFlag({ allowReview: true })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Allow revisiting &amp; editing</span>
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Applies to written assessments.</p>
+            </div>
+            {/* Feedback release */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Feedback release</span>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="feedbackRelease" checked={formData.feedbackRelease === 'manual'} onChange={() => setFlag({ feedbackRelease: 'manual' })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Manual (you release results)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="feedbackRelease" checked={formData.feedbackRelease === 'immediate'} onChange={() => setFlag({ feedbackRelease: 'immediate' })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Immediate (as soon as graded)</span>
+                </label>
+              </div>
+            </div>
+            {formData.allowReview && formData.timeLimit != null && (
+              <p className="text-xs text-amber-600">
+                Heads up: per-question time limits and answer revisiting don't combine well — with review on, the timer is shown but won't auto-submit.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Buttons */}

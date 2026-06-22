@@ -72,6 +72,8 @@ export default function TakeAssessment() {
     error,
     answerMode,
     preparationTime,
+    proctored,
+    allowReview,
     textAnswer,
     isRecording,
     isPaused,
@@ -89,6 +91,7 @@ export default function TakeAssessment() {
     setStudentInfo,
     loadQuestions,
     loadProgress,
+    goToQuestion,
     submitCurrentAnswer,
     submitCurrentTextAnswer,
     skipCurrentQuestion,
@@ -202,6 +205,7 @@ export default function TakeAssessment() {
     // Read the persisted decline directly too: on a refresh the restore-decline
     // effect and this effect both fire on the same mount, so proctoringDeclined
     // React state may still be its initial `false` here. sessionStorage is settled.
+    if (!proctored) return; // un-proctored assessment → never arm the camera
     const declined = proctoringDeclined || hasDeclinedConsent(assessmentId);
     if (!consentGiven || declined) return; // declined → run un-proctored, no block
 
@@ -234,6 +238,7 @@ export default function TakeAssessment() {
     questions.length,
     assessmentId,
     consentGiven,
+    proctored,
     proctoringDeclined,
     currentQuestionIndex,
     answeredQuestionIds.size,
@@ -685,6 +690,9 @@ export default function TakeAssessment() {
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const answeredCount = progress?.answeredQuestions || 0;
   const currentAnswered = currentQuestion ? answeredQuestionIds.has(currentQuestion.id) : false;
+  // Review mode (written-only v1): free back-navigation + revise before final submit.
+  const reviewMode = answerMode === 'written' && allowReview;
+  const allAnswered = questions.length > 0 && answeredCount >= questions.length;
 
   // Derive a minimal assessment object for the overview screen.
   // The store's `assessment` field is only populated if the backend returns metadata;
@@ -702,8 +710,10 @@ export default function TakeAssessment() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Consent modal — only shown once questions have loaded successfully */}
-      {!consentGiven && questions.length > 0 && (
+      {/* Consent modal — only for proctored assessments, once questions have loaded.
+          Un-proctored assessments (e.g. written formative) skip it entirely; consentGiven
+          stays false so the camera resume logic never arms a stream. */}
+      {proctored && !consentGiven && questions.length > 0 && (
         <ConsentModal
           onConsent={handleConsentAccepted}
           onDecline={handleConsentDeclined}
@@ -711,8 +721,9 @@ export default function TakeAssessment() {
         />
       )}
 
-      {/* Pre-assessment overview — shown after consent, before question 1 */}
-      {consentGiven && !assessmentStarted && (
+      {/* Pre-assessment overview — shown after consent (or immediately when un-proctored),
+          before question 1 */}
+      {(consentGiven || !proctored) && !assessmentStarted && (
         <PreAssessmentOverview
           assessment={assessmentInfo}
           questionCount={questions.length}
@@ -775,14 +786,14 @@ export default function TakeAssessment() {
         />
       )}
 
-      {/* Proctoring PiP */}
-      <ProctorCamera stream={proctorStream} isRecording={isProctoringActive} />
+      {/* Proctoring PiP — only when this assessment is proctored */}
+      {proctored && <ProctorCamera stream={proctorStream} isRecording={isProctoringActive} />}
 
       {/* Header */}
       <header className="bg-white shadow-sm border-b flex-shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <h1 className="text-2xl font-bold text-gray-900">
-            {assessment?.title ?? 'Oral Assessment'}
+            {assessment?.title ?? 'Assessment'}
           </h1>
           <div className="flex items-center justify-between mt-2">
             <div />
@@ -819,7 +830,9 @@ export default function TakeAssessment() {
                   serverStartedAtMs={
                     answerMode === 'written' ? parseServerStartedAtMs(currentQuestion.questionStartedAt) : undefined
                   }
-                  onExpire={handleTimerExpire}
+                  /* Review mode: the timer is a soft display only — never auto-submit,
+                     since answers can be revisited and revised. */
+                  onExpire={reviewMode ? undefined : handleTimerExpire}
                 />
               )}
             </div>
@@ -864,6 +877,7 @@ export default function TakeAssessment() {
               questionIds={questions.map((q) => q.id)}
               answeredQuestionIds={answeredQuestionIds}
               skippedQuestionIds={skippedQuestionIds}
+              onNavigate={reviewMode ? goToQuestion : undefined}
             />
           </div>
 
@@ -910,48 +924,90 @@ export default function TakeAssessment() {
             )}
           </div>
 
-          {/* Navigation — sequential only, no going back */}
-          <div className={`flex justify-end items-center ${isProctoringActive ? 'pb-32' : 'pb-6'}`}>
-            {isLastQuestion ? (
+          {/* Navigation */}
+          {reviewMode ? (
+            /* Review mode: free back-navigation + a persistent submit (enabled once
+               every question has an answer). Saving an answer never auto-advances. */
+            <div className="flex justify-between items-center pb-6">
               <button
-                onClick={() => setShowSubmitModal(true)}
-                disabled={!currentAnswered || isSubmittingAnswer}
-                className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                type="button"
+                onClick={() => goToQuestion(currentQuestionIndex - 1)}
+                disabled={currentQuestionIndex === 0 || isUploading}
+                className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-5 py-3 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
               >
-                <span>Submit Assessment</span>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd" />
+                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
+                <span>Previous</span>
               </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                disabled={!currentAnswered || isSubmittingAnswer}
-                className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmittingAnswer ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Loading next...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Next Question</span>
+              <div className="flex items-center space-x-3">
+                {!isLastQuestion && (
+                  <button
+                    type="button"
+                    onClick={() => goToQuestion(currentQuestionIndex + 1)}
+                    disabled={isUploading}
+                    className="flex items-center space-x-2 bg-primary-600 text-white px-5 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span>Next</span>
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd"
-                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                        clipRule="evenodd" />
+                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                     </svg>
-                  </>
+                  </button>
                 )}
-              </button>
-            )}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSubmitModal(true)}
+                  disabled={!allAnswered || isUploading}
+                  title={!allAnswered ? 'Answer every question before submitting' : undefined}
+                  className="flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                >
+                  <span>Submit Assessment</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className={`flex justify-end items-center ${isProctoringActive ? 'pb-32' : 'pb-6'}`}>
+              {isLastQuestion ? (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  disabled={!currentAnswered || isSubmittingAnswer}
+                  className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                >
+                  <span>Submit Assessment</span>
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  disabled={!currentAnswered || isSubmittingAnswer}
+                  className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSubmittingAnswer ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Loading next...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Next Question</span>
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd"
+                          d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                          clipRule="evenodd" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </main>
 
@@ -969,12 +1025,16 @@ export default function TakeAssessment() {
             </p>
             {answeredCount < questions.length && (
               <p className="text-orange-600 text-sm mb-4">
-                Answers are submitted in order and are final. The {questions.length - answeredCount} unanswered question(s) can't be revisited.
+                {reviewMode
+                  ? `${questions.length - answeredCount} question(s) still need an answer before you can submit.`
+                  : `Answers are submitted in order and are final. The ${questions.length - answeredCount} unanswered question(s) can't be revisited.`}
               </p>
             )}
             {answeredCount >= questions.length && (
               <p className="text-gray-500 text-sm mb-6">
-                Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.
+                {reviewMode
+                  ? 'You can keep editing your answers until you submit. Once you submit, your assessment is final and sent for evaluation.'
+                  : 'Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.'}
               </p>
             )}
             {error && (

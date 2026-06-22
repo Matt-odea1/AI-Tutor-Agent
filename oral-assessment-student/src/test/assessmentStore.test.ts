@@ -167,3 +167,78 @@ describe('skipCurrentQuestion', () => {
     expect(api.submitTextAnswer).not.toHaveBeenCalled();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// goToQuestion — client-side navigation, only in review mode (allowReview).
+// ────────────────────────────────────────────────────────────────────────────
+describe('goToQuestion', () => {
+  it('jumps to the index and pre-fills that question\'s prior answer when allowReview is true', () => {
+    useAssessmentStore.setState({
+      allowReview: true,
+      questions: [
+        { ...q('q1'), priorAnswer: 'answer one' },
+        { ...q('q2') },
+        { ...q('q3'), priorAnswer: 'answer three' },
+      ],
+      currentQuestionIndex: 0,
+      textAnswer: 'currently typing q1',
+    });
+
+    useAssessmentStore.getState().goToQuestion(2);
+    let s = useAssessmentStore.getState();
+    expect(s.currentQuestionIndex).toBe(2);
+    expect(s.textAnswer).toBe('answer three');
+
+    useAssessmentStore.getState().goToQuestion(1); // no prior answer → empty editor
+    s = useAssessmentStore.getState();
+    expect(s.currentQuestionIndex).toBe(1);
+    expect(s.textAnswer).toBe('');
+  });
+
+  it('is a no-op when allowReview is false (strict sequential flow unchanged)', () => {
+    useAssessmentStore.setState({
+      allowReview: false,
+      questions: [q('q1'), q('q2')],
+      currentQuestionIndex: 0,
+      textAnswer: 'keep me',
+    });
+
+    useAssessmentStore.getState().goToQuestion(1);
+    const s = useAssessmentStore.getState();
+    expect(s.currentQuestionIndex).toBe(0);
+    expect(s.textAnswer).toBe('keep me');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// submitCurrentTextAnswer — review mode saves without advancing or re-fetching.
+// ────────────────────────────────────────────────────────────────────────────
+describe('submitCurrentTextAnswer (review mode)', () => {
+  it('saves, reflects the answer locally, clears any skip, and does NOT advance or re-fetch questions', async () => {
+    useAssessmentStore.setState({
+      allowReview: true,
+      answerMode: 'written',
+      questions: [q('q1'), q('q2')],
+      currentQuestionIndex: 1,
+      textAnswer: 'my answer to q2',
+      answeredQuestionIds: new Set<string>(),
+      skippedQuestionIds: new Set<string>(['q2']),
+    });
+    vi.mocked(api.getProgress).mockResolvedValue({
+      ...baseProgress,
+      totalQuestions: 2,
+      answeredQuestions: 1,
+      answeredQuestionIds: ['q2'],
+    });
+
+    await useAssessmentStore.getState().submitCurrentTextAnswer();
+
+    const s = useAssessmentStore.getState();
+    expect(api.submitTextAnswer).toHaveBeenCalledWith('z1', 'q2', 'a1', 'my answer to q2');
+    expect(api.getQuestions).not.toHaveBeenCalled(); // no re-fetch / no index reset
+    expect(s.currentQuestionIndex).toBe(1); // stayed on the question
+    expect(s.answeredQuestionIds.has('q2')).toBe(true);
+    expect(s.skippedQuestionIds.has('q2')).toBe(false); // skip marker cleared
+    expect(s.questions[1].priorAnswer).toBe('my answer to q2'); // reflected locally for re-nav
+  });
+});

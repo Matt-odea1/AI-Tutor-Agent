@@ -200,6 +200,8 @@ export interface QuestionsResponse {
   currentQuestionIndex: number;
   answerMode: 'oral' | 'written';
   preparationTime?: number;
+  proctored?: boolean;
+  allowReview?: boolean;
   assessmentTitle?: string;
   assessmentCourse?: string;
   assessmentDescription?: string;
@@ -223,6 +225,8 @@ export async function getQuestions(
       currentQuestionIndex: response.data.currentQuestionIndex ?? 0,
       answerMode: response.data.answerMode || 'oral',
       preparationTime: response.data.preparationTime,
+      proctored: response.data.proctored,
+      allowReview: response.data.allowReview ?? false,
       assessmentTitle: response.data.assessmentTitle,
       assessmentCourse: response.data.assessmentCourse,
       assessmentDescription: response.data.assessmentDescription,

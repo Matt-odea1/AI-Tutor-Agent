@@ -76,6 +76,10 @@ interface AssessmentStore {
   // Answer mode — set by instructor, not student
   answerMode: 'oral' | 'written';
   preparationTime: number | null; // seconds of prep time for oral mode (null = no prep phase)
+  // Behaviour flags — set by instructor. proctored defaults true until questions load
+  // (the consent modal only renders once questions are present, so there is no flash).
+  proctored: boolean;
+  allowReview: boolean;
   textAnswer: string;
 
   // Proctoring state
@@ -211,6 +215,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   uploadProgress: 0,
   answerMode: 'oral' as 'oral' | 'written',
   preparationTime: null,
+  proctored: true,
+  allowReview: false,
   textAnswer: '',
   proctorStream: null,
   proctoring: null,
@@ -349,9 +355,12 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         currentQuestionIndex: result.currentQuestionIndex,
         answerMode: result.answerMode,
         preparationTime: result.preparationTime ?? null,
+        // proctored falls back to (answerMode === 'oral') if the backend omits it.
+        proctored: result.proctored ?? (result.answerMode === 'oral'),
+        allowReview: result.allowReview ?? false,
         assessment: {
           id: assessmentId!,
-          title: result.assessmentTitle || 'Oral Assessment',
+          title: result.assessmentTitle || 'Assessment',
           course: result.assessmentCourse || '',
           description: result.assessmentDescription || '',
           dueDate: '',
@@ -360,6 +369,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
           status: 'open',
           answerMode: result.answerMode,
           preparationTime: result.preparationTime,
+          proctored: result.proctored ?? (result.answerMode === 'oral'),
+          allowReview: result.allowReview ?? false,
         },
         isLoading: false,
       });
@@ -700,8 +711,15 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     // No-op: going back is not allowed
   },
 
-  goToQuestion: () => {
-    // No-op: jumping is not allowed
+  goToQuestion: (index: number) => {
+    // Client-side jumping is only allowed in review mode (allowReview). In the strict
+    // flow this stays a no-op so sequential, server-driven navigation is unchanged.
+    const { allowReview, questions, currentQuestionIndex } = get();
+    if (!allowReview) return;
+    if (index < 0 || index >= questions.length || index === currentQuestionIndex) return;
+    const target = questions[index];
+    // Pre-fill the editor with the prior answer for the question we're landing on.
+    set({ currentQuestionIndex: index, textAnswer: target?.priorAnswer ?? '', error: null });
   },
 
   // ─── Submission ────────────────────────────────────────────────
@@ -785,10 +803,32 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ isUploading: true, error: null });
 
     try {
-      await submitTextAnswer(studentId, currentQuestion.id, assessmentId, textAnswer.trim());
+      const submitted = textAnswer.trim();
+      await submitTextAnswer(studentId, currentQuestion.id, assessmentId, submitted);
 
       const newAnsweredIds = new Set(get().answeredQuestionIds);
       newAnsweredIds.add(currentQuestion.id);
+
+      if (get().allowReview) {
+        // Review mode: saving an answer must NOT advance or yank the student to the
+        // server frontier. Stay on the question, reflect the saved text locally (so
+        // navigating away and back pre-fills correctly), and clear any skip marker.
+        const newSkipped = new Set(get().skippedQuestionIds);
+        newSkipped.delete(currentQuestion.id);
+        const updatedQuestions = get().questions.map((q) =>
+          q.id === currentQuestion.id ? { ...q, priorAnswer: submitted } : q
+        );
+        set({
+          isUploading: false,
+          answeredQuestionIds: newAnsweredIds,
+          skippedQuestionIds: newSkipped,
+          questions: updatedQuestions,
+        });
+        clearTextDraft(assessmentId);
+        await get().loadProgress();
+        return;
+      }
+
       set({ isUploading: false, textAnswer: '', answeredQuestionIds: newAnsweredIds });
 
       // Submit confirmed — drop the durable text draft so it can't resurface on
@@ -988,6 +1028,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       uploadProgress: 0,
       answerMode: 'oral' as 'oral' | 'written',
       preparationTime: null,
+      proctored: true,
+      allowReview: false,
       textAnswer: '',
       proctorStream: null,
       proctoring: null,
