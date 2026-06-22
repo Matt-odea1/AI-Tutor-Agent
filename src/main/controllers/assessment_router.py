@@ -112,6 +112,9 @@ async def create_assessment(
             rubric=request.rubric,
             answer_mode=request.answerMode,
             preparation_time=request.preparationTime,
+            proctored=request.proctored,
+            allow_review=request.allowReview,
+            feedback_release=request.feedbackRelease,
             max_score_per_question=request.maxScorePerQuestion,
             grade_cutoffs=request.gradeCutoffs,
         ))

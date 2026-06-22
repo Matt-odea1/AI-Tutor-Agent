@@ -107,6 +107,7 @@ async def get_student_questions(
                 topic=q.get("topic"),
                 timeLimit=q.get("timeLimit"),
                 createdAt=q.get("createdAt", ""),
+                priorAnswer=q.get("priorAnswer"),
             )
             for q in raw_questions
         ]
@@ -119,6 +120,8 @@ async def get_student_questions(
             currentQuestionIndex=result.get("currentQuestionIndex", 0) if isinstance(result, dict) else 0,
             answerMode=result.get("answerMode", "oral") if isinstance(result, dict) else "oral",
             preparationTime=result.get("preparationTime") if isinstance(result, dict) else None,
+            proctored=result.get("proctored") if isinstance(result, dict) else None,
+            allowReview=result.get("allowReview", False) if isinstance(result, dict) else False,
             assessmentTitle=result.get("assessmentTitle") if isinstance(result, dict) else None,
             assessmentCourse=result.get("assessmentCourse") if isinstance(result, dict) else None,
             assessmentDescription=result.get("assessmentDescription") if isinstance(result, dict) else None,

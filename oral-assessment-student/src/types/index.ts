@@ -25,6 +25,11 @@ export interface Question {
    * out of scope here — no endpoint is added or called.
    */
   questionStartedAt?: string;
+  /**
+   * The student's previously-submitted text answer for this question. Only populated
+   * in review (allowReview) mode so the UI can pre-fill it when navigating back.
+   */
+  priorAnswer?: string;
 }
 
 export interface Answer {
@@ -108,6 +113,10 @@ export interface Assessment {
   status: string;
   answerMode?: 'oral' | 'written';
   preparationTime?: number;
+  /** Webcam proctoring. Unset → treat as (answerMode === 'oral'). */
+  proctored?: boolean;
+  /** Student may navigate back and revise answers before final submit (written v1). */
+  allowReview?: boolean;
 }
 
 export interface UploadUrlResponse {

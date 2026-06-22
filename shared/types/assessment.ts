@@ -128,6 +128,12 @@ export interface CreateAssessmentRequest {
   scheduledWindowEnd?: string;
   answerMode?: 'oral' | 'written';
   preparationTime?: number;
+  /** Webcam proctoring. Unset → backend defaults to (answerMode === 'oral'). */
+  proctored?: boolean;
+  /** Allow students to navigate back and revise answers before final submit (written v1). */
+  allowReview?: boolean;
+  /** 'immediate' shows results as soon as graded; 'manual' requires instructor release. */
+  feedbackRelease?: 'immediate' | 'manual';
 }
 
 export interface UploadStudentsRequest {

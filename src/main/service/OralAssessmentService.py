@@ -180,14 +180,24 @@ class OralAssessmentService:
             raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
             assessment_time_limit = raw_time_limit
 
+            # Behaviour flags surfaced to the student app. proctored falls back to
+            # (answerMode == 'oral') for legacy assessments created before this field.
+            answer_mode = assessment_meta.get("answerMode", "oral")
+            proctored = assessment_meta.get("proctored")
+            if proctored is None:
+                proctored = answer_mode == "oral"
+            allow_review = bool(assessment_meta.get("allowReview", False))
+
             student_items = self.question_access.get_student_questions(student_id, assessment_id)
             bank_items = self.question_access.get_bank_questions(assessment_id)
 
             if not student_items and not bank_items:
                 logger.warning(f"No questions found for assessment {assessment_id}")
                 return {"questions": [], "currentQuestionIndex": 0,
-                        "answerMode": assessment_meta.get("answerMode", "oral"),
+                        "answerMode": answer_mode,
                         "preparationTime": assessment_meta.get("preparationTime"),
+                        "proctored": proctored,
+                        "allowReview": allow_review,
                         "assessmentTitle": assessment_meta.get("title"),
                         "assessmentCourse": assessment_meta.get("course"),
                         "assessmentDescription": assessment_meta.get("description")}
@@ -235,15 +245,31 @@ class OralAssessmentService:
             else:
                 current_idx = int(enrollment.get("currentQuestionIdx", 0))
 
-            # Gate: only return full content for answered + current question
-            gated_questions = self.question_access.gate_question_content(all_questions, current_idx)
+            if allow_review:
+                # Review mode: every question is navigable, so return full content for all
+                # and attach the student's prior answer text so the UI can pre-fill it.
+                answers_resp = self.table.query(
+                    KeyConditionExpression=Key("PK").eq(f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}")
+                        & Key("SK").begins_with("ANSWER#")
+                )
+                answers_by_qid = {a.get("questionId"): a for a in answers_resp.get("Items", [])}
+                for q in all_questions:
+                    prior = answers_by_qid.get(q.get("id"))
+                    if prior is not None:
+                        q["priorAnswer"] = prior.get("textContent")
+                gated_questions = all_questions
+            else:
+                # Gate: only return full content for answered + current question
+                gated_questions = self.question_access.gate_question_content(all_questions, current_idx)
 
             logger.info(f"Retrieved {len(gated_questions)} questions for student {student_id} (current={current_idx})")
             return {
                 "questions": self._convert_decimals(gated_questions),
                 "currentQuestionIndex": current_idx,
-                "answerMode": assessment_meta.get("answerMode", "oral"),
+                "answerMode": answer_mode,
                 "preparationTime": assessment_meta.get("preparationTime"),
+                "proctored": proctored,
+                "allowReview": allow_review,
                 "assessmentTitle": assessment_meta.get("title"),
                 "assessmentCourse": assessment_meta.get("course"),
                 "assessmentDescription": assessment_meta.get("description"),
@@ -257,8 +283,12 @@ class OralAssessmentService:
             logger.error(f"Failed to get questions: {e}")
             raise OralAssessmentServiceError(f"Database error: {e}")
     
-    def _validate_question_order(self, student_id: str, assessment_id: str, question_id: str) -> None:
-        """Check sequential ordering: reject duplicates and out-of-order. Does NOT advance the index."""
+    def _validate_question_order(self, student_id: str, assessment_id: str, question_id: str, allow_review: bool = False) -> None:
+        """Check question ordering. Does NOT advance the index.
+
+        Strict (default): reject duplicates and out-of-order submissions.
+        Review mode: allow any question that belongs to this student's frozen order, in
+        any order, and allow re-submission (revision) of an already-answered question."""
         enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
         enrollment = self.table.get_item(Key=enrollment_key).get("Item")
         if not enrollment:
@@ -266,6 +296,13 @@ class OralAssessmentService:
 
         question_order = enrollment.get("questionOrder", [])
         current_idx = int(enrollment.get("currentQuestionIdx", 0))
+
+        if allow_review:
+            # Only reject a question that isn't part of this student's order. Duplicates
+            # are legitimate revisions; order is free.
+            if question_id not in question_order:
+                raise OralAssessmentServiceError("Question submitted out of order")
+            return
 
         # Reject duplicate submission
         existing = self.table.get_item(
@@ -278,11 +315,22 @@ class OralAssessmentService:
         if current_idx >= len(question_order) or question_order[current_idx] != question_id:
             raise OralAssessmentServiceError("Question submitted out of order")
 
-    def _advance_question_index(self, student_id: str, assessment_id: str) -> None:
-        """Advance currentQuestionIdx after answer is successfully stored."""
+    def _advance_question_index(self, student_id: str, assessment_id: str, allow_review: bool = False, question_id: Optional[str] = None) -> None:
+        """Advance currentQuestionIdx after an answer is stored.
+
+        In review mode currentQuestionIdx is a monotonic "furthest reached" marker: only
+        advance when the answer was for the question currently at the frontier (a forward
+        step), never when revising an earlier question."""
         enrollment_key = {"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"}
         enrollment = self.table.get_item(Key=enrollment_key).get("Item", {})
         current_idx = int(enrollment.get("currentQuestionIdx", 0))
+
+        if allow_review:
+            question_order = enrollment.get("questionOrder", [])
+            at_frontier = current_idx < len(question_order) and question_order[current_idx] == question_id
+            if not at_frontier:
+                return  # revising an earlier question — leave the frontier where it is
+
         try:
             self.table.update_item(
                 Key=enrollment_key,
@@ -324,8 +372,11 @@ class OralAssessmentService:
             OralAssessmentServiceError: If assessment window is closed or DB error
         """
         try:
-            self._check_assessment_window(assessment_id)
-            self._validate_question_order(student_id, assessment_id, question_id)
+            # Single METADATA read, reused for the window check + the review flag.
+            meta = self._get_assessment_metadata(assessment_id)
+            allow_review = bool(meta.get("allowReview", False))
+            self._check_assessment_window(assessment_id, metadata=meta)
+            self._validate_question_order(student_id, assessment_id, question_id, allow_review=allow_review)
             result = self.answer_submission.submit_answer(
                 student_id=student_id,
                 question_id=question_id,
@@ -335,8 +386,9 @@ class OralAssessmentService:
                 duration=duration,
                 text_content=text_content,
                 video_url=video_url,
+                allow_review=allow_review,
             )
-            self._advance_question_index(student_id, assessment_id)
+            self._advance_question_index(student_id, assessment_id, allow_review=allow_review, question_id=question_id)
             logger.info(f"Recorded answer for question {question_id} from student {student_id}")
             return result
         except self.table.meta.client.exceptions.ConditionalCheckFailedException:

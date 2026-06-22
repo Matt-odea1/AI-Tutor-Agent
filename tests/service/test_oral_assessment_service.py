@@ -147,6 +147,35 @@ class TestGetStudentQuestions:
         assert result["questions"] == []
         assert result["currentQuestionIndex"] == 0
 
+    def test_proctored_defaults_from_answer_mode_when_absent(self, dynamo_env):
+        """Legacy assessment (no proctored field, no answerMode) → proctored True (oral)."""
+        table = dynamo_env
+        _seed_assessment(table)  # no answerMode → 'oral', no proctored field
+        _seed_enrollment(table)
+        _seed_questions(table, count=2)
+        svc = _create_service(table)
+
+        result = svc.get_student_questions("s-1", "a-1")
+        assert result["proctored"] is True
+        assert result["allowReview"] is False
+
+    def test_written_assessment_defaults_unproctored(self, dynamo_env):
+        """answerMode='written' with no explicit proctored flag → proctored False."""
+        table = dynamo_env
+        _seed_assessment(table)
+        table.update_item(
+            Key={"PK": "ASSESSMENT#a-1", "SK": "METADATA"},
+            UpdateExpression="SET answerMode = :m",
+            ExpressionAttributeValues={":m": "written"},
+        )
+        _seed_enrollment(table)
+        _seed_questions(table, count=2)
+        svc = _create_service(table)
+
+        result = svc.get_student_questions("s-1", "a-1")
+        assert result["answerMode"] == "written"
+        assert result["proctored"] is False
+
 
 # ─────────────────────────────────────────────────────────────
 # submit_answer
@@ -268,6 +297,131 @@ class TestSubmitAnswer:
         assert "videoUrl" not in item
         assert "textContent" not in item
         assert "duration" not in item
+
+
+def _enable_review(table, assessment_id="a-1"):
+    """Flip allowReview=True on the assessment metadata."""
+    table.update_item(
+        Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": "METADATA"},
+        UpdateExpression="SET allowReview = :r",
+        ExpressionAttributeValues={":r": True},
+    )
+
+
+def _current_idx(table, student_id="s-1", assessment_id="a-1") -> int:
+    item = table.get_item(Key={"PK": f"ASSESSMENT#{assessment_id}", "SK": f"STUDENT#{student_id}"})["Item"]
+    return int(item.get("currentQuestionIdx", 0))
+
+
+class TestReviewMode:
+    """allowReview=True: free navigation + revise. Strict path must stay byte-for-byte."""
+
+    def test_allows_out_of_order_submission(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        _enable_review(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=2)
+        _seed_question_order(table, question_ids=["q-1", "q-2"])
+        svc = _create_service(table)
+
+        # q-2 submitted before q-1 — allowed in review mode.
+        result = svc.submit_answer(
+            student_id="s-1", question_id="q-2", assessment_id="a-1",
+            answer_type="text", text_content="answer to two first",
+        )
+        assert result["ok"] is True
+
+    def test_rejects_question_not_in_order(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        _enable_review(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=2)
+        _seed_question_order(table, question_ids=["q-1", "q-2"])
+        svc = _create_service(table)
+
+        with pytest.raises(OralAssessmentServiceError, match="out of order"):
+            svc.submit_answer(
+                student_id="s-1", question_id="q-999", assessment_id="a-1",
+                answer_type="text", text_content="not a real question",
+            )
+
+    def test_allows_revision_upsert(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        _enable_review(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=1)
+        _seed_question_order(table, question_ids=["q-1"])
+        svc = _create_service(table)
+
+        svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                          answer_type="text", text_content="first attempt")
+        # Re-submit the same question with revised text — allowed (overwrite).
+        svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                          answer_type="text", text_content="revised attempt")
+
+        item = table.get_item(Key={"PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-1"})["Item"]
+        assert item["textContent"] == "revised attempt"
+
+    def test_strict_mode_rejects_revision_when_flag_absent(self, dynamo_env):
+        """No allowReview field → today's behaviour: second submit raises 'already submitted'."""
+        table = dynamo_env
+        _seed_assessment(table)  # no allowReview
+        _seed_enrollment(table)
+        _seed_questions(table, count=1)
+        _seed_question_order(table, question_ids=["q-1"])
+        svc = _create_service(table)
+
+        svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                          answer_type="text", text_content="first")
+        with pytest.raises(OralAssessmentServiceError, match="already submitted"):
+            svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                              answer_type="text", text_content="second")
+
+    def test_frontier_only_index_advance(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        _enable_review(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=3)
+        _seed_question_order(table, question_ids=["q-1", "q-2", "q-3"])
+        svc = _create_service(table)
+
+        # Submit q-2 first (not the frontier) — index stays at 0.
+        svc.submit_answer(student_id="s-1", question_id="q-2", assessment_id="a-1",
+                          answer_type="text", text_content="two")
+        assert _current_idx(table) == 0
+        # Submit q-1 (the frontier) — index advances to 1.
+        svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                          answer_type="text", text_content="one")
+        assert _current_idx(table) == 1
+        # Revise q-1 (no longer the frontier) — index unchanged.
+        svc.submit_answer(student_id="s-1", question_id="q-1", assessment_id="a-1",
+                          answer_type="text", text_content="one-revised")
+        assert _current_idx(table) == 1
+
+    def test_get_questions_ungates_and_attaches_prior_answer(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        _enable_review(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=3)
+        # A prior written answer to q-1.
+        table.put_item(Item={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-1",
+            "questionId": "q-1", "answerType": "text", "textContent": "my earlier answer",
+        })
+        svc = _create_service(table)
+
+        result = svc.get_student_questions("s-1", "a-1")
+        qs = {q["id"]: q for q in result["questions"]}
+        assert len(qs) == 3
+        # Un-gated: every question keeps its text (no stripping of "future" questions).
+        assert all(q.get("text") for q in qs.values())
+        assert qs["q-1"]["priorAnswer"] == "my earlier answer"
+        assert qs["q-2"].get("priorAnswer") is None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -497,6 +651,32 @@ class TestGetStudentResults:
 
         with pytest.raises(OralAssessmentServiceError, match="not released"):
             svc.get_student_results("s-1", "a-1")
+
+    def test_immediate_feedback_release_bypasses_gate(self, dynamo_env):
+        """feedbackRelease='immediate' returns results even when resultsReleased is False."""
+        table = dynamo_env
+        _seed_assessment(table)  # resultsReleased = False
+        table.update_item(
+            Key={"PK": "ASSESSMENT#a-1", "SK": "METADATA"},
+            UpdateExpression="SET feedbackRelease = :f",
+            ExpressionAttributeValues={":f": "immediate"},
+        )
+        _seed_enrollment(table, status="submitted")
+
+        pk = "STUDENT#s-1#ASSESSMENT#a-1"
+        table.put_item(Item={"PK": pk, "SK": "QUESTION#q-1", "text": "Q1", "questionType": "general"})
+        table.put_item(Item={"PK": pk, "SK": "ANSWER#q-1", "audioUrl": "s3://b/a1.webm", "duration": 30})
+        table.put_item(Item={
+            "PK": pk, "SK": "EVALUATION#q-1",
+            "totalScore": 5, "maxScore": 10,
+            "correctnessScore": 3, "understandingScore": 2,
+            "feedback": "ok", "strengths": [], "weaknesses": [], "suggestedImprovements": [],
+        })
+        svc = _create_service(table)
+
+        results = svc.get_student_results("s-1", "a-1")
+        assert results["totalScore"] == 5
+        assert len(results["questions"]) == 1
 
     def test_unenrolled_student_raises(self, dynamo_env):
         table = dynamo_env
