@@ -22,16 +22,6 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
   const [showFlagged, setShowFlagged] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
-    setResults([]);
-    setResultsReleased(null);
-    loadResults();
-    loadReleasedState();
-    loadProgress();
-    loadFlagged();
-    loadAgreement();
-  }, [assessmentId]);
-
   const loadFlagged = async () => {
     try {
       setFlagged(await apiService.getFlaggedEvaluations(assessmentId));
@@ -43,23 +33,6 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       setAgreement(await apiService.getScoreAgreement(assessmentId));
     } catch { /* non-critical */ }
   };
-
-  useEffect(() => {
-    if (!evalJobId) return;
-    const es = apiService.openEvaluationStatusStream(assessmentId, evalJobId);
-    sseRef.current = es;
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.status === 'completed') {
-          loadResults();
-          es.close();
-        }
-      } catch { /* ignore */ }
-    };
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [evalJobId]);
 
   const loadReleasedState = async () => {
     try {
@@ -87,6 +60,36 @@ export default function ResultsDashboard({ assessmentId, evalJobId }: ResultsDas
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Intentional reset-on-key-change: clear stale results/release state when
+    // switching assessments before the async loaders below refetch them.
+    setResults([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setResultsReleased(null);
+    loadResults();
+    loadReleasedState();
+    loadProgress();
+    loadFlagged();
+    loadAgreement();
+  }, [assessmentId]);
+
+  useEffect(() => {
+    if (!evalJobId) return;
+    const es = apiService.openEvaluationStatusStream(assessmentId, evalJobId);
+    sseRef.current = es;
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === 'completed') {
+          loadResults();
+          es.close();
+        }
+      } catch { /* ignore */ }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [evalJobId]);
 
   const handleReleaseResults = async () => {
     try {

@@ -8,12 +8,6 @@ export default function ViewResults() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
   const { selectedAssessment, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
 
-  useEffect(() => {
-    if (assessmentId && assessmentId !== selectedAssessment?.id) {
-      loadAssessment(assessmentId);
-    }
-  }, [assessmentId]);
-
   const loadAssessment = async (id: string) => {
     try {
       setLoading(true);
@@ -26,6 +20,12 @@ export default function ViewResults() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (assessmentId && assessmentId !== selectedAssessment?.id) {
+      loadAssessment(assessmentId);
+    }
+  }, [assessmentId]);
 
   if (!selectedAssessment || !assessmentId) {
     return (

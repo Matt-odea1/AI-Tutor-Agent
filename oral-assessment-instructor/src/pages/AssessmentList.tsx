@@ -14,21 +14,6 @@ export default function AssessmentList() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);;
 
-  useEffect(() => {
-    loadAssessments();
-  }, []);
-
-  // Auto-refresh stats when page regains focus
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadAssessments();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
   const loadAssessments = async () => {
     try {
       setLoading(true);
@@ -56,6 +41,25 @@ export default function AssessmentList() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Intentional: load assessments once on mount. loadAssessments toggles
+    // loading/error/data state as it fetches — effect-driven initial fetch,
+    // not a render cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAssessments();
+  }, []);
+
+  // Auto-refresh stats when page regains focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAssessments();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');

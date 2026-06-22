@@ -12,14 +12,6 @@ export default function GenerateQuestions() {
   const [briefSaved, setBriefSaved] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (assessmentId && assessmentId !== selectedAssessment?.id) {
-      loadAssessment(assessmentId);
-    } else if (selectedAssessment?.assignmentBrief) {
-      setBrief(selectedAssessment.assignmentBrief);
-    }
-  }, [assessmentId, selectedAssessment?.id]);
-
   const loadAssessment = async (id: string) => {
     try {
       setLoading(true);
@@ -33,6 +25,20 @@ export default function GenerateQuestions() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (assessmentId && assessmentId !== selectedAssessment?.id) {
+      // Intentional: fetch the assessment when the route id changes and it is
+      // not already the selected one. loadAssessment toggles loading/error and
+      // seeds the brief — an effect-driven fetch, not a render cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadAssessment(assessmentId);
+    } else if (selectedAssessment?.assignmentBrief) {
+      // Seed the local editable brief from the already-loaded assessment in the
+      // external store; runs only when the store id matches (no fetch needed).
+      setBrief(selectedAssessment.assignmentBrief);
+    }
+  }, [assessmentId, selectedAssessment?.id]);
 
   const handleSaveBrief = async () => {
     if (!assessmentId) return;

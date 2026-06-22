@@ -61,12 +61,6 @@ export default function QuestionEditor() {
 
   const isLocked = assessment != null && ['active', 'completed'].includes(assessment.status);
 
-  useEffect(() => {
-    if (assessmentId && studentId) {
-      loadData();
-    }
-  }, [assessmentId, studentId]);
-
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
@@ -86,6 +80,16 @@ export default function QuestionEditor() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (assessmentId && studentId) {
+      // Intentional: load questions when the route params resolve. loadData
+      // toggles loading/error and populates the questions — an effect-driven
+      // fetch, not a render cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadData();
+    }
+  }, [assessmentId, studentId]);
 
   const startEdit = (q: StudentQuestion) => {
     setEditingId(q.id);

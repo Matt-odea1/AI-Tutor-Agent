@@ -61,42 +61,11 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  // Current time, refreshed by the 1s ticker below. Read during render to drive
+  // the "Inactive 30m+" badge without calling the impure Date.now() in render.
+  const [now, setNow] = useState(() => Date.now());
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
-
-  // Load initial data (reset stale data first to avoid showing previous assessment's state)
-  useEffect(() => {
-    setProgress([]);
-    setStudents([]);
-    loadProgressData();
-    loadStudents();
-  }, [assessmentId]);
-
-  // Poll for progress updates every 10s
-  useEffect(() => {
-    startPolling();
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-    };
-  }, [assessmentId]);
-
-  // Apply filters when data changes
-  useEffect(() => {
-    applyFilters();
-  }, [progress, students, statusFilter, searchQuery]);
-
-  // Tick the "last updated" counter every second
-  useEffect(() => {
-    const ticker = setInterval(() => {
-      if (lastUpdated) {
-        setSecondsSinceUpdate(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
-      }
-    }, 1000);
-    return () => clearInterval(ticker);
-  }, [lastUpdated]);
 
   const loadProgressData = async () => {
     try {
@@ -141,7 +110,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     // Ensure progress is an array
     const progressArray = Array.isArray(progress) ? progress : [];
     const studentsArray = Array.isArray(students) ? students : [];
-    
+
     let filtered = progressArray.map(p => {
       const student = studentsArray.find(s => s.studentId === p.studentId);
       return { ...p, student: student || { id: p.studentId, name: p.studentId, email: '', studentId: p.studentId } };
@@ -157,7 +126,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(p => 
+      filtered = filtered.filter(p =>
         p.student.name.toLowerCase().includes(query) ||
         p.student.email.toLowerCase().includes(query) ||
         p.student.studentId.toLowerCase().includes(query)
@@ -166,6 +135,49 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
 
     setFilteredProgress(filtered);
   };
+
+  // Load initial data (reset stale data first to avoid showing previous assessment's state)
+  useEffect(() => {
+    setProgress([]);
+    setStudents([]);
+    loadProgressData();
+    loadStudents();
+  }, [assessmentId]);
+
+  // Poll for progress updates every 10s
+  useEffect(() => {
+    // Intentional: startPolling subscribes to an external timer and stores its
+    // handle via setPollingInterval — effect-driven subscription setup, not a
+    // render cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    startPolling();
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
+    };
+  }, [assessmentId]);
+
+  // Apply filters when data changes
+  useEffect(() => {
+    // Intentional: derive filteredProgress from progress/students/filters when
+    // any of them change. Single setState per data change, guarded by the dep
+    // array, so it settles in one pass rather than cascading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    applyFilters();
+  }, [progress, students, statusFilter, searchQuery]);
+
+  // Tick the "last updated" counter (and current time) every second
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      setNow(Date.now());
+      if (lastUpdated) {
+        setSecondsSinceUpdate(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [lastUpdated]);
 
   const openEvalProgressStream = (studentId: string) => {
     if (evalStreams.current[studentId]) evalStreams.current[studentId].close();
@@ -320,7 +332,7 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     if (p.status === 'completed' || p.status === 'submitted') return false;
     const startedAt = p.startedAt;
     if (!startedAt) return false;
-    return Date.now() - new Date(startedAt).getTime() > INACTIVE_THRESHOLD_MS;
+    return now - new Date(startedAt).getTime() > INACTIVE_THRESHOLD_MS;
   };
 
   const getStatusBadge = (status: string) => {

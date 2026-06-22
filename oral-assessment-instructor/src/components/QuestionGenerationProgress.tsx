@@ -42,6 +42,49 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
     }
   }, [generationJob]);
 
+  // Holds the latest scheduleNextPoll so the recursive re-schedule inside the
+  // setTimeout callback can call it without referencing the const before it is
+  // assigned (the ref is populated synchronously below, on every render).
+  const scheduleNextPollRef = useRef<() => void>(() => {});
+
+  const scheduleNextPoll = useCallback(() => {
+    if (!generationJob?.jobId) return;
+
+    const timeout = setTimeout(async () => {
+      try {
+        const updatedJob = await apiService.getQuestionGenerationStatus(assessmentId, generationJob.jobId);
+        setGenerationJob(updatedJob);
+
+        // Stop polling if job is complete or failed
+        if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
+          setPollingInterval(null);
+          pollDelayRef.current = 3000;
+          return;
+        }
+      } catch (err) {
+        console.error('Error polling job status:', err);
+      }
+
+      // Exponential backoff: 3s -> 5s -> 10s -> 20s -> 30s (max)
+      pollDelayRef.current = Math.min(pollDelayRef.current * 1.5, 30000);
+      scheduleNextPollRef.current();
+    }, pollDelayRef.current);
+
+    setPollingInterval(timeout);
+  }, [assessmentId, generationJob?.jobId]);
+
+  // Keep the ref pointing at the latest scheduleNextPoll so the recursive
+  // re-schedule inside the setTimeout callback always invokes the current one.
+  useEffect(() => {
+    scheduleNextPollRef.current = scheduleNextPoll;
+  }, [scheduleNextPoll]);
+
+  const startPolling = useCallback(() => {
+    if (pollingInterval) return; // Already polling
+    pollDelayRef.current = 3000; // reset on fresh start
+    scheduleNextPoll();
+  }, [pollingInterval, scheduleNextPoll]);
+
   // Clean up polling on unmount
   useEffect(() => {
     return () => {
@@ -54,6 +97,9 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
   // Track elapsed time while job is running
   useEffect(() => {
     if (generationJob && (generationJob.status === 'pending' || generationJob.status === 'running')) {
+      // Intentional: lazily stamp the job start time on the first running tick;
+      // guarded by !jobStartTime so it fires once per job, not a render cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!jobStartTime) setJobStartTime(Date.now());
       const timer = setInterval(() => {
         if (jobStartTime) {
@@ -78,42 +124,13 @@ export default function QuestionGenerationProgress({ assessmentId }: QuestionGen
       startPolling();
     } else if (pollingInterval) {
       clearTimeout(pollingInterval);
+      // Intentional: tear down the polling handle when the job leaves an
+      // in-progress state. Mirrors an external timer; not a render cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPollingInterval(null);
       pollDelayRef.current = 3000; // reset backoff
     }
   }, [generationJob?.status]);
-
-  const scheduleNextPoll = useCallback(() => {
-    if (!generationJob?.jobId) return;
-
-    const timeout = setTimeout(async () => {
-      try {
-        const updatedJob = await apiService.getQuestionGenerationStatus(assessmentId, generationJob.jobId);
-        setGenerationJob(updatedJob);
-
-        // Stop polling if job is complete or failed
-        if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
-          setPollingInterval(null);
-          pollDelayRef.current = 3000;
-          return;
-        }
-      } catch (err) {
-        console.error('Error polling job status:', err);
-      }
-
-      // Exponential backoff: 3s -> 5s -> 10s -> 20s -> 30s (max)
-      pollDelayRef.current = Math.min(pollDelayRef.current * 1.5, 30000);
-      scheduleNextPoll();
-    }, pollDelayRef.current);
-
-    setPollingInterval(timeout);
-  }, [assessmentId, generationJob?.jobId]);
-
-  const startPolling = useCallback(() => {
-    if (pollingInterval) return; // Already polling
-    pollDelayRef.current = 3000; // reset on fresh start
-    scheduleNextPoll();
-  }, [pollingInterval, scheduleNextPoll]);
 
   // Load students when job completes so we can show per-student question links
   useEffect(() => {

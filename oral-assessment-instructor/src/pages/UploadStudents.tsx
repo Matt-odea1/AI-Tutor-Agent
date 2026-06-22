@@ -19,19 +19,6 @@ export default function UploadStudents() {
   const [importResult, setImportResult] = useState<{ count: number; students: { studentId: string; name: string; hasCode: boolean }[] } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (assessmentId && assessmentId !== selectedAssessment?.id) {
-      loadAssessment(assessmentId);
-    }
-  }, [assessmentId]);
-
-  useEffect(() => {
-    const state = location.state as { created?: string } | null;
-    if (state?.created) {
-      showToast(`Assessment "${state.created}" created successfully.`);
-    }
-  }, []);
-
   const loadAssessment = async (id: string) => {
     try {
       setLoading(true);
@@ -44,6 +31,19 @@ export default function UploadStudents() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (assessmentId && assessmentId !== selectedAssessment?.id) {
+      loadAssessment(assessmentId);
+    }
+  }, [assessmentId]);
+
+  useEffect(() => {
+    const state = location.state as { created?: string } | null;
+    if (state?.created) {
+      showToast(`Assessment "${state.created}" created successfully.`);
+    }
+  }, []);
 
   const handleEdImport = async () => {
     if (!assessmentId || !edToken.trim() || !challengeId.trim()) return;
