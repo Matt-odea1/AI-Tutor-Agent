@@ -17,7 +17,7 @@ export default function QuestionDisplay({
   question,
 }: QuestionDisplayProps) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="bg-paper rounded-xl border border-hairline p-6">
       {/* Question Text */}
       <div className="prose prose-sm max-w-none">
         <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
@@ -27,8 +27,8 @@ export default function QuestionDisplay({
 
       {/* Code Context (if present) */}
       {question.codeContext && (
-        <div className="mt-4 border-t pt-4">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">
+        <div className="mt-4 border-t border-hairline pt-4">
+          <h4 className="text-sm font-semibold text-slate mb-2">
             Your Code
           </h4>
           <div className="prose prose-sm max-w-none">

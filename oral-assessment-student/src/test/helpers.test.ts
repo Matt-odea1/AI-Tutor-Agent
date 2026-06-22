@@ -3,6 +3,7 @@ import {
   formatDuration,
   getGradeFromPercentage,
   getGradeColor,
+  getBandGradeColor,
   calculatePercentage,
   truncate,
   capitalize,
@@ -48,16 +49,55 @@ describe('getGradeFromPercentage', () => {
 });
 
 describe('getGradeColor', () => {
-  it('returns green class for A', () => {
-    expect(getGradeColor('A')).toContain('green');
+  it('returns the success token for A', () => {
+    expect(getGradeColor('A')).toContain('success');
   });
 
-  it('returns red class for F', () => {
-    expect(getGradeColor('F')).toContain('red');
+  it('returns the danger token for F', () => {
+    expect(getGradeColor('F')).toContain('danger');
   });
 
-  it('returns default for unknown grade', () => {
-    expect(getGradeColor('Z')).toContain('gray');
+  it('returns the neutral slate token for an unknown grade', () => {
+    expect(getGradeColor('Z')).toContain('slate');
+  });
+});
+
+describe('getBandGradeColor', () => {
+  it('maps Excellent onto the success token (not legacy green-600)', () => {
+    const cls = getBandGradeColor('Excellent');
+    expect(cls).toContain('success');
+    expect(cls).not.toMatch(/green-\d/);
+  });
+
+  it('maps Competent onto the accent token (not legacy blue)', () => {
+    const cls = getBandGradeColor('Competent');
+    expect(cls).toContain('accent');
+    expect(cls).not.toMatch(/blue/);
+  });
+
+  it('maps Developing onto the caution token (not legacy yellow)', () => {
+    const cls = getBandGradeColor('Developing');
+    expect(cls).toContain('caution');
+    expect(cls).not.toMatch(/yellow/);
+  });
+
+  it('maps Unsatisfactory onto the danger token (not legacy red-600)', () => {
+    const cls = getBandGradeColor('Unsatisfactory');
+    expect(cls).toContain('danger');
+    expect(cls).not.toMatch(/red-\d/);
+  });
+
+  it('falls back to a neutral ink/slate treatment for unknown bands', () => {
+    const cls = getBandGradeColor('Mystery');
+    expect(cls).toContain('slate');
+    expect(cls).not.toMatch(/gray-\d/);
+  });
+
+  it('uses soft token tints, never the bright legacy ramp', () => {
+    for (const band of ['Excellent', 'Competent', 'Developing', 'Unsatisfactory']) {
+      const cls = getBandGradeColor(band);
+      expect(cls).not.toMatch(/-100\b/); // no old bg-*-100 surfaces
+    }
   });
 });
 

@@ -13,11 +13,11 @@ export default function ErrorMessage({ error, onDismiss }: ErrorMessageProps) {
   const errorMessage = typeof error === 'string' ? error : error.message;
 
   return (
-    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+    <div className="bg-danger/10 border border-danger/30 rounded-lg p-4">
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg
-            className="h-5 w-5 text-red-400"
+            className="h-5 w-5 text-danger"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -31,13 +31,13 @@ export default function ErrorMessage({ error, onDismiss }: ErrorMessageProps) {
           </svg>
         </div>
         <div className="ml-3 flex-1">
-          <h3 className="text-sm font-medium text-red-800">Error</h3>
-          <p className="mt-1 text-sm text-red-700">{errorMessage}</p>
+          <h3 className="text-sm font-medium text-danger">Error</h3>
+          <p className="mt-1 text-sm text-danger">{errorMessage}</p>
         </div>
         {onDismiss && (
           <button
             onClick={onDismiss}
-            className="ml-auto flex-shrink-0 text-red-400 hover:text-red-600"
+            className="ml-auto flex-shrink-0 text-danger hover:text-danger/80"
           >
             <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
               <path

@@ -10,6 +10,42 @@ export interface RecordingState {
 }
 
 /**
+ * Resolve the AudioContext constructor across browsers (Safari prefixes it as
+ * `webkitAudioContext`). Returns null when neither exists, so callers can fall
+ * back to a static amplitude on unsupported browsers. Mirrors the detection in
+ * `helpers.ts:checkBrowserSupport` and `DeviceCheck.tsx`.
+ */
+export function resolveAudioContextCtor(): typeof AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  return (
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ??
+    null
+  );
+}
+
+/**
+ * Pure RMS (root-mean-square) of one frame of `getByteTimeDomainData` samples,
+ * normalised to 0..1. Each byte is centred on 128 (silence); the deviation from
+ * the midpoint, scaled to ±1, is squared and averaged, then square-rooted.
+ * Extracted so the amplitude math can be unit-tested without a real AudioContext.
+ */
+export function rmsFromTimeDomain(data: Uint8Array): number {
+  if (data.length === 0) return 0;
+  let sumSquares = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128;
+    sumSquares += v * v;
+  }
+  const rms = Math.sqrt(sumSquares / data.length);
+  // Clamp to 0..1 against any out-of-range sample.
+  return rms > 1 ? 1 : rms;
+}
+
+/** Amplitude returned when no AudioContext/AnalyserNode is available. */
+export const STATIC_AMPLITUDE = 0;
+
+/**
  * Inputs to the pre-flight "is the mic confirmed working" gate. Kept as a pure,
  * framework-agnostic predicate so the DeviceCheck Start-button gating can be
  * unit-tested without a real mic. Confirmed === permission granted AND we have
@@ -42,6 +78,15 @@ export class AudioRecorder {
   // track owned by the proctoring session, which manages its own lifecycle.
   // Defaults to true (the no-arg getUserMedia path owns and stops its own track).
   private ownsStream = true;
+  // Live mic-amplitude metering for the recorder's breathing ring. Owned by this
+  // recorder (separate from the DeviceCheck pre-flight meter, which builds its
+  // own AudioContext on getStream()). Disposed in cleanup(). Null when the
+  // browser lacks AudioContext or the analyser failed to attach.
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  // Backed by a concrete ArrayBuffer (not ArrayBufferLike) so it satisfies the
+  // AnalyserNode.getByteTimeDomainData signature in current TS DOM libs.
+  private timeDomainData: Uint8Array<ArrayBuffer> | null = null;
 
   /**
    * Initialize the recorder.
@@ -102,6 +147,11 @@ export class AudioRecorder {
           this.audioChunks.push(event.data);
         }
       };
+
+      // Attach a live amplitude analyser for the recorder's breathing ring.
+      // Best-effort: a failure here must never block recording, so it is
+      // swallowed and getAmplitude() simply returns a static value.
+      this.attachAmplitudeAnalyser();
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -240,6 +290,48 @@ export class AudioRecorder {
   }
 
   /**
+   * Build an AudioContext + AnalyserNode over the current stream so the UI can
+   * read a live 0..1 amplitude via getAmplitude(). Best-effort and idempotent:
+   * does nothing (leaving getAmplitude() on its static fallback) when there is
+   * no stream or the browser has no AudioContext. Any construction error is
+   * swallowed — metering is decorative and must never break recording.
+   */
+  private attachAmplitudeAnalyser(): void {
+    if (!this.stream) return;
+    if (this.analyser) return; // already attached
+    const Ctor = resolveAudioContextCtor();
+    if (!Ctor) return;
+    try {
+      const ctx = new Ctor();
+      const source = ctx.createMediaStreamSource(this.stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      this.audioContext = ctx;
+      this.analyser = analyser;
+      this.timeDomainData = new Uint8Array(new ArrayBuffer(analyser.fftSize));
+    } catch {
+      // Leave fields null → getAmplitude() returns the static fallback.
+      this.audioContext = null;
+      this.analyser = null;
+      this.timeDomainData = null;
+    }
+  }
+
+  /**
+   * Current microphone amplitude as a 0..1 RMS of the live time-domain signal.
+   * Returns a static value (STATIC_AMPLITUDE) when no analyser is attached —
+   * either the browser lacks AudioContext or initialize() has not (yet) run —
+   * so the breathing ring degrades to a calm resting radius instead of throwing.
+   * Cheap enough to call every requestAnimationFrame from a local rAF loop.
+   */
+  getAmplitude(): number {
+    if (!this.analyser || !this.timeDomainData) return STATIC_AMPLITUDE;
+    this.analyser.getByteTimeDomainData(this.timeDomainData);
+    return rmsFromTimeDomain(this.timeDomainData);
+  }
+
+  /**
    * Create an audio URL for playback
    */
   createAudioUrl(blob: Blob): string {
@@ -257,6 +349,20 @@ export class AudioRecorder {
    * Clean up and release resources
    */
   cleanup(): void {
+    // Tear down the amplitude analyser first. Closing the context releases the
+    // analyser + media-stream source regardless of stream ownership (the
+    // analyser only reads the signal; closing it never stops the proctoring
+    // track). close() can reject if already closed — ignore.
+    if (this.audioContext) {
+      const ctx = this.audioContext;
+      if (ctx.state !== 'closed' && typeof ctx.close === 'function') {
+        void Promise.resolve(ctx.close()).catch(() => {});
+      }
+    }
+    this.audioContext = null;
+    this.analyser = null;
+    this.timeDomainData = null;
+
     if (this.stream) {
       // Only stop tracks we own. A reused proctoring audio track (ownsStream
       // false) must keep running so proctoring isn't killed when a per-question

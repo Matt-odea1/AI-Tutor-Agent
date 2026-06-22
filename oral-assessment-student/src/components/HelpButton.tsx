@@ -9,7 +9,7 @@
  *
  * The modal reuses the focus-trap + overlay pattern from ConsentModal so keyboard
  * users stay trapped inside the dialog while it's open, and matches the existing
- * Tailwind tokens (`bg-white rounded-2xl shadow-xl`, `primary-*`).
+ * design tokens (`bg-paper rounded-xl shadow-overlay`, `accent`).
  *
  * Contact info NEVER hardcodes a real person: it comes purely from the optional
  * props (sourced from backend data — see the assumed contract on QuestionsResponse /
@@ -92,7 +92,7 @@ export default function HelpButton({
         onClick={() => setOpen(true)}
         aria-label="Get help"
         title="Get help"
-        className={`inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors ${className}`}
+        className={`inline-flex items-center justify-center w-9 h-9 rounded-full border border-hairline bg-paper text-slate hover:bg-ink/5 hover:text-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent transition-colors ${className}`}
       >
         <span className="text-lg font-semibold leading-none" aria-hidden="true">?</span>
       </button>
@@ -108,17 +108,17 @@ export default function HelpButton({
             aria-modal="true"
             aria-labelledby="help-title"
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-6"
+            className="bg-paper rounded-xl shadow-overlay max-w-lg w-full max-h-[85vh] overflow-y-auto p-6"
           >
             <div className="flex items-start justify-between mb-4">
-              <h2 id="help-title" className="text-xl font-bold text-gray-900">
+              <h2 id="help-title" className="text-xl font-bold font-serif text-ink">
                 Need help?
               </h2>
               <button
                 type="button"
                 onClick={handleClose}
                 aria-label="Close help"
-                className="ml-4 flex-shrink-0 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
+                className="ml-4 flex-shrink-0 text-slate hover:text-ink focus:outline-none focus:ring-2 focus:ring-accent rounded"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -130,18 +130,18 @@ export default function HelpButton({
               </button>
             </div>
 
-            <p className="text-sm text-gray-600 mb-5">
+            <p className="text-sm text-slate mb-5">
               Trouble with your microphone, camera, or submitting an answer? Try the
               steps below.
             </p>
 
             <div className="space-y-4">
               {/* Microphone */}
-              <section className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-800 mb-2">
+              <section className="bg-ink/5 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-ink mb-2">
                   Microphone not detected or no sound
                 </h3>
-                <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                <ul className="text-sm text-slate space-y-1 list-disc list-inside">
                   <li>Check that your microphone is allowed in your operating system's privacy/sound settings.</li>
                   <li>Allow microphone access for this site in your browser (click the lock icon in the address bar).</li>
                   <li>Make sure the correct input device is selected and not muted, then reload the page.</li>
@@ -149,11 +149,11 @@ export default function HelpButton({
               </section>
 
               {/* Camera */}
-              <section className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-800 mb-2">
+              <section className="bg-ink/5 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-ink mb-2">
                   Camera blocked or access revoked
                 </h3>
-                <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                <ul className="text-sm text-slate space-y-1 list-disc list-inside">
                   <li>Click the lock icon in your browser's address bar and re-grant camera (and microphone) access for this site.</li>
                   <li>Then use the on-screen "Restore camera" prompt to resume recording.</li>
                   <li>Close other apps that may be using your camera, then try again.</li>
@@ -161,11 +161,11 @@ export default function HelpButton({
               </section>
 
               {/* Upload / connection */}
-              <section className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-800 mb-2">
+              <section className="bg-ink/5 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-ink mb-2">
                   An answer won't submit
                 </h3>
-                <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                <ul className="text-sm text-slate space-y-1 list-disc list-inside">
                   <li>Check your internet connection.</li>
                   <li>Wait a moment and retry — submitting will resume automatically when you reconnect.</li>
                   <li>Your recording is preserved while you retry, so you won't lose your answer.</li>
@@ -174,13 +174,13 @@ export default function HelpButton({
             </div>
 
             {/* Support / contact block */}
-            <section className="mt-5 border-t border-gray-200 pt-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">Still stuck?</h3>
+            <section className="mt-5 border-t border-hairline pt-4">
+              <h3 className="text-sm font-semibold text-ink mb-2">Still stuck?</h3>
               {hasDirectContact ? (
-                <div className="text-sm text-gray-600 space-y-1">
+                <div className="text-sm text-slate space-y-1">
                   {instructorName && (
                     <p>
-                      Contact <span className="font-medium text-gray-800">{instructorName}</span> for help.
+                      Contact <span className="font-medium text-ink">{instructorName}</span> for help.
                     </p>
                   )}
                   {supportEmail && (
@@ -188,7 +188,7 @@ export default function HelpButton({
                       Email:{' '}
                       <a
                         href={`mailto:${supportEmail}`}
-                        className="text-primary-600 hover:text-primary-700 underline break-all"
+                        className="text-accent hover:text-accent-hover underline break-all"
                       >
                         {supportEmail}
                       </a>
@@ -201,7 +201,7 @@ export default function HelpButton({
                         href={supportUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary-600 hover:text-primary-700 underline break-all"
+                        className="text-accent hover:text-accent-hover underline break-all"
                       >
                         {supportUrl}
                       </a>
@@ -209,10 +209,10 @@ export default function HelpButton({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-slate">
                   {instructorName ? (
                     <>
-                      Contact <span className="font-medium text-gray-800">{instructorName}</span> or your
+                      Contact <span className="font-medium text-ink">{instructorName}</span> or your
                       course administrator for help with your invite link.
                     </>
                   ) : (
@@ -225,7 +225,7 @@ export default function HelpButton({
             <button
               type="button"
               onClick={handleClose}
-              className="mt-6 w-full bg-primary-600 text-white px-4 py-2.5 rounded-lg hover:bg-primary-700 transition-colors font-medium"
+              className="mt-6 w-full bg-accent text-white px-4 py-2.5 rounded-xl hover:bg-accent-hover transition-colors font-medium"
             >
               Close
             </button>

@@ -78,22 +78,22 @@ describe('scorePercent', () => {
 
 describe('scoreColorClass', () => {
   it('bands by percentage', () => {
-    expect(scoreColorClass(95)).toContain('green');
-    expect(scoreColorClass(75)).toContain('blue');
-    expect(scoreColorClass(55)).toContain('yellow');
-    expect(scoreColorClass(20)).toContain('red');
+    expect(scoreColorClass(95)).toContain('success');
+    expect(scoreColorClass(75)).toContain('caution');
+    expect(scoreColorClass(55)).toContain('slate');
+    expect(scoreColorClass(20)).toContain('danger');
   });
 });
 
 describe('statusBadgeFor', () => {
   it('shows a percentage badge for graded', () => {
-    expect(statusBadgeFor('graded', 80)).toEqual({ label: '80%', className: expect.stringContaining('blue') });
+    expect(statusBadgeFor('graded', 80)).toEqual({ label: '80%', className: expect.stringContaining('caution') });
   });
 
   it('shows a neutral Skipped badge (never red 0%)', () => {
     const badge = statusBadgeFor('skipped', null);
     expect(badge.label).toBe('Skipped');
-    expect(badge.className).toContain('gray');
+    expect(badge.className).toContain('slate');
     expect(badge.className).not.toContain('red');
   });
 
@@ -104,7 +104,7 @@ describe('statusBadgeFor', () => {
   it('shows an amber Grading unavailable badge', () => {
     const badge = statusBadgeFor('grading-failed', null);
     expect(badge.label).toBe('Grading unavailable');
-    expect(badge.className).toContain('amber');
+    expect(badge.className).toContain('caution');
   });
 });
 

@@ -25,12 +25,12 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
     return (
       <button
         onClick={() => setMinimised(false)}
-        className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full bg-gray-900 border-2 border-gray-700 shadow-xl flex items-center justify-center hover:border-gray-500 transition-colors"
+        className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full bg-gray-900 border-2 border-gray-700 shadow-overlay flex items-center justify-center hover:border-gray-500 transition-colors"
         title="Expand proctoring camera"
         aria-label="Expand proctoring camera"
       >
         {isRecording && (
-          <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+          <span className="w-3 h-3 rounded-full bg-record animate-pulse" />
         )}
         {!isRecording && (
           <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -43,7 +43,7 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-40 shadow-xl rounded-lg overflow-hidden border-2 border-gray-800 w-[120px] h-[90px] sm:w-[160px] sm:h-[120px]"
+      className="fixed bottom-4 right-4 z-40 shadow-overlay rounded-xl overflow-hidden border-2 border-gray-800 w-[120px] h-[90px] sm:w-[160px] sm:h-[120px]"
       title="Proctoring camera — your session is being recorded"
     >
       <video
@@ -55,7 +55,7 @@ export default function ProctorCamera({ stream, isRecording }: ProctorCameraProp
       />
       {isRecording && (
         <div className="absolute top-1.5 left-1.5 flex items-center space-x-1">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-record animate-pulse" />
           <span className="text-white text-[10px] font-bold leading-none bg-black/60 px-1 py-0.5 rounded">
             REC
           </span>

@@ -22,18 +22,18 @@ function DefaultRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-10 max-w-md w-full text-center">
-        <h1 className="text-2xl font-bold text-gray-900 mb-3">Oral Assessment Platform</h1>
-        <p className="text-gray-600 mb-2">
+    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+      <div className="bg-paper rounded-xl border border-hairline p-10 max-w-md w-full text-center">
+        <h1 className="font-serif text-2xl font-bold text-ink mb-3">Oral Assessment Platform</h1>
+        <p className="text-ink mb-2">
           This platform is used to take oral assessments set by your instructor.
         </p>
-        <p className="text-sm text-gray-500 mb-2">
+        <p className="text-sm text-slate mb-2">
           If you have an assessment link, open it in your browser or paste it below.
         </p>
-        <p className="text-xs text-gray-400 mb-8 font-mono bg-gray-50 rounded px-3 py-2 text-left">
+        <p className="text-xs text-slate mb-8 font-mono bg-ink/5 rounded-xl px-3 py-2 text-left">
           Your link will look like:<br />
-          <span className="text-gray-600">https://…/s12345/a1b2c3d4-…</span>
+          <span className="text-ink">https://…/s12345/a1b2c3d4-…</span>
         </p>
         <div className="flex space-x-2">
           <input
@@ -42,12 +42,12 @@ function DefaultRoute() {
             onChange={(e) => setLinkInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGo()}
             placeholder="Paste your assessment link…"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="flex-1 border border-hairline rounded-xl px-3 py-2 text-sm bg-paper text-ink focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <button
             onClick={handleGo}
             disabled={!linkInput.trim()}
-            className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-40 transition-colors"
+            className="bg-accent text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-accent-hover disabled:opacity-40 transition-colors duration-200 ease-out"
           >
             Go
           </button>

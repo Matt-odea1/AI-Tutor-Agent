@@ -32,15 +32,15 @@ describe('ProgressTracker', () => {
 
     // Current — primary highlight + step semantics.
     expect(current!.getAttribute('aria-current')).toBe('step');
-    expect(current!.className).toContain('bg-primary-600');
+    expect(current!.className).toContain('bg-accent');
 
     // Answered — green, and crucially NOT the skipped amber.
-    expect(answered!.className).toContain('bg-green-100');
-    expect(answered!.className).not.toContain('bg-amber-100');
+    expect(answered!.className).toContain('bg-success');
+    expect(answered!.className).not.toContain('bg-caution');
 
     // Skipped — amber, and crucially NOT the answered green check styling.
-    expect(skipped!.className).toContain('bg-amber-100');
-    expect(skipped!.className).not.toContain('bg-green-100');
+    expect(skipped!.className).toContain('bg-caution');
+    expect(skipped!.className).not.toContain('bg-success');
   });
 
   it('renders a question that is both answered and skipped as skipped — skip wins, never the green check', () => {
@@ -59,8 +59,8 @@ describe('ProgressTracker', () => {
     // skipped id, but we know locally it was skipped, so it must render skipped.
     const q2 = byLabel(container, 'Question 2, skipped');
     expect(q2).not.toBeNull();
-    expect(q2!.className).toContain('bg-amber-100');
-    expect(q2!.className).not.toContain('bg-green-100');
+    expect(q2!.className).toContain('bg-caution');
+    expect(q2!.className).not.toContain('bg-success');
     expect(byLabel(container, 'Question 2, answered')).toBeNull();
   });
 
@@ -70,8 +70,8 @@ describe('ProgressTracker', () => {
     );
 
     // No id sets supplied → answered iff i < answeredCount.
-    expect(byLabel(container, 'Question 1, answered')!.className).toContain('bg-green-100');
-    expect(byLabel(container, 'Question 2, answered')!.className).toContain('bg-green-100');
+    expect(byLabel(container, 'Question 1, answered')!.className).toContain('bg-success');
+    expect(byLabel(container, 'Question 2, answered')!.className).toContain('bg-success');
     expect(byLabel(container, 'Question 3, current')!.getAttribute('aria-current')).toBe('step');
   });
 

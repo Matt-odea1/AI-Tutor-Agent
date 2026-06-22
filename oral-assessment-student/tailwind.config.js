@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,27 +8,58 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Primary brand colors - AI-tutor purple
+        // ── 2026 "quiet room" semantic palette ──────────────────────────────
+        // Surfaces & text. These reference CSS custom properties (see
+        // src/index.css) so a single `.dark` toggle (or OS preference) flips
+        // the whole app without per-utility dark: variants.
+        paper: 'var(--color-paper)',     // page / card surface
+        ink: 'var(--color-ink)',         // primary text
+        slate: 'var(--color-slate)',     // metadata / secondary text
+        hairline: 'var(--color-hairline)', // 1px borders & dividers
+
+        // The ONE brand accent — deep ink-teal. Primary actions, focus rings,
+        // the active timer ring, and the results arc dial.
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+          hover: 'var(--color-accent-hover)',
+        },
+
+        // Recording state ONLY — warm vermillion.
+        record: 'var(--color-record)',
+
+        // Status tokens.
+        success: '#1B9E77',
+        caution: '#B45309',
+        danger: '#C0392B',
+
+        // Straggler alias: any surviving `primary-*` class resolves to teal
+        // during migration so a half-migrated screen never renders an
+        // undefined color. Prefer `accent` in new code.
         primary: {
-          50: '#f6f0fa',
-          100: '#ede1f7',
-          200: '#dac4ef',
-          300: '#c6a5e7',
-          400: '#b085de',
-          500: '#8947ae',
-          600: '#7a3f9b',
-          700: '#6a3587',
-          800: '#562b6f',
-          900: '#47255c',
+          50: '#E6F2EF',
+          100: '#CCE5DF',
+          200: '#99CCBF',
+          300: '#66B29F',
+          400: '#33997F',
+          500: 'var(--color-accent)',
+          600: 'var(--color-accent)',
+          700: 'var(--color-accent-hover)',
+          800: 'var(--color-accent-hover)',
+          900: 'var(--color-accent-hover)',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ['Fraunces', 'Georgia', 'serif'],
         mono: ['Fira Code', 'monospace'],
       },
+      borderRadius: {
+        card: 'var(--radius-card)',
+      },
       boxShadow: {
-        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1)',
-        'message': '0 2px 8px -1px rgba(0, 0, 0, 0.08), 0 1px 4px -1px rgba(0, 0, 0, 0.04)',
+        // ONE elevation token, reserved for overlays/modals only. Cards use
+        // hairline borders, not drop-shadows.
+        overlay: 'var(--elevation-overlay)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',

@@ -24,8 +24,8 @@ export default function TextAnswerInput({
   const canSubmit = value.trim().length >= minLength && !isSubmitting && !disabled;
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Write Your Answer</h3>
+    <div className="bg-paper rounded-xl border border-hairline p-6">
+      <h3 className="text-lg font-semibold font-serif text-ink mb-4">Write Your Answer</h3>
 
       <textarea
         value={value}
@@ -33,17 +33,17 @@ export default function TextAnswerInput({
         disabled={disabled || isSubmitting}
         rows={8}
         placeholder="Type your answer here..."
-        className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-900 placeholder-gray-400
-                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                   disabled:bg-gray-50 disabled:cursor-not-allowed resize-y"
+        className="w-full border border-hairline bg-paper rounded-xl p-3 text-sm text-ink placeholder-slate
+                   focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent
+                   disabled:bg-ink/5 disabled:cursor-not-allowed resize-y"
       />
 
       <div className="flex items-center justify-between mt-2 mb-4">
-        <span className={`text-xs ${value.trim().length < minLength ? 'text-gray-400' : 'text-green-600'}`}>
+        <span className={`text-xs tabular-nums ${value.trim().length < minLength ? 'text-slate' : 'text-success'}`}>
           {value.trim().length} / {minLength} characters minimum
         </span>
         {value.trim().length > 0 && value.trim().length < minLength && (
-          <span className="text-xs text-orange-500">
+          <span className="text-xs tabular-nums text-caution">
             {minLength - value.trim().length} more characters needed
           </span>
         )}
@@ -52,8 +52,8 @@ export default function TextAnswerInput({
       <button
         onClick={onSubmit}
         disabled={!canSubmit}
-        className="w-full flex items-center justify-center space-x-2 bg-primary-600 text-white px-6 py-3
-                   rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed
+        className="w-full flex items-center justify-center space-x-2 bg-accent text-white px-6 py-3
+                   rounded-xl hover:bg-accent-hover disabled:bg-ink/20 disabled:cursor-not-allowed
                    transition-colors font-medium"
       >
         {isSubmitting ? (

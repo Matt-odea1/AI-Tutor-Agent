@@ -2,7 +2,7 @@
  * AudioRecorder - Audio recording component with playback controls
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../utils/helpers';
 import { useAssessmentStore } from '../store/assessmentStore';
 
@@ -10,6 +10,23 @@ interface AudioRecorderProps {
   onSubmit?: () => void;
   timeLimit?: number; // in seconds
   disabled?: boolean;
+}
+
+// Breathing-ring geometry. The ring is a single SVG circle whose radius eases
+// between a calm resting value and a fully-lit value driven by live mic
+// amplitude (0..1 RMS from audio.ts getAmplitude()). Frozen at REST_R under
+// prefers-reduced-motion or when no AudioContext is available.
+const RING_BOX = 112; // viewBox / px size of the ring svg
+const RING_CENTER = RING_BOX / 2;
+const REST_R = 40; // calm resting radius
+const MAX_R = 52; // fully-lit radius at peak amplitude
+
+/** True when the user has asked the OS to minimise motion. */
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export default function AudioRecorder({
@@ -42,6 +59,63 @@ export default function AudioRecorder({
   // which is the single clock that triggers stop+submit on expiry. recordingDuration
   // and the header countdown are both anchored to recording start, so they agree.
   const remainingSeconds = Math.max(0, timeLimit - recordingDuration);
+
+  // ── Signature #1: live mic-amplitude breathing ring ──────────────────────────
+  // The animated <circle> radius is driven directly on the SVG element from a
+  // requestAnimationFrame loop. Amplitude is read from the recorder instance via
+  // useAssessmentStore.getState() (NOT a hook subscription) so this never causes a
+  // React re-render — and the store is NEVER set() per frame. Reduced-motion or a
+  // missing AudioContext freezes the ring at REST_R.
+  const ringRef = useRef<SVGCircleElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const smoothedRef = useRef(REST_R);
+
+  useEffect(() => {
+    const reduced = prefersReducedMotion();
+
+    // Freeze at the calm resting radius when recording is not live, motion is
+    // reduced, or there's no analyser to read. No rAF loop in those cases.
+    if (!isRecording || isPaused || reduced) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      smoothedRef.current = REST_R;
+      if (ringRef.current) ringRef.current.setAttribute('r', String(REST_R));
+      return;
+    }
+
+    const loop = () => {
+      // Read amplitude off the live recorder without subscribing to the store.
+      const recorder = useAssessmentStore.getState().audioRecorder;
+      const amp = recorder ? recorder.getAmplitude() : 0; // 0..1 RMS (0 = static fallback)
+      // Map amplitude to a target radius, then ease toward it so the ring
+      // breathes smoothly instead of jittering frame-to-frame.
+      const target = REST_R + (MAX_R - REST_R) * Math.min(1, amp * 3.5);
+      smoothedRef.current += (target - smoothedRef.current) * 0.18;
+      if (ringRef.current) ringRef.current.setAttribute('r', smoothedRef.current.toFixed(2));
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [isRecording, isPaused]);
+
+  // Amber -> vermillion top hairline: shifts as recording time approaches the
+  // limit. Driven from recordingDuration vs timeLimit (no new wiring); mirrors the
+  // header QuestionTimer thresholds (warning at ≤60s, danger at ≤30s remaining).
+  const topHairlineClass = !isRecording
+    ? 'bg-hairline'
+    : remainingSeconds <= 30
+    ? 'bg-record'
+    : remainingSeconds <= 60
+    ? 'bg-caution'
+    : 'bg-accent';
 
   // Initialize recorder on mount
   useEffect(() => {
@@ -109,15 +183,21 @@ export default function AudioRecorder({
   const canSubmit = recordedBlob && !isUploading;
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+    <div className="relative overflow-hidden bg-paper rounded-card border border-hairline p-6">
+      {/* Top hairline — amber -> vermillion as recording time approaches the limit */}
+      <div
+        aria-hidden="true"
+        className={`absolute inset-x-0 top-0 h-0.5 transition-colors duration-200 ease-out ${topHairlineClass}`}
+      />
+
+      <h3 className="text-lg font-serif font-semibold text-ink mb-4">
         Record Your Answer
       </h3>
 
       {/* Browser Support Warning / Error */}
       {!isInitialized && !disabled && (
-        <div className={`mb-4 p-4 rounded-lg ${initError ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-          <p className={`text-sm ${initError ? 'text-red-800' : 'text-yellow-800'}`}>
+        <div className={`mb-4 p-4 rounded-card border ${initError ? 'border-danger/30 bg-danger/5' : 'border-caution/30 bg-caution/5'}`}>
+          <p className={`text-sm ${initError ? 'text-danger' : 'text-caution'}`}>
             {initError || 'Initializing microphone... Please allow microphone access when prompted.'}
           </p>
         </div>
@@ -128,91 +208,133 @@ export default function AudioRecorder({
         <div className="inline-flex items-center justify-center">
           {/* Recording Indicator */}
           {isRecordingState && (
-            <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse mr-3" />
+            <div className="w-3 h-3 bg-record rounded-full animate-pulse mr-3" />
           )}
-          
+
           {/* Time remaining (mirrors the header countdown — same record-start anchor) */}
-          <div className="text-4xl font-mono font-bold text-gray-900">
+          <div className="text-4xl font-serif font-semibold tabular-nums tracking-tight text-ink">
             {formatDuration(remainingSeconds)}
           </div>
 
         </div>
 
         {isRecordingState && (
-          <p className="mt-2 text-sm text-gray-600">Recording in progress — {formatDuration(remainingSeconds)} remaining</p>
+          <p className="mt-2 text-sm text-slate">Recording in progress — {formatDuration(remainingSeconds)} remaining</p>
         )}
         {isPaused && (
-          <p className="mt-2 text-sm text-yellow-600">Recording paused</p>
+          <p className="mt-2 text-sm text-caution">Recording paused</p>
         )}
       </div>
 
       {/* Recording Controls */}
       <div className="flex flex-col items-center space-y-3 mb-6">
-        {/* Idle State: Start Recording */}
+        {/* Idle State: Start Recording — wrapped in the concentric breathing ring */}
         {isIdle && (
-          <button
-            onClick={handleStartRecording}
-            disabled={!isInitialized || disabled}
-            className="flex items-center justify-center space-x-2 bg-red-600 text-white px-8 py-3 rounded-full hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
-                clipRule="evenodd"
+          <div className="relative inline-flex items-center justify-center" style={{ width: RING_BOX, height: RING_BOX }}>
+            {/* Breathing ring (decorative). Static at REST_R until recording starts. */}
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+              width={RING_BOX}
+              height={RING_BOX}
+              viewBox={`0 0 ${RING_BOX} ${RING_BOX}`}
+            >
+              <circle
+                ref={ringRef}
+                cx={RING_CENTER}
+                cy={RING_CENTER}
+                r={REST_R}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-record/40"
               />
             </svg>
-            <span className="font-medium">Start Recording</span>
-          </button>
-        )}
-
-        {/* Recording State: Pause/Resume and Stop */}
-        {isRecording && (
-          <div className="flex space-x-3">
-            {/* Pause/Resume */}
             <button
-              onClick={isPaused ? resumeRecording : pauseRecording}
-              className="flex items-center space-x-2 bg-yellow-500 text-white px-6 py-3 rounded-full hover:bg-yellow-600 transition-colors"
-            >
-              {isPaused ? (
-                <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  <span>Resume</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  <span>Pause</span>
-                </>
-              )}
-            </button>
-
-            {/* Stop */}
-            <button
-              onClick={handleStopRecording}
-              className="flex items-center space-x-2 bg-gray-700 text-white px-6 py-3 rounded-full hover:bg-gray-800 transition-colors"
+              onClick={handleStartRecording}
+              disabled={!isInitialized || disabled}
+              className="relative flex items-center justify-center space-x-2 bg-record text-white px-8 py-3 rounded-full hover:bg-record/90 disabled:bg-slate/40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z"
+                  d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
                   clipRule="evenodd"
                 />
               </svg>
-              <span>Stop</span>
+              <span className="font-medium">Start Recording</span>
             </button>
+          </div>
+        )}
+
+        {/* Recording State: Pause/Resume and Stop, wrapped in the breathing ring */}
+        {isRecording && (
+          <div className="relative inline-flex items-center justify-center" style={{ minHeight: RING_BOX }}>
+            {/* Breathing ring — responds to live mic amplitude while recording */}
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+              width={RING_BOX}
+              height={RING_BOX}
+              viewBox={`0 0 ${RING_BOX} ${RING_BOX}`}
+            >
+              <circle
+                ref={ringRef}
+                cx={RING_CENTER}
+                cy={RING_CENTER}
+                r={REST_R}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-record/40"
+              />
+            </svg>
+            <div className="relative flex space-x-3">
+              {/* Pause/Resume */}
+              <button
+                onClick={isPaused ? resumeRecording : pauseRecording}
+                className="flex items-center space-x-2 bg-accent text-white px-6 py-3 rounded-full hover:bg-accent-hover transition-colors duration-200 ease-out"
+              >
+                {isPaused ? (
+                  <>
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span>Resume</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span>Pause</span>
+                  </>
+                )}
+              </button>
+
+              {/* Stop */}
+              <button
+                onClick={handleStopRecording}
+                className="flex items-center space-x-2 bg-ink text-paper px-6 py-3 rounded-full hover:bg-ink/90 transition-colors duration-200 ease-out"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>Stop</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -221,7 +343,7 @@ export default function AudioRecorder({
           <div className="w-full space-y-3">
             {/* Audio Player */}
             {audioUrl && (
-              <div className="flex items-center justify-center p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-center p-4 bg-ink/5 rounded-card">
                 <audio
                   controls
                   src={audioUrl}
@@ -238,7 +360,7 @@ export default function AudioRecorder({
               <button
                 onClick={handleRerecord}
                 disabled={isUploading}
-                className="flex items-center space-x-2 bg-gray-600 text-white px-6 py-3 rounded-full hover:bg-gray-700 disabled:bg-gray-400 transition-colors"
+                className="flex items-center space-x-2 bg-paper text-ink border border-hairline px-6 py-3 rounded-full hover:bg-ink/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -253,12 +375,27 @@ export default function AudioRecorder({
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-full hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                className="flex items-center space-x-2 bg-success text-white px-8 py-3 rounded-full hover:bg-success/90 disabled:bg-slate/40 disabled:cursor-not-allowed transition-colors duration-200 ease-out font-medium"
               >
                 {isUploading ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Uploading... {uploadProgress}%</span>
+                    {/* Determinate progress: a thin ring whose sweep tracks uploadProgress. */}
+                    <svg className="w-5 h-5 -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-white/30" />
+                      <circle
+                        cx="18"
+                        cy="18"
+                        r="15"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        className="text-white transition-[stroke-dashoffset] duration-200 ease-out"
+                        strokeDasharray={2 * Math.PI * 15}
+                        strokeDashoffset={2 * Math.PI * 15 * (1 - Math.min(100, Math.max(0, uploadProgress)) / 100)}
+                      />
+                    </svg>
+                    <span className="tabular-nums">Uploading... {uploadProgress}%</span>
                   </>
                 ) : (
                   <>
@@ -280,12 +417,12 @@ export default function AudioRecorder({
 
       {/* Error Display */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-          <p className="text-sm text-red-800">{error.message}</p>
+        <div className="p-3 bg-danger/5 border border-danger/30 rounded-card flex items-center justify-between">
+          <p className="text-sm text-danger">{error.message}</p>
           {recordedBlob && !isUploading && (
             <button
               onClick={handleSubmit}
-              className="ml-3 flex-shrink-0 bg-red-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
+              className="ml-3 flex-shrink-0 bg-record text-white px-4 py-1.5 rounded-full text-sm font-medium hover:bg-record/90 transition-colors duration-200 ease-out"
             >
               Retry Upload
             </button>

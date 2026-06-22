@@ -318,20 +318,20 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
   // ─── Written mode: nothing to test ───────────────────────────────────────────
   if (answerMode === 'written') {
     return (
-      <div className="fixed inset-0 bg-gray-50 flex items-center justify-center p-4 z-40">
-        <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
-            <svg className="h-7 w-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="fixed inset-0 bg-paper flex items-center justify-center p-4 z-40">
+        <div className="bg-paper rounded-xl border border-hairline shadow-overlay max-w-lg w-full p-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
+            <svg className="h-7 w-7 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">You&apos;re all set</h2>
-          <p className="text-sm text-gray-600 mb-8">
+          <h2 className="text-2xl font-bold font-serif text-ink mb-2">You&apos;re all set</h2>
+          <p className="text-sm text-slate mb-8">
             This is a written assessment — no microphone is needed. Click below to begin.
           </p>
           <button
             onClick={handleStart}
-            className="w-full bg-primary-600 text-white py-3 rounded-xl font-semibold hover:bg-primary-700 transition-colors text-lg"
+            className="w-full bg-accent text-white py-3 rounded-xl font-semibold hover:bg-accent-hover transition-colors text-lg"
           >
             I&apos;m ready, start
           </button>
@@ -344,16 +344,16 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
   const meterPct = Math.min(100, Math.round(meterLevel * 100));
 
   return (
-    <div className="fixed inset-0 bg-gray-50 flex items-center justify-center p-4 z-40 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-8 my-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Microphone check</h2>
-        <p className="text-sm text-gray-500 mb-6">
+    <div className="fixed inset-0 bg-paper flex items-center justify-center p-4 z-40 overflow-y-auto">
+      <div className="bg-paper rounded-xl border border-hairline shadow-overlay max-w-lg w-full p-8 my-8">
+        <h2 className="text-2xl font-bold font-serif text-ink mb-1">Microphone check</h2>
+        <p className="text-sm text-slate mb-6">
           Make sure your microphone works before the timed assessment begins.
         </p>
 
         {permissionState === 'prompting' && (
-          <div className="mb-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
-            <p className="text-sm text-yellow-800">
+          <div className="mb-4 p-4 rounded-xl bg-caution/10 border border-caution/20">
+            <p className="text-sm text-caution">
               Requesting microphone access… Please allow it when prompted.
             </p>
           </div>
@@ -364,7 +364,7 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
             <ErrorMessage error={errorMessage} />
             <button
               onClick={handleRetry}
-              className="mt-3 w-full bg-gray-800 text-white py-2.5 rounded-lg font-medium hover:bg-gray-900 transition-colors"
+              className="mt-3 w-full bg-ink text-paper py-2.5 rounded-xl font-medium hover:bg-ink/90 transition-colors"
             >
               Retry
             </button>
@@ -375,14 +375,14 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
           <>
             {/* Device picker */}
             <div className="mb-4">
-              <label htmlFor="mic-device" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="mic-device" className="block text-sm font-medium text-ink mb-1">
                 Input device
               </label>
               <select
                 id="mic-device"
                 value={selectedDeviceId}
                 onChange={handleDeviceChange}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full border border-hairline bg-paper text-ink rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 <option value="">Default microphone</option>
                 {devices.map((d, i) => (
@@ -392,24 +392,24 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
                 ))}
               </select>
               {deviceFallbackNote && (
-                <p className="mt-1 text-xs text-yellow-700">{deviceFallbackNote}</p>
+                <p className="mt-1 text-xs text-caution">{deviceFallbackNote}</p>
               )}
             </div>
 
             {/* Live input-level meter */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-700">Input level</span>
+                <span className="text-sm font-medium text-ink">Input level</span>
                 {hasDetectedSound ? (
-                  <span className="text-xs text-green-600 font-medium">Sound detected ✓</span>
+                  <span className="text-xs text-success font-medium">Sound detected ✓</span>
                 ) : (
-                  <span className="text-xs text-gray-400">Speak to test…</span>
+                  <span className="text-xs text-slate">Speak to test…</span>
                 )}
               </div>
-              <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-3 w-full bg-ink/10 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-[width] duration-75 ${
-                    meterLevel >= SIGNAL_THRESHOLD ? 'bg-green-500' : 'bg-primary-400'
+                    meterLevel >= SIGNAL_THRESHOLD ? 'bg-success' : 'bg-accent/40'
                   }`}
                   style={{ width: `${meterPct}%` }}
                 />
@@ -418,21 +418,21 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
 
             {/* Record + playback sample */}
             <div className="mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">
+              <p className="text-sm font-medium text-ink mb-2">
                 Optional: record a short test clip (up to {SAMPLE_CAP_SECONDS}s)
               </p>
               <div className="flex items-center gap-3">
                 {!isSampleRecording ? (
                   <button
                     onClick={handleRecordSample}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                    className="bg-record text-white px-4 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
                   >
                     Record test clip
                   </button>
                 ) : (
                   <button
                     onClick={handleStopSample}
-                    className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+                    className="bg-ink text-paper px-4 py-2 rounded-full text-sm font-medium hover:bg-ink/90 transition-colors"
                   >
                     Stop
                   </button>
@@ -451,9 +451,9 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
         {requireCamera && (
           <div className="mb-6 text-sm">
             {cameraConnected ? (
-              <span className="text-green-600">Camera connected</span>
+              <span className="text-success">Camera connected</span>
             ) : (
-              <span className="text-yellow-700">
+              <span className="text-caution">
                 {proctoringWarning ||
                   'Camera not detected — the assessment will continue without proctoring.'}
               </span>
@@ -464,7 +464,7 @@ export default function DeviceCheck({ answerMode, requireCamera, onReady }: Devi
         <button
           onClick={handleStart}
           disabled={!micConfirmed}
-          className="w-full bg-primary-600 text-white py-3 rounded-xl font-semibold hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-lg"
+          className="w-full bg-accent text-white py-3 rounded-xl font-semibold hover:bg-accent-hover disabled:bg-ink/20 disabled:cursor-not-allowed transition-colors text-lg"
         >
           {micConfirmed ? "I'm ready, start" : 'Confirm your microphone to start'}
         </button>

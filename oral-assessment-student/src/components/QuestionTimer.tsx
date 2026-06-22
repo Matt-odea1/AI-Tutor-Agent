@@ -206,21 +206,25 @@ export default function QuestionTimer({
   const isCritical = remaining <= 10;
   const isExpired = remaining === 0;
 
+  // Threshold ramp on the token palette: calm = slate/ink hairline, warning =
+  // caution amber, danger/critical/expired = record vermillion (NOT raw red-*).
+  // The existing pulse cadence is preserved but disabled under reduced motion via
+  // the `motion-reduce:animate-none` variant.
   const colorClass = isExpired
-    ? 'text-red-700 border-red-500 bg-red-100 animate-pulse'
+    ? 'text-record border-record/50 bg-record/10 animate-pulse motion-reduce:animate-none'
     : isCritical
-    ? 'text-red-600 border-red-300 bg-red-50 animate-[pulse_0.5s_ease-in-out_infinite]'
+    ? 'text-record border-record/30 bg-record/5 animate-[pulse_0.5s_ease-in-out_infinite] motion-reduce:animate-none'
     : isDanger
-    ? 'text-red-600 border-red-300 bg-red-50'
+    ? 'text-record border-record/30 bg-record/5'
     : isWarning
-    ? 'text-orange-500 border-orange-300 bg-orange-50'
-    : 'text-gray-700 border-gray-200 bg-white';
+    ? 'text-caution border-caution/30 bg-caution/5'
+    : 'text-ink border-hairline bg-paper';
 
   return (
     <>
       <div
         role="timer"
-        className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-mono font-semibold ${colorClass}`}
+        className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-serif font-semibold tabular-nums tracking-tight ${colorClass}`}
       >
         {/* Clock icon */}
         <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

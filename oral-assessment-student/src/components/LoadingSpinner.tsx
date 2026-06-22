@@ -17,12 +17,12 @@ export default function LoadingSpinner({ size = 'md', message }: LoadingSpinnerP
   return (
     <div className="flex flex-col items-center justify-center p-8">
       <div
-        className={`${sizeClasses[size]} animate-spin rounded-full border-4 border-gray-300 border-t-primary-600`}
+        className={`${sizeClasses[size]} animate-spin motion-reduce:animate-none rounded-full border-4 border-ink/10 border-t-accent`}
         role="status"
         aria-label="Loading"
       />
       {message && (
-        <p className="mt-4 text-sm text-gray-600">{message}</p>
+        <p className="mt-4 text-sm text-slate">{message}</p>
       )}
     </div>
   );

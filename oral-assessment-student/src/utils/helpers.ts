@@ -57,22 +57,25 @@ export function getGradeFromPercentage(percentage: number): string {
 }
 
 /**
- * Get grade color class
+ * Get grade color class.
+ *
+ * Mapped onto the "quiet room" status tokens (success / accent / caution / danger)
+ * so the letter-grade badge never reverts to the old bright green/blue/yellow ramp.
  */
 export function getGradeColor(grade: string): string {
   switch (grade) {
     case 'A':
-      return 'text-green-600 bg-green-100';
+      return 'text-success bg-success/10';
     case 'B':
-      return 'text-blue-600 bg-blue-100';
+      return 'text-accent bg-accent/10';
     case 'C':
-      return 'text-yellow-600 bg-yellow-100';
+      return 'text-caution bg-caution/10';
     case 'D':
-      return 'text-orange-600 bg-orange-100';
+      return 'text-caution bg-caution/10';
     case 'F':
-      return 'text-red-600 bg-red-100';
+      return 'text-danger bg-danger/10';
     default:
-      return 'text-gray-600 bg-gray-100';
+      return 'text-slate bg-ink/5';
   }
 }
 
@@ -82,15 +85,15 @@ export function getGradeColor(grade: string): string {
 export function getStatusColor(status: string): string {
   switch (status) {
     case 'not-started':
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-ink/5 text-slate';
     case 'in-progress':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-accent/10 text-accent';
     case 'submitted':
-      return 'bg-green-100 text-green-800';
+      return 'bg-success/10 text-success';
     case 'evaluated':
-      return 'bg-purple-100 text-purple-800';
+      return 'bg-caution/10 text-caution';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-ink/5 text-slate';
   }
 }
 
@@ -190,15 +193,19 @@ export function capitalize(text: string): string {
 }
 
 /**
- * Get grade color class for backend band grades (Excellent / Competent / Developing / Unsatisfactory)
+ * Get grade color class for backend band grades (Excellent / Competent / Developing / Unsatisfactory).
+ *
+ * Mapped onto the "quiet room" status tokens (success / accent / caution / danger)
+ * as restrained tints — a soft token-tinted surface with a token-coloured numeral,
+ * never the old bright green/blue/yellow/red ramp.
  */
 export function getBandGradeColor(grade: string): string {
   switch (grade) {
-    case 'Excellent': return 'text-green-600 bg-green-100';
-    case 'Competent': return 'text-blue-600 bg-blue-100';
-    case 'Developing': return 'text-yellow-600 bg-yellow-100';
-    case 'Unsatisfactory': return 'text-red-600 bg-red-100';
-    default: return 'text-gray-600 bg-gray-100';
+    case 'Excellent': return 'text-success bg-success/10';
+    case 'Competent': return 'text-accent bg-accent/10';
+    case 'Developing': return 'text-caution bg-caution/10';
+    case 'Unsatisfactory': return 'text-danger bg-danger/10';
+    default: return 'text-slate bg-ink/5';
   }
 }
 
@@ -208,13 +215,13 @@ export function getBandGradeColor(grade: string): string {
 export function getDifficultyColor(difficulty: string): string {
   switch (difficulty.toLowerCase()) {
     case 'easy':
-      return 'bg-green-100 text-green-800';
+      return 'bg-success/10 text-success';
     case 'medium':
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-caution/10 text-caution';
     case 'hard':
-      return 'bg-red-100 text-red-800';
+      return 'bg-danger/10 text-danger';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-ink/5 text-slate';
   }
 }
 

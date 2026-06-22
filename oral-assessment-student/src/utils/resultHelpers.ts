@@ -73,12 +73,16 @@ export function scorePercent(value: number, max: number): number {
   return Math.round((value / max) * 100);
 }
 
-/** Tailwind classes for a graded score badge, by percentage band. */
+/**
+ * Tailwind classes for a graded score badge, by percentage band. Mapped onto the
+ * "quiet room" status tokens — success / caution / neutral-slate / danger — so the
+ * badge never reverts to the old bright green/blue/yellow/red ramp.
+ */
 export function scoreColorClass(percentage: number): string {
-  if (percentage >= 90) return 'text-green-600 bg-green-100';
-  if (percentage >= 70) return 'text-blue-600 bg-blue-100';
-  if (percentage >= 50) return 'text-yellow-600 bg-yellow-100';
-  return 'text-red-600 bg-red-100';
+  if (percentage >= 90) return 'text-success bg-success/10';
+  if (percentage >= 70) return 'text-caution bg-caution/10';
+  if (percentage >= 50) return 'text-slate bg-ink/5';
+  return 'text-danger bg-danger/10';
 }
 
 export interface StatusBadge {
@@ -100,11 +104,11 @@ export function statusBadgeFor(status: EffectiveStatus, percentage: number | nul
         className: scoreColorClass(percentage ?? 0),
       };
     case 'skipped':
-      return { label: 'Skipped', className: 'text-gray-600 bg-gray-100' };
+      return { label: 'Skipped', className: 'text-slate bg-ink/5' };
     case 'not-attempted':
-      return { label: 'Not attempted', className: 'text-gray-600 bg-gray-100' };
+      return { label: 'Not attempted', className: 'text-slate bg-ink/5' };
     case 'grading-failed':
-      return { label: 'Grading unavailable', className: 'text-amber-700 bg-amber-100' };
+      return { label: 'Grading unavailable', className: 'text-caution bg-caution/10' };
   }
 }
 

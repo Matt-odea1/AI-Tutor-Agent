@@ -65,11 +65,11 @@ export default class ErrorBoundary extends Component<Props, State> {
       const unsavedWork = this.hasUnsavedWork();
 
       return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full">
+        <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-paper rounded-xl border border-hairline p-6">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-danger/10 rounded-full">
               <svg
-                className="w-6 h-6 text-red-600"
+                className="w-6 h-6 text-danger"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -82,29 +82,29 @@ export default class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h2 className="mt-4 text-xl font-semibold text-gray-900 text-center">
+            <h2 className="mt-4 text-xl font-semibold font-serif text-ink text-center">
               Something went wrong
             </h2>
-            <p className="mt-2 text-sm text-gray-600 text-center">
+            <p className="mt-2 text-sm text-slate text-center">
               {this.state.error?.message || 'An unexpected error occurred'}
             </p>
 
             {unsavedWork ? (
               <>
-                <p className="mt-4 text-sm text-amber-800 text-center bg-amber-50 border border-amber-200 rounded-md p-3">
+                <p className="mt-4 text-sm text-caution text-center bg-caution/10 border border-caution/20 rounded-xl p-3">
                   You have an unsubmitted answer. It has been saved on this device,
                   so you can try to recover without losing it. Reloading the page
                   is also safe — your answer will be restored afterwards.
                 </p>
                 <button
                   onClick={this.handleTryRecover}
-                  className="mt-6 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                  className="mt-6 w-full bg-accent text-white px-4 py-2 rounded-xl hover:bg-accent-hover transition-colors"
                 >
                   Try to recover
                 </button>
                 <button
                   onClick={() => window.location.reload()}
-                  className="mt-3 w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
+                  className="mt-3 w-full bg-ink/5 text-slate px-4 py-2 rounded-xl hover:bg-ink/10 transition-colors"
                 >
                   Reload Page
                 </button>
@@ -112,7 +112,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             ) : (
               <button
                 onClick={() => window.location.reload()}
-                className="mt-6 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                className="mt-6 w-full bg-accent text-white px-4 py-2 rounded-xl hover:bg-accent-hover transition-colors"
               >
                 Reload Page
               </button>

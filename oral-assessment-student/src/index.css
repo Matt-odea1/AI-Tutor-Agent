@@ -1,12 +1,65 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Fira+Code:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens (single source of truth) ─────────────────────────────────
+   The Tailwind semantic colors (paper/ink/slate/hairline/accent/record) read
+   these variables, so flipping `.dark` (or the OS preference) re-themes the
+   whole app from here. */
+:root {
+  --color-paper: #FAFAF8;        /* page / card surface */
+  --color-ink: #16161A;          /* primary text */
+  --color-slate: #6B6F76;        /* metadata / secondary text */
+  --color-hairline: rgba(22, 22, 26, 0.10); /* 1px borders & dividers */
+
+  --color-accent: #0E7C66;       /* deep ink-teal — the one brand accent */
+  --color-accent-hover: #0B6353;
+  --color-record: #E04A2F;       /* warm vermillion — recording only */
+
+  /* The single elevation token, reserved for overlays/modals. */
+  --elevation-overlay: 0 12px 32px -8px rgba(22, 22, 26, 0.22), 0 2px 8px -2px rgba(22, 22, 26, 0.12);
+  /* Modal scrim: ink @ 45% + 2px backdrop blur (blur applied at use site). */
+  --scrim: rgba(22, 22, 26, 0.45);
+  /* One card radius (12px) for cards AND modals. */
+  --radius-card: 0.75rem;
+}
+
+.dark {
+  --color-paper: #16161A;
+  --color-ink: #F4F4F2;
+  --color-slate: #9CA0A8;
+  --color-hairline: rgba(244, 244, 242, 0.14);
+
+  --color-accent: #2FA68B;       /* lighter teal for contrast on dark paper */
+  --color-accent-hover: #43BBA0;
+  --color-record: #F0644A;
+
+  --elevation-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.55), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --scrim: rgba(0, 0, 0, 0.55);
+}
+
+/* Honour the OS preference when the app hasn't explicitly set a class. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --color-paper: #16161A;
+    --color-ink: #F4F4F2;
+    --color-slate: #9CA0A8;
+    --color-hairline: rgba(244, 244, 242, 0.14);
+
+    --color-accent: #2FA68B;
+    --color-accent-hover: #43BBA0;
+    --color-record: #F0644A;
+
+    --elevation-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.55), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+    --scrim: rgba(0, 0, 0, 0.55);
+  }
+}
+
 @layer base {
   body {
-    @apply bg-white text-gray-900 antialiased;
+    @apply bg-paper text-ink antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     margin: 0;
     padding: 0;
@@ -25,20 +78,23 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-gray-100;
+    background-color: var(--color-hairline);
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    background-color: var(--color-slate);
+    @apply rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary-600;
+    @apply bg-accent;
   }
 
   /* Focus improvements */
   *:focus-visible {
-    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-accent;
+    --tw-ring-offset-color: var(--color-paper);
+    --tw-ring-offset-width: 2px;
   }
 }
 
@@ -52,5 +108,19 @@
   }
   .toast-enter {
     @apply opacity-100 translate-x-0;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   Instant-complete every animation/transition (the breathing ring, the score
+   count-up, skeleton shimmer) for users who ask for it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -587,18 +587,18 @@ export default function TakeAssessment() {
   if (submitted) {
     const title = assessment?.title || 'your assessment';
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-            <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+            <svg className="h-8 w-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Assessment Submitted</h2>
-          <p className="text-gray-600 mb-1">
+          <h2 className="text-2xl font-bold text-ink mb-2">Assessment Submitted</h2>
+          <p className="text-slate mb-1">
             Your responses for <span className="font-medium">{title}</span> have been submitted for evaluation.
           </p>
-          <p className="text-sm text-gray-500 mb-6">
+          <p className="text-sm text-slate mb-6">
             Submitted {new Date().toLocaleString()}
           </p>
           <button
@@ -615,7 +615,7 @@ export default function TakeAssessment() {
   // Loading state
   if (isLoading && questions.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <LoadingSpinner size="lg" message="Loading assessment..." />
       </div>
     );
@@ -624,7 +624,7 @@ export default function TakeAssessment() {
   // Error state
   if (error && questions.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           <ErrorMessage error={error} onDismiss={clearError} />
           <button
@@ -641,12 +641,12 @@ export default function TakeAssessment() {
   // No questions state
   if (questions.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-xl font-semibold text-ink mb-2">
             No Questions Available
           </h2>
-          <p className="text-gray-600">
+          <p className="text-slate">
             This assessment doesn't have any questions yet.
           </p>
         </div>
@@ -660,10 +660,10 @@ export default function TakeAssessment() {
   if (!currentQuestion) {
     const fallbackAnsweredCount = progress?.answeredQuestions || 0;
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Ready to Submit</h2>
-          <p className="text-gray-600 mb-4">
+          <h2 className="text-xl font-semibold text-ink mb-2">Ready to Submit</h2>
+          <p className="text-slate mb-4">
             You have answered {fallbackAnsweredCount} of {questions.length} questions. Submit your assessment to finish.
           </p>
           <button
@@ -675,25 +675,25 @@ export default function TakeAssessment() {
         </div>
         {showSubmitModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Submit Assessment?</h2>
-              <p className="text-gray-600 mb-2">
+            <div className="bg-paper rounded-xl shadow-overlay max-w-md w-full p-6">
+              <h2 className="text-xl font-bold text-ink mb-4">Submit Assessment?</h2>
+              <p className="text-slate mb-2">
                 You've answered{' '}
                 <span className="font-semibold">{fallbackAnsweredCount}</span> out of{' '}
                 <span className="font-semibold">{questions.length}</span> questions.
               </p>
               {fallbackAnsweredCount < questions.length && (
-                <p className="text-orange-600 text-sm mb-4">
+                <p className="text-caution text-sm mb-4">
                   Answers are submitted in order and are final. The {questions.length - fallbackAnsweredCount} unanswered question(s) can't be revisited.
                 </p>
               )}
               {fallbackAnsweredCount >= questions.length && (
-                <p className="text-gray-500 text-sm mb-6">
+                <p className="text-slate text-sm mb-6">
                   Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.
                 </p>
               )}
               {error && (
-                <p className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded-lg">
+                <p className="text-danger text-sm mb-4 p-3 bg-danger/10 rounded-lg">
                   {error.message || 'Submission failed. Please try again.'}
                 </p>
               )}
@@ -701,14 +701,14 @@ export default function TakeAssessment() {
                 <button
                   onClick={() => setShowSubmitModal(false)}
                   disabled={isLoading}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                  className="flex-1 bg-ink/5 text-ink px-4 py-2 rounded-lg hover:bg-ink/10 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmitAssessment}
                   disabled={isLoading || fallbackAnsweredCount < questions.length}
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                  className="flex-1 bg-success text-white px-4 py-2 rounded-lg hover:bg-success/90 disabled:bg-ink/20 transition-colors"
                 >
                   {isLoading ? 'Submitting...' : 'Submit'}
                 </button>
@@ -754,7 +754,7 @@ export default function TakeAssessment() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-paper flex flex-col">
       {/* Consent modal — only for proctored assessments, once questions have loaded.
           Un-proctored assessments (e.g. written formative) skip it entirely; consentGiven
           stays false so the camera resume logic never arms a stream. */}
@@ -810,17 +810,17 @@ export default function TakeAssessment() {
 
       {/* Browser support error banner */}
       {browserError && (
-        <div className="bg-red-600 text-white px-4 py-3 flex items-center justify-between">
+        <div className="bg-danger text-white px-4 py-3 flex items-center justify-between">
           <span className="text-sm">{browserError}</span>
-          <button onClick={() => setBrowserError(null)} className="ml-4 text-red-200 hover:text-white text-lg leading-none">&times;</button>
+          <button onClick={() => setBrowserError(null)} className="ml-4 text-white/80 hover:text-white text-lg leading-none">&times;</button>
         </div>
       )}
 
       {/* Proctoring warning banner */}
       {proctoringWarning && (
-        <div className="bg-yellow-50 border-b border-yellow-200 text-yellow-800 px-4 py-3 flex items-center justify-between">
+        <div className="bg-caution/10 border-b border-caution/30 text-caution px-4 py-3 flex items-center justify-between">
           <span className="text-sm">{proctoringWarning}</span>
-          <button onClick={clearProctoringWarning} className="ml-4 text-yellow-600 hover:text-yellow-800 text-lg leading-none">&times;</button>
+          <button onClick={clearProctoringWarning} className="ml-4 text-caution hover:text-caution/80 text-lg leading-none">&times;</button>
         </div>
       )}
 
@@ -828,7 +828,7 @@ export default function TakeAssessment() {
           retrying. Styled like the yellow proctoringWarning banner, but distinct
           from the blocking CameraRevokedOverlay. */}
       {proctoringDegraded && (
-        <div className="bg-yellow-50 border-b border-yellow-200 text-yellow-800 px-4 py-3 flex items-center justify-between">
+        <div className="bg-caution/10 border-b border-caution/30 text-caution px-4 py-3 flex items-center justify-between">
           <span className="text-sm">Proctoring degraded — retrying upload. Your answers are unaffected.</span>
         </div>
       )}
@@ -864,9 +864,9 @@ export default function TakeAssessment() {
       {proctored && <ProctorCamera stream={proctorStream} isRecording={isProctoringActive} />}
 
       {/* Header */}
-      <header className="bg-white shadow-sm border-b flex-shrink-0">
+      <header className="bg-paper border-b border-hairline flex-shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-ink">
             {assessment?.title ?? 'Assessment'}
           </h1>
           <div className="flex items-center justify-between mt-2">
@@ -879,13 +879,13 @@ export default function TakeAssessment() {
               supportUrl={assessment?.supportUrl}
             />
             <div className="flex items-center space-x-4">
-              <div className="text-sm font-medium text-gray-700 text-right">
+              <div className="text-sm font-medium text-slate text-right">
                 <div>
                   Question {currentQuestionIndex + 1} of {questions.length}
                 </div>
                 {/* Remaining indicator — questions left, and an estimated time
                     remaining when a per-question limit exists. */}
-                <div className="text-xs font-normal text-gray-500 mt-0.5">
+                <div className="text-xs font-normal text-slate mt-0.5">
                   {questionsLeft > 0
                     ? `${questionsLeft} question${questionsLeft === 1 ? '' : 's'} left`
                     : 'Last question'}
@@ -952,12 +952,12 @@ export default function TakeAssessment() {
 
           {/* Submitting indicator */}
           {isSubmittingAnswer && !error && (
-            <div className="mb-4 flex items-center space-x-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-              <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <div className="mb-4 flex items-center space-x-3 bg-accent/[0.06] border border-accent/20 rounded-xl px-4 py-3">
+              <svg className="animate-spin motion-reduce:animate-none h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span className="text-sm text-blue-700 font-medium">Submitting answer and loading next question...</span>
+              <span className="text-sm text-accent font-medium">Submitting answer and loading next question...</span>
             </div>
           )}
 
@@ -989,14 +989,14 @@ export default function TakeAssessment() {
                 />
               ) : (
                 /* Preparation countdown */
-                <div className="bg-primary-50 border border-primary-200 rounded-xl p-8 text-center">
-                  <p className="text-sm font-medium text-primary-700 mb-2">Preparation Time</p>
-                  <div className="text-6xl font-bold text-primary-600 mb-4 tabular-nums">
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-8 text-center">
+                  <p className="text-sm font-medium text-accent mb-2">Preparation Time</p>
+                  <div className="text-6xl font-bold text-ink mb-4 tabular-nums">
                     {prepSecondsLeft !== null
                       ? `${Math.floor(prepSecondsLeft / 60)}:${String(prepSecondsLeft % 60).padStart(2, '0')}`
                       : '—'}
                   </div>
-                  <p className="text-sm text-primary-600 mb-6">
+                  <p className="text-sm text-slate mb-6">
                     Read the question carefully. Recording will start automatically when the timer ends.
                   </p>
                   <button
@@ -1026,7 +1026,7 @@ export default function TakeAssessment() {
                 type="button"
                 onClick={() => goToQuestion(currentQuestionIndex - 1)}
                 disabled={currentQuestionIndex === 0 || isUploading}
-                className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-5 py-3 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                className="flex items-center space-x-2 bg-ink/5 text-ink px-5 py-3 rounded-lg hover:bg-ink/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -1052,7 +1052,7 @@ export default function TakeAssessment() {
                   onClick={() => setShowSubmitModal(true)}
                   disabled={!allAnswered || isUploading}
                   title={!allAnswered ? 'Answer every question before submitting' : undefined}
-                  className="flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="flex items-center space-x-2 bg-success text-white px-6 py-3 rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
                 >
                   <span>Submit Assessment</span>
                 </button>
@@ -1064,7 +1064,7 @@ export default function TakeAssessment() {
                 <button
                   onClick={() => setShowSubmitModal(true)}
                   disabled={!currentAnswered || isSubmittingAnswer}
-                  className="flex items-center space-x-2 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="flex items-center space-x-2 bg-success text-white px-8 py-3 rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
                 >
                   <span>Submit Assessment</span>
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -1107,31 +1107,31 @@ export default function TakeAssessment() {
       {/* Submit Confirmation Modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="bg-paper rounded-xl shadow-overlay max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-ink mb-4">
               Submit Assessment?
             </h2>
-            <p className="text-gray-600 mb-2">
+            <p className="text-slate mb-2">
               You've answered{' '}
               <span className="font-semibold">{answeredCount}</span> out of{' '}
               <span className="font-semibold">{questions.length}</span> questions.
             </p>
             {answeredCount < questions.length && (
-              <p className="text-orange-600 text-sm mb-4">
+              <p className="text-caution text-sm mb-4">
                 {reviewMode
                   ? `${questions.length - answeredCount} question(s) still need an answer before you can submit.`
                   : `Answers are submitted in order and are final. The ${questions.length - answeredCount} unanswered question(s) can't be revisited.`}
               </p>
             )}
             {answeredCount >= questions.length && (
-              <p className="text-gray-500 text-sm mb-6">
+              <p className="text-slate text-sm mb-6">
                 {reviewMode
                   ? 'You can keep editing your answers until you submit. Once you submit, your assessment is final and sent for evaluation.'
                   : 'Answers are submitted in order and are final. Once submitted, your assessment will be sent for evaluation.'}
               </p>
             )}
             {error && (
-              <p className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded-lg">
+              <p className="text-danger text-sm mb-4 p-3 bg-danger/10 rounded-lg">
                 {error.message || 'Submission failed. Please try again.'}
               </p>
             )}
@@ -1139,14 +1139,14 @@ export default function TakeAssessment() {
               <button
                 onClick={() => { setShowSubmitModal(false); }}
                 disabled={isLoading}
-                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                className="flex-1 bg-ink/5 text-ink px-4 py-2 rounded-lg hover:bg-ink/10 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitAssessment}
                 disabled={isLoading || answeredCount < questions.length}
-                className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                className="flex-1 bg-success text-white px-4 py-2 rounded-lg hover:bg-success/90 disabled:bg-ink/20 transition-colors"
               >
                 {isLoading ? 'Submitting...' : 'Submit'}
               </button>

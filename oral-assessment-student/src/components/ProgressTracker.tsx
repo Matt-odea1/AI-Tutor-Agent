@@ -31,17 +31,17 @@ export default function ProgressTracker({
   const percentage = calculatePercentage(answeredCount, totalQuestions);
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4">
+    <div className="bg-paper rounded-xl border border-hairline p-4">
       {/* Progress Bar */}
-      <div className="flex justify-between text-sm text-gray-600 mb-2">
+      <div className="flex justify-between text-sm text-slate mb-2">
         <span>Progress</span>
-        <span className="font-medium">
+        <span className="font-medium tabular-nums">
           {answeredCount} / {totalQuestions} answered
         </span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+      <div className="w-full bg-ink/10 rounded-full h-2 mb-3">
         <div
-          className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+          className="bg-accent h-2 rounded-full transition-all duration-300"
           style={{ width: `${percentage}%` }}
           role="progressbar"
           aria-valuenow={percentage}
@@ -72,16 +72,16 @@ export default function ProgressTracker({
             : 'unanswered';
 
           const indicatorClass = `
-                w-8 h-8 rounded-lg font-medium text-xs flex items-center justify-center
+                w-8 h-8 rounded-xl font-medium text-xs tabular-nums flex items-center justify-center
                 ${isCurrent
-                  ? 'bg-primary-600 text-white ring-2 ring-primary-300'
+                  ? 'bg-accent text-white ring-2 ring-accent/40'
                   : isSkipped
-                  ? 'bg-amber-100 text-amber-800'
+                  ? 'bg-caution/10 text-caution'
                   : isAnswered
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-ink/5 text-slate'
                 }
-                ${onNavigate ? 'cursor-pointer hover:ring-2 hover:ring-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500' : ''}
+                ${onNavigate ? 'cursor-pointer hover:ring-2 hover:ring-accent/40 focus:outline-none focus:ring-2 focus:ring-accent' : ''}
               `;
 
           const indicatorContent = !isCurrent && isSkipped ? (
