@@ -176,8 +176,10 @@ class OralAssessmentService:
             # Single METADATA read — reused for window check and question view
             assessment_meta = self._get_assessment_metadata(assessment_id)
             self._check_assessment_window(assessment_id, metadata=assessment_meta)
-            # timeLimit is stored in seconds (create_assessment converts minutes → seconds)
-            raw_time_limit = int(assessment_meta.get("timeLimit", 0)) or None
+            # timeLimit is stored in seconds (create_assessment converts minutes → seconds).
+            # It is persisted as null when no per-question limit is set (the formative
+            # flow), so coerce None/absent → 0 before int() to avoid a TypeError.
+            raw_time_limit = int(assessment_meta.get("timeLimit") or 0) or None
             assessment_time_limit = raw_time_limit
 
             # Behaviour flags surfaced to the student app. proctored falls back to

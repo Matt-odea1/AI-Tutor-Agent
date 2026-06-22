@@ -176,6 +176,25 @@ class TestGetStudentQuestions:
         assert result["answerMode"] == "written"
         assert result["proctored"] is False
 
+    def test_null_time_limit_does_not_crash(self, dynamo_env):
+        """Regression: an assessment with no per-question timer persists timeLimit as
+        null (the formative flow). get_student_questions must not int(None)-crash."""
+        table = dynamo_env
+        _seed_assessment(table)
+        # create_assessment stores null when no per-question limit is set; the key is
+        # present with a null value, so .get(..., 0) returns None, not the default.
+        table.update_item(
+            Key={"PK": "ASSESSMENT#a-1", "SK": "METADATA"},
+            UpdateExpression="SET timeLimit = :tl",
+            ExpressionAttributeValues={":tl": None},
+        )
+        _seed_enrollment(table)
+        _seed_questions(table, count=2)
+        svc = _create_service(table)
+
+        result = svc.get_student_questions("s-1", "a-1")
+        assert len(result["questions"]) == 2
+
 
 # ─────────────────────────────────────────────────────────────
 # submit_answer

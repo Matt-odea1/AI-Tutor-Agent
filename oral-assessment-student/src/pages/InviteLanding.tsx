@@ -110,37 +110,33 @@ export default function InviteLanding() {
           <p className="text-sm text-slate mb-6">Before you begin, here's what to expect.</p>
         </div>
 
-        {/* "Before you begin" pre-flight panel. This is static (no per-assessment
-            data — we have NONE until the single-use token is exchanged) so the
-            student can read it and back out BEFORE spending their link. */}
+        {/* "Before you begin" pre-flight panel. We have NO per-assessment data until
+            the single-use token is exchanged, so this copy is intentionally
+            format-agnostic — true for both proctored oral exams and unproctored
+            written assessments. The assessment's specific format, question count,
+            timing and any device/proctoring requirements are shown on the next
+            screen (PreAssessmentOverview), after the token is exchanged. */}
         <div className="bg-paper border border-hairline rounded-xl p-5 mb-6 text-left">
           <h3 className="font-serif text-sm font-semibold text-ink mb-3">Before you begin</h3>
           <ul className="text-sm text-ink space-y-2.5">
             <li className="flex items-start space-x-2">
               <span className="text-accent mt-0.5" aria-hidden="true">•</span>
               <span>
-                This is a <span className="font-medium">proctored oral assessment</span> — your webcam and
-                microphone will be recorded throughout.
+                Use a <span className="font-medium">modern browser</span> (Chrome, Firefox, or Safari) on a
+                stable internet connection.
               </span>
             </li>
             <li className="flex items-start space-x-2">
               <span className="text-accent mt-0.5" aria-hidden="true">•</span>
               <span>
-                You'll answer questions <span className="font-medium">one at a time, in order</span> — you can't go back.
+                Set aside <span className="font-medium">uninterrupted time</span> so you can finish in one sitting.
               </span>
             </li>
             <li className="flex items-start space-x-2">
               <span className="text-accent mt-0.5" aria-hidden="true">•</span>
               <span>
-                Make sure you have a working microphone, camera, and a stable internet connection, and use a
-                modern browser (Chrome, Firefox, or Safari).
-              </span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <span className="text-accent mt-0.5" aria-hidden="true">•</span>
-              <span>
-                Set aside <span className="font-medium">uninterrupted time</span> — once you start, a timer may
-                run per question.
+                You'll see this assessment's <span className="font-medium">details and requirements</span> — its
+                format, the number of questions, and any time limit — on the next screen before you start.
               </span>
             </li>
           </ul>

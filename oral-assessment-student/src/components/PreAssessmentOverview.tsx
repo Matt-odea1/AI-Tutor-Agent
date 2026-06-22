@@ -89,8 +89,17 @@ export default function PreAssessmentOverview({
 
         <ul className="text-sm text-slate space-y-1 mb-8">
           <li>• Answer each question using {assessment.answerMode === 'written' ? 'text' : 'audio'}</li>
-          <li>• Questions are presented one at a time in order</li>
-          <li>• Submit each answer before moving to the next question</li>
+          {assessment.allowReview ? (
+            <li>• You can move between questions and revise your answers before you submit</li>
+          ) : (
+            <>
+              <li>• Questions are presented one at a time in order</li>
+              <li>• Submit each answer before moving to the next question</li>
+            </>
+          )}
+          {assessment.proctored && (
+            <li>• Your webcam and microphone will be recorded throughout</li>
+          )}
         </ul>
 
         <button
