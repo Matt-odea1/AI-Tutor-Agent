@@ -2,12 +2,34 @@
  * S3 Upload Service - Handles audio file uploads
  */
 
+import axios, { AxiosError } from 'axios';
 import { getUploadUrl, uploadAudioToS3 } from './api';
+import type { ApiError } from '../types';
 
 export interface UploadProgress {
   loaded: number;
   total: number;
   percentage: number;
+}
+
+/**
+ * A presigned S3 PUT can fail because the URL expired (S3 returns 403, often with
+ * a `SignatureDoesNotMatch`/`AuthorizationExpired` body) — this is distinct from
+ * the network/5xx transient retries handled inside uploadAudioToS3's withRetry.
+ * uploadAudioToS3 rethrows an ApiError whose `details` is the underlying
+ * AxiosError, so we inspect that to decide whether refetching a fresh URL would
+ * help.
+ */
+function isPresignedUrlExpired(err: unknown): boolean {
+  const details = (err as ApiError | undefined)?.details;
+  if (axios.isAxiosError(details)) {
+    if (details.response?.status === 403) return true;
+    const body = details.response?.data;
+    if (typeof body === 'string' && /SignatureDoesNotMatch|expired/i.test(body)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -19,8 +41,7 @@ async function uploadMedia(
   filename: string,
   onProgress?: (progress: UploadProgress) => void
 ): Promise<string> {
-  const { uploadUrl, fileUrl } = await getUploadUrl(filename, blob.type);
-  await uploadAudioToS3(uploadUrl, blob, (percentage) => {
+  const reportProgress = (percentage: number) => {
     if (onProgress) {
       onProgress({
         loaded: (blob.size * percentage) / 100,
@@ -28,8 +49,66 @@ async function uploadMedia(
         percentage,
       });
     }
-  });
-  return fileUrl;
+  };
+
+  const { uploadUrl, fileUrl } = await getUploadUrl(filename, blob.type);
+  try {
+    await uploadAudioToS3(uploadUrl, blob, reportProgress);
+    return fileUrl;
+  } catch (error) {
+    // If the presigned URL expired (403), refetch a FRESH url exactly once and
+    // retry the PUT against it. Any other failure (including a second expiry)
+    // propagates to uploadAudio's error-message mapping unchanged.
+    if (!isPresignedUrlExpired(error)) throw error;
+    const refreshed = await getUploadUrl(filename, blob.type);
+    await uploadAudioToS3(refreshed.uploadUrl, blob, reportProgress);
+    return refreshed.fileUrl;
+  }
+}
+
+/**
+ * Map an upload failure to a friendly, user-facing Error.
+ *
+ * Important: uploadAudioToS3 rethrows an `ApiError` *plain object*
+ * `{ message: 'Failed to upload audio file', details: <AxiosError> }`, which is
+ * NOT an `instanceof Error`. So the AxiosError-derived cases (timeout / 403 /
+ * network) must be detected by inspecting `details`, BEFORE the
+ * `instanceof Error` string-matching branch (which only catches the
+ * descriptive validation Errors thrown by validateAudioBlob et al).
+ */
+function toFriendlyUploadError(error: unknown): Error {
+  // ApiError-shaped failures from uploadAudioToS3 carry the AxiosError on .details.
+  const details = (error as ApiError | undefined)?.details;
+  if (axios.isAxiosError(details)) {
+    const ax = details as AxiosError;
+    const status = ax.response?.status;
+    if (status === 403) {
+      return new Error('Upload authorization expired. Please try again.');
+    }
+    if (ax.code === 'ECONNABORTED') {
+      return new Error('Upload timed out. Please check your connection and try again.');
+    }
+    if (ax.code === 'ERR_NETWORK' || (!ax.response && ax.request)) {
+      return new Error('Network error: please check your internet connection and try again.');
+    }
+  }
+
+  if (error instanceof Error) {
+    if (error.message.includes('too large') || error.message.includes('Maximum size')) {
+      return error; // Already a descriptive validation error
+    }
+    if (error.message.includes('Network Error') || error.message.includes('ERR_NETWORK') || error.message === 'Failed to fetch') {
+      return new Error('Network error: please check your internet connection and try again.');
+    }
+    if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+      return new Error('Upload timed out. Please check your connection and try again.');
+    }
+    if (error.message.includes('403') || error.message.includes('Forbidden')) {
+      return new Error('Upload authorization expired. Please try again.');
+    }
+  }
+
+  return new Error('Failed to upload audio file. Please try again.');
 }
 
 /**
@@ -47,21 +126,7 @@ export async function uploadAudio(
     return await uploadMedia(audioBlob, filename, onProgress);
   } catch (error) {
     console.error('Failed to upload audio:', error);
-    if (error instanceof Error) {
-      if (error.message.includes('too large') || error.message.includes('Maximum size')) {
-        throw error; // Already a descriptive validation error
-      }
-      if (error.message.includes('Network Error') || error.message.includes('ERR_NETWORK') || error.message === 'Failed to fetch') {
-        throw new Error('Network error: please check your internet connection and try again.');
-      }
-      if (error.message.includes('timeout') || error.message.includes('Timeout')) {
-        throw new Error('Upload timed out. Please check your connection and try again.');
-      }
-      if (error.message.includes('403') || error.message.includes('Forbidden')) {
-        throw new Error('Upload authorization expired. Please try again.');
-      }
-    }
-    throw new Error('Failed to upload audio file. Please try again.');
+    throw toFriendlyUploadError(error);
   }
 }
 

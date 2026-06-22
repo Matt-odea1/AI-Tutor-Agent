@@ -4,6 +4,7 @@ import TakeAssessment from './pages/TakeAssessment';
 import ViewResults from './pages/ViewResults';
 import InviteLanding from './pages/InviteLanding';
 import { ToastContainer } from './components/ToastContainer';
+import OfflineBanner from './components/OfflineBanner';
 import './index.css';
 
 function DefaultRoute() {
@@ -59,6 +60,7 @@ function DefaultRoute() {
 function App() {
   return (
     <BrowserRouter>
+      <OfflineBanner />
       <ToastContainer />
       <Routes>
         {/* Invite link exchange - URL format: /invite?token=... */}

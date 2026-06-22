@@ -13,6 +13,16 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+// Explicit upper bound for the bare-axios S3 PUT (the apiClient `timeout` does NOT
+// apply to module-level `axios.put`). Presigned S3 PUTs of large audio can be slow,
+// so the bound is generous — but finite, so a stalled upload aborts with
+// ECONNABORTED (which withRetry treats as retryable) instead of hanging forever.
+const S3_PUT_TIMEOUT_MS = 120000;
+
+// Retry tuning for transient failures on the submit/upload path.
+const RETRY_MAX_ATTEMPTS = 3; // 1 initial attempt + up to 2 retries
+const RETRY_BASE_DELAY_MS = 400;
+
 // Create axios instance with default config
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -21,6 +31,58 @@ const apiClient = axios.create({
   },
   timeout: 60000, // 60 second timeout (accommodates large audio uploads on slow networks)
 });
+
+/**
+ * True for transient failures that are worth retrying: network errors (request
+ * made, no response), request timeouts (ECONNABORTED), and server 5xx. NEVER
+ * true for 4xx — those are deterministic, and 401/403 are handled by the
+ * token-refresh interceptor, not by re-firing the same request.
+ */
+export function isTransientError(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const ax = err as AxiosError;
+  if (ax.code === 'ECONNABORTED') return true; // timeout
+  if (ax.response) {
+    return ax.response.status >= 500; // 5xx only; 4xx is non-retryable
+  }
+  // No response but a request was made => network-level failure.
+  return Boolean(ax.request) || ax.code === 'ERR_NETWORK';
+}
+
+/**
+ * Run `fn`, retrying transient failures with bounded exponential backoff + jitter.
+ * The final error (after retries are exhausted, or immediately for a non-retryable
+ * error) is re-thrown unchanged so callers' existing `handleApiError` path is
+ * preserved verbatim.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts?: {
+    retries?: number;
+    baseDelayMs?: number;
+    isRetryable?: (err: unknown) => boolean;
+  }
+): Promise<T> {
+  const maxAttempts = opts?.retries ?? RETRY_MAX_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? RETRY_BASE_DELAY_MS;
+  const isRetryable = opts?.isRetryable ?? isTransientError;
+
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt += 1;
+      // Stop if we've used all attempts or the error isn't transient.
+      if (attempt >= maxAttempts || !isRetryable(err)) {
+        throw err;
+      }
+      const backoff = baseDelayMs * 2 ** (attempt - 1);
+      const jitter = Math.random() * baseDelayMs;
+      await new Promise((resolve) => setTimeout(resolve, backoff + jitter));
+    }
+  }
+}
 
 // Attach student session token to every request if present
 apiClient.interceptors.request.use((config) => {
@@ -32,8 +94,40 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: auto-refresh token on 401/403
-let isRefreshing = false;
+// Response interceptor: auto-refresh token on 401/403.
+//
+// Single-flight: a module-level promise holds the in-flight `POST /api/student/token`.
+// The FIRST request to 401/403 starts it; every concurrent 401/403 AWAITS the same
+// promise instead of starting its own (or being spuriously rejected). When it
+// resolves, every waiter re-issues with the fresh token; if it rejects, every
+// waiter rejects. Net: N concurrent 401/403s => exactly ONE token POST, all N
+// replayed. Cleared in `finally` so a later expiry can refresh again.
+let refreshPromise: Promise<string> | null = null;
+
+function refreshToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+  const studentId = sessionStorage.getItem('studentId');
+  const assessmentId = sessionStorage.getItem('assessmentId');
+  if (!studentId || !assessmentId) {
+    return Promise.reject(new Error('Missing student/assessment id for token refresh'));
+  }
+  refreshPromise = (async () => {
+    try {
+      const resp = await apiClient.post('/api/student/token', {
+        student_id: studentId,
+        assessment_id: assessmentId,
+      });
+      const token: string = resp.data.access_token;
+      sessionStorage.setItem('studentToken', token);
+      return token;
+    } finally {
+      // Allow the next expiry to trigger a fresh refresh.
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -41,30 +135,22 @@ apiClient.interceptors.response.use(
     if (
       originalRequest &&
       !originalRequest._retried &&
-      !isRefreshing &&
       (error.response?.status === 401 || error.response?.status === 403) &&
       !originalRequest.url?.includes('/student/token')
     ) {
-      // Try to re-fetch a fresh token using stored student/assessment info
+      // Refresh requires stored student/assessment info.
       const studentId = sessionStorage.getItem('studentId');
       const assessmentId = sessionStorage.getItem('assessmentId');
       if (studentId && assessmentId) {
-        isRefreshing = true;
         originalRequest._retried = true;
         try {
-          const resp = await apiClient.post('/api/student/token', {
-            student_id: studentId,
-            assessment_id: assessmentId,
-          });
-          const token: string = resp.data.access_token;
-          sessionStorage.setItem('studentToken', token);
+          // Join the in-flight refresh if one exists, otherwise start it.
+          const token = await refreshToken();
           originalRequest.headers = originalRequest.headers ?? {};
           originalRequest.headers['Authorization'] = `Bearer ${token}`;
           return apiClient(originalRequest);
         } catch {
-          // Token refresh also failed — fall through to normal error handling
-        } finally {
-          isRefreshing = false;
+          // Token refresh also failed — fall through to normal error handling.
         }
       }
     }
@@ -157,13 +243,15 @@ export async function submitAnswer(
   duration: number
 ): Promise<void> {
   try {
-    await apiClient.post(`/api/student/${studentId}/answer`, {
-      question_id: questionId,
-      assessment_id: assessmentId,
-      answer_type: 'audio',
-      audio_url: audioUrl,
-      duration,
-    });
+    await withRetry(() =>
+      apiClient.post(`/api/student/${studentId}/answer`, {
+        question_id: questionId,
+        assessment_id: assessmentId,
+        answer_type: 'audio',
+        audio_url: audioUrl,
+        duration,
+      })
+    );
   } catch (error) {
     return handleApiError(error as AxiosError);
   }
@@ -179,12 +267,14 @@ export async function submitTextAnswer(
   textContent: string
 ): Promise<void> {
   try {
-    await apiClient.post(`/api/student/${studentId}/answer`, {
-      question_id: questionId,
-      assessment_id: assessmentId,
-      answer_type: 'text',
-      text_content: textContent,
-    });
+    await withRetry(() =>
+      apiClient.post(`/api/student/${studentId}/answer`, {
+        question_id: questionId,
+        assessment_id: assessmentId,
+        answer_type: 'text',
+        text_content: textContent,
+      })
+    );
   } catch (error) {
     return handleApiError(error as AxiosError);
   }
@@ -255,9 +345,11 @@ export async function submitAssessment(
   assessmentId: string
 ): Promise<void> {
   try {
-    await apiClient.put(`/api/student/${studentId}/submit`, {
-      assessment_id: assessmentId,
-    });
+    await withRetry(() =>
+      apiClient.put(`/api/student/${studentId}/submit`, {
+        assessment_id: assessmentId,
+      })
+    );
   } catch (error) {
     return handleApiError(error as AxiosError);
   }
@@ -334,8 +426,10 @@ export async function getUploadUrl(
   contentType: string = 'audio/webm'
 ): Promise<UploadUrlResponse> {
   try {
-    const response = await apiClient.post(
-      `/api/s3/upload-url?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
+    const response = await withRetry(() =>
+      apiClient.post(
+        `/api/s3/upload-url?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
+      )
     );
     return response.data;
   } catch (error) {
@@ -352,19 +446,25 @@ export async function uploadAudioToS3(
   onProgress?: (progress: number) => void
 ): Promise<void> {
   try {
-    await axios.put(uploadUrl, audioBlob, {
-      headers: {
-        'Content-Type': audioBlob.type,
-      },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          onProgress(percentCompleted);
-        }
-      },
-    });
+    await withRetry(() =>
+      axios.put(uploadUrl, audioBlob, {
+        // Explicit finite bound: the bare `axios.put` does NOT inherit apiClient's
+        // timeout. On a stall this aborts with ECONNABORTED (retried by withRetry)
+        // instead of hanging "Uploading… X%" forever.
+        timeout: S3_PUT_TIMEOUT_MS,
+        headers: {
+          'Content-Type': audioBlob.type,
+        },
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            onProgress(percentCompleted);
+          }
+        },
+      })
+    );
   } catch (error) {
     throw {
       message: 'Failed to upload audio file',

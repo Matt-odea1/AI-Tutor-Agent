@@ -109,8 +109,14 @@ interface AssessmentStore {
   isLoading: boolean;
   error: ApiError | null;
 
+  // Network connectivity — driven by navigator.onLine + online/offline events.
+  isOnline: boolean;
+
   // Actions
   setStudentInfo: (studentId: string, assessmentId: string) => void;
+  // Register window online/offline listeners that mirror connectivity into
+  // `isOnline`. Returns a cleanup fn that removes them (call on unmount).
+  initNetworkListeners: () => () => void;
   loadQuestions: () => Promise<void>;
   loadProgress: () => Promise<void>;
   setAnswerMode: (mode: 'oral' | 'written') => void;
@@ -199,12 +205,27 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   lastFailedAction: null,
   isLoading: false,
   error: null,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
   setStudentInfo: (studentId: string, assessmentId: string) => {
     // Persist for token refresh interceptor
     sessionStorage.setItem('studentId', studentId);
     sessionStorage.setItem('assessmentId', assessmentId);
     set({ studentId, assessmentId, error: null });
+  },
+
+  initNetworkListeners: () => {
+    if (typeof window === 'undefined') return () => {};
+    const handleOnline = () => set({ isOnline: true });
+    const handleOffline = () => set({ isOnline: false });
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    // Sync once on registration in case connectivity changed before mount.
+    set({ isOnline: navigator.onLine });
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   },
 
   setAnswerMode: (mode: 'oral' | 'written') => {
@@ -886,6 +907,8 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       lastFailedAction: null,
       isLoading: false,
       error: null,
+      // Keep connectivity reflecting reality across a reset — don't force `true`.
+      isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     });
   },
 }));

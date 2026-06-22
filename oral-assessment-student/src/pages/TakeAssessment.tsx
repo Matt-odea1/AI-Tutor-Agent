@@ -14,6 +14,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import { parseUrlParams, checkBrowserSupport } from '../utils/helpers';
 import { runTimerExpiry } from '../utils/timerExpiry';
+import { deferSubmitWhileOffline } from '../utils/offlineDefer';
 import { useToastStore } from '../store/toastStore';
 
 /**
@@ -44,6 +45,9 @@ export default function TakeAssessment() {
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Guards the draft-recovery effect to run at most once per mount.
   const rehydrateAttemptedRef = useRef(false);
+  // Holds the one-shot `online` listener registered when the per-question timer
+  // expires while offline, so it can be removed on unmount or once it fires.
+  const deferredSubmitRef = useRef<(() => void) | null>(null);
 
   // Wrapper to persist assessmentStarted to sessionStorage
   const setAssessmentStarted = (v: boolean) => {
@@ -256,6 +260,16 @@ export default function TakeAssessment() {
     })();
   }, [assessmentStarted, assessmentId, questions.length, currentQuestionIndex, rehydrateDraft, addToast]);
 
+  // Tear down any pending deferred-submit listener when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (deferredSubmitRef.current) {
+        window.removeEventListener('online', deferredSubmitRef.current);
+        deferredSubmitRef.current = null;
+      }
+    };
+  }, []);
+
   const handleConsentAccepted = async () => {
     // Persist consent BEFORE camera request so refresh won't re-show modal
     setConsentGiven(true);
@@ -284,12 +298,59 @@ export default function TakeAssessment() {
     }
   };
 
+  // Register a one-shot deferred submit that fires the right handler once `online`
+  // returns. Guarded against double-submit (re-checks in-flight + clears the ref
+  // before firing) and cleaned up on unmount via the effect below.
+  const registerDeferredSubmit = (run: () => void) => {
+    // Replace any prior pending listener so we never stack two.
+    if (deferredSubmitRef.current) {
+      window.removeEventListener('online', deferredSubmitRef.current);
+      deferredSubmitRef.current = null;
+    }
+    const onReconnect = () => {
+      // One-shot: detach immediately so a flapping connection can't double-fire.
+      if (deferredSubmitRef.current) {
+        window.removeEventListener('online', deferredSubmitRef.current);
+        deferredSubmitRef.current = null;
+      }
+      const store = useAssessmentStore.getState();
+      if (store.isUploading || isSubmittingAnswer || store.isStopping) return;
+      run();
+    };
+    deferredSubmitRef.current = onReconnect;
+    window.addEventListener('online', onReconnect);
+  };
+
   const handleTimerExpire = async () => {
+    const store = useAssessmentStore.getState();
+
+    // Offline: do NOT fire a submit that will instantly fail. The pure
+    // deferSubmitWhileOffline helper stops any active recording (blob is kept by
+    // the store), warns the student, and registers a one-shot reconnect that
+    // re-runs THIS expiry decision once online — so the right path (audio / text
+    // / skip) is chosen against fresh state at that moment.
+    if (!store.isOnline) {
+      await deferSubmitWhileOffline({
+        isInFlight: () => {
+          const s = useAssessmentStore.getState();
+          return s.isUploading || isSubmittingAnswer || s.isStopping;
+        },
+        isRecording: () => useAssessmentStore.getState().isRecording,
+        answerMode: store.answerMode,
+        stopRecording: () => useAssessmentStore.getState().stopRecording(),
+        notify: (msg) => addToast(msg, 'warning'),
+        registerReconnect: registerDeferredSubmit,
+        runOnReconnect: () => {
+          void handleTimerExpire();
+        },
+      });
+      return;
+    }
+
     // All decision logic lives in runTimerExpiry (pure + unit-tested). We wire it
     // to the live store here, reading recording state LAZILY so the blob captured
     // by stopRecording is seen. isSubmittingAnswer is local component state, so it
     // is folded into the re-entrancy guard alongside the store's isUploading.
-    const store = useAssessmentStore.getState();
     await runTimerExpiry({
       // isStopping guards the manual-Stop-vs-expiry race: if a stop is already in
       // flight, the expiry handler must not independently stop + skip.
