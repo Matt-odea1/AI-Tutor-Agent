@@ -79,12 +79,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: oral-assessment-instructor
-        # Use the committed lockfile (pins eslint-plugin-react-hooks@7.1.1) so CI lint
-        # matches local instead of floating to a newer, stricter plugin. Plain
-        # `npm install` (not `npm ci`) keeps npm's auto-add of platform-specific
-        # optional deps (e.g. the rollup linux binary), which is why the lockfile was
-        # previously deleted.
-        run: npm install
+        # Delete the lockfile so npm freshly resolves platform-specific optional deps
+        # on Linux (the @rollup/rollup-linux-x64-gnu native binary — npm/cli#4828).
+        # Lint determinism comes from the EXACT eslint-plugin-react-hooks pin in
+        # package.json, so a fresh install still lands on 7.1.1 (no version float).
+        run: |
+          rm -f package-lock.json
+          npm install
 
       - name: Type check
         working-directory: oral-assessment-instructor
@@ -117,12 +118,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: oral-assessment-student
-        # Use the committed lockfile (pins eslint-plugin-react-hooks@7.1.1) so CI lint
-        # matches local instead of floating to a newer, stricter plugin. Plain
-        # `npm install` (not `npm ci`) keeps npm's auto-add of platform-specific
-        # optional deps (e.g. the rollup linux binary), which is why the lockfile was
-        # previously deleted.
-        run: npm install
+        # Delete the lockfile so npm freshly resolves platform-specific optional deps
+        # on Linux (the @rollup/rollup-linux-x64-gnu native binary — npm/cli#4828).
+        # Lint determinism comes from the EXACT eslint-plugin-react-hooks pin in
+        # package.json, so a fresh install still lands on 7.1.1 (no version float).
+        run: |
+          rm -f package-lock.json
+          npm install
 
       - name: Type check
         working-directory: oral-assessment-student
