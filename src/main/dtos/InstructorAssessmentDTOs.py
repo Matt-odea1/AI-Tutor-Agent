@@ -372,6 +372,14 @@ class InstructorQuestionDetail(BaseModel):
     humanScoredAt: Optional[str] = None
 
 
+class ConsentInfo(BaseModel):
+    """Student's webcam-proctoring consent decision (granted=False = declined)."""
+    granted: bool
+    consentVersion: Optional[str] = None
+    recordedAt: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
 class InstructorStudentDetailResponse(BaseModel):
     """Per-student detailed results for instructor view"""
     ok: bool = True
@@ -386,6 +394,8 @@ class InstructorStudentDetailResponse(BaseModel):
     submittedAt: Optional[str] = None
     questions: List[InstructorQuestionDetail]
     proctoring: ProctorChunkHealthResponse
+    # None when the student never recorded a consent decision.
+    consent: Optional[ConsentInfo] = None
 
 
 class ReleaseResultsResponse(BaseModel):

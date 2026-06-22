@@ -473,3 +473,56 @@ class TestWorkflowRunnerTranscriptionPrePass:
         runner, engine, _, _ = self._make_runner(transcription_service=None)
         runner.evaluate_from_dynamodb("job-1", "s-1", "a-1")
         engine.evaluate_qa_pair.assert_called_once()
+
+
+class TestWorkflowRunnerSkippedAnswers:
+    """A 'skipped' answer must never reach the LLM and must store a 0-score eval."""
+
+    def _make_runner(self, answers):
+        engine = MagicMock()
+        engine.evaluate_qa_pair.return_value = {
+            "question_id": "q-1", "correctness_score": 5, "understanding_score": 5,
+            "total_score": 5.0, "feedback": "ok", "strengths": [], "weaknesses": [],
+            "suggested_improvements": [],
+        }
+        repository = MagicMock()
+        repository.read_questions.return_value = [
+            {"id": "q-1", "questionNumber": 1, "questionType": "comp", "text": "Q1?", "codeContext": ""},
+            {"id": "q-2", "questionNumber": 2, "questionType": "comp", "text": "Q2?", "codeContext": ""},
+        ]
+        repository.read_answers.return_value = answers
+        repository.table = MagicMock()
+        repository.table.get_item.return_value = {"Item": {}}
+        runner = EvaluationWorkflowRunner(engine=engine, repository=repository, transcription_service=None)
+        return runner, engine, repository
+
+    def test_skipped_answer_not_sent_to_engine(self):
+        runner, engine, repository = self._make_runner([
+            {"questionId": "q-1", "answerType": "audio", "transcript": "real answer"},
+            {"questionId": "q-2", "answerType": "skipped"},
+        ])
+        runner.evaluate_from_dynamodb("job-1", "s-1", "a-1")
+
+        # The engine is called for the audio answer but NOT for the skip.
+        assert engine.evaluate_qa_pair.call_count == 1
+
+        stored = {
+            call.args[2]: call.args[3]
+            for call in repository.store_evaluation.call_args_list
+        }
+        skipped_eval = stored["q-2"]
+        assert skipped_eval["total_score"] == 0
+        assert skipped_eval["evaluation_method"] == "skipped"
+        assert skipped_eval["needs_review"] is False
+        assert skipped_eval["feedback"] == "This question was skipped."
+        # max_score is applied on the common path.
+        assert "max_score" in skipped_eval
+
+    def test_all_skipped_calls_engine_zero_times(self):
+        runner, engine, repository = self._make_runner([
+            {"questionId": "q-1", "answerType": "skipped"},
+            {"questionId": "q-2", "answerType": "skipped"},
+        ])
+        runner.evaluate_from_dynamodb("job-1", "s-1", "a-1")
+        engine.evaluate_qa_pair.assert_not_called()
+        assert repository.store_evaluation.call_count == 2

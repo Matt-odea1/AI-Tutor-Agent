@@ -186,6 +186,7 @@ class InstructorAssessmentResultsAggregator:
         answers_map: Dict[str, Dict[str, Any]] = {}
         evaluations_map: Dict[str, Dict[str, Any]] = {}
         chunks: List[Dict[str, Any]] = []
+        consent_item: Optional[Dict[str, Any]] = None
 
         for item in all_items:
             sk: str = item.get("SK", "")
@@ -197,6 +198,8 @@ class InstructorAssessmentResultsAggregator:
                 evaluations_map[sk.replace("EVALUATION#", "")] = item
             elif sk.startswith("PROCTORING#CHUNK#"):
                 chunks.append(item)
+            elif sk == "CONSENT":
+                consent_item = item
 
         # Proctoring chunk health
         chunks.sort(key=lambda c: int(c.get("chunkIndex", 0)))
@@ -299,6 +302,14 @@ class InstructorAssessmentResultsAggregator:
             "submittedAt": enrollment.get("submittedAt"),
             "questions": question_details,
             "proctoring": proctoring,
+            # Proctoring consent decision (None if the student never recorded one).
+            # granted=False is the authoritative "declined recording" signal.
+            "consent": {
+                "granted": bool(consent_item.get("granted")),
+                "consentVersion": consent_item.get("consentVersion"),
+                "recordedAt": consent_item.get("recordedAt"),
+                "timestamp": consent_item.get("timestamp"),
+            } if consent_item else None,
         }
 
     # ------------------------------------------------------------------

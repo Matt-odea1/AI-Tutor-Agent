@@ -178,6 +178,34 @@ class TestResultsAggregator:
         assert detail["questions"][0]["aiScore"] == 5
         assert detail["questions"][0]["effectiveScore"] == 9
 
+    def test_get_student_detail_surfaces_consent_decline(self, table):
+        """A CONSENT record (granted=False) is surfaced to the instructor."""
+        _seed_enrollments(table)
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "QUESTION#q-1", "text": "Q1"})
+        table.put_item(Item={
+            "PK": pk, "SK": "CONSENT",
+            "granted": False, "consentVersion": "2026-06-10",
+            "recordedAt": "2026-06-22T10:00:00.000Z", "timestamp": "2026-06-22T09:59:00.000Z",
+        })
+
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        detail = agg.get_student_detail(ASSESSMENT_ID, "s-1")
+
+        assert detail["consent"] is not None
+        assert detail["consent"]["granted"] is False
+        assert detail["consent"]["consentVersion"] == "2026-06-10"
+
+    def test_get_student_detail_consent_none_when_absent(self, table):
+        _seed_enrollments(table)
+        pk = f"STUDENT#s-1#ASSESSMENT#{ASSESSMENT_ID}"
+        table.put_item(Item={"PK": pk, "SK": "QUESTION#q-1", "text": "Q1"})
+
+        agg = InstructorAssessmentResultsAggregator(table=table, get_students=lambda _: STUDENTS)
+        detail = agg.get_student_detail(ASSESSMENT_ID, "s-1")
+
+        assert detail["consent"] is None
+
 
 class TestEffectiveScore:
     def test_instructor_score_preferred(self):

@@ -67,13 +67,32 @@ class EvaluationWorkflowRunner:
 
             for index, qa_pair in enumerate(qa_pairs):
                 question_id = qa_pair["question"]["id"]
+                answer_type = (qa_pair.get("answer") or {}).get("answerType")
                 try:
                     logger.info("[Job %s] Evaluating question %d/%d", job_id, index + 1, total_questions)
-                    try:
-                        evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
-                    except Exception as first_error:
-                        logger.warning("[Job %s] First attempt failed for question %d, retrying: %s", job_id, index + 1, first_error)
-                        evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
+                    if answer_type == "skipped":
+                        # A skipped question is a deterministic zero — it is never
+                        # sent to the LLM. Store a valid 0-score evaluation so the
+                        # student's results show it as answered-with-zero rather
+                        # than pending or flagged for review.
+                        evaluation = {
+                            "question_id": question_id,
+                            "correctness_score": 0,
+                            "understanding_score": 0,
+                            "total_score": 0,
+                            "feedback": "This question was skipped.",
+                            "strengths": [],
+                            "weaknesses": [],
+                            "suggested_improvements": [],
+                            "needs_review": False,
+                            "evaluation_method": "skipped",
+                        }
+                    else:
+                        try:
+                            evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
+                        except Exception as first_error:
+                            logger.warning("[Job %s] First attempt failed for question %d, retrying: %s", job_id, index + 1, first_error)
+                            evaluation = self.engine.evaluate_qa_pair(qa_pair, rubric=rubric, course_context=course_context)
                     evaluation["max_score"] = max_per_question
                     evaluations.append(evaluation)
                     total_score += evaluation.get("total_score", 0)

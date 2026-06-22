@@ -371,6 +371,48 @@ class OralAssessmentService:
             logger.error(f"Failed to store proctor chunk: {e}")
             raise OralAssessmentServiceError(f"Database error: {e}")
     
+    def record_consent(
+        self,
+        student_id: str,
+        assessment_id: str,
+        granted: bool,
+        consent_version: str,
+        timestamp: str,
+    ) -> Dict[str, Any]:
+        """
+        Record a student's webcam-proctoring consent decision.
+
+        Stored as a single CONSENT item under the student-assessment partition so
+        it is read in the instructor's existing single-partition query. A
+        ``granted=False`` record is the authoritative "student declined recording"
+        signal for the instructor — it is durable and queryable (not a missing
+        record). Idempotent: a later decision overwrites the prior one.
+        """
+        try:
+            recorded_at = datetime.now(timezone.utc).isoformat()
+            self.table.put_item(Item={
+                "PK": f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}",
+                "SK": "CONSENT",
+                "granted": bool(granted),
+                "consentVersion": consent_version,
+                "timestamp": timestamp,
+                "recordedAt": recorded_at,
+            })
+            logger.info(
+                f"Recorded consent for student {student_id}, assessment "
+                f"{assessment_id}: granted={granted}"
+            )
+            return {
+                "ok": True,
+                "studentId": student_id,
+                "assessmentId": assessment_id,
+                "granted": bool(granted),
+                "recordedAt": recorded_at,
+            }
+        except Exception as e:
+            logger.error(f"Failed to record consent: {e}")
+            raise OralAssessmentServiceError(f"Database error: {e}")
+
     def submit_assessment(
         self,
         student_id: str,
@@ -530,7 +572,14 @@ class OralAssessmentService:
             answers_response = self.table.query(
                 KeyConditionExpression=Key('PK').eq(f"STUDENT#{student_id}#ASSESSMENT#{assessment_id}") & Key('SK').begins_with('ANSWER#')
             )
-            answered_questions = len(answers_response.get('Items', []))
+            answer_items = answers_response.get('Items', [])
+            answered_questions = len(answer_items)
+            # Authoritative list of answered question ids (each ANSWER# record
+            # stores its questionId, incl. skipped answers). The client gates its
+            # answered/skipped UI on this rather than a position heuristic.
+            answered_question_ids = [
+                item['questionId'] for item in answer_items if item.get('questionId')
+            ]
 
             # Calculate progress
             percentage = round((answered_questions / total_questions * 100), 1) if total_questions > 0 else 0
@@ -557,6 +606,7 @@ class OralAssessmentService:
                 "status": status,
                 "totalQuestions": total_questions,
                 "answeredQuestions": answered_questions,
+                "answeredQuestionIds": answered_question_ids,
                 "percentage": percentage,
                 "startedAt": enrollment.get('startedAt'),
                 "submittedAt": enrollment.get('submittedAt')

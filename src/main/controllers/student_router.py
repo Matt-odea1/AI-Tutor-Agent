@@ -31,6 +31,8 @@ from src.main.dtos.StudentAssessmentDTOs import (
     SubmitAnswerResponse,
     SubmitAssessmentRequest,
     SubmitAssessmentResponse,
+    SubmitConsentRequest,
+    SubmitConsentResponse,
     SubmitProctorChunkRequest,
     SubmitProctorChunkResponse,
 )
@@ -304,6 +306,37 @@ async def submit_proctor_chunk(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in submit_proctor_chunk: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@student_router.post("/{student_id}/consent", response_model=SubmitConsentResponse)
+async def record_consent(
+    student_id: str,
+    request: SubmitConsentRequest = Body(...),
+    svc: OralAssessmentService = Depends(get_oral_assessment_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Record the student's webcam-proctoring consent decision (granted or declined)."""
+    try:
+        _assert_student_access(_principal, student_id, request.assessment_id)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: svc.record_consent(
+            student_id=student_id,
+            assessment_id=request.assessment_id,
+            granted=request.granted,
+            consent_version=request.consent_version,
+            timestamp=request.timestamp,
+        ))
+        return SubmitConsentResponse(**result)
+
+    except OralAssessmentServiceError as error:
+        raise ApiError(status_code=400, code="consent_failed", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in record_consent: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

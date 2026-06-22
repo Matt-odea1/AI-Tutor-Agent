@@ -10,10 +10,10 @@ from datetime import datetime
 # --- Request Models ---
 
 class SubmitAnswerRequest(BaseModel):
-    """Request to submit an answer (audio, text, or video) for a question"""
+    """Request to submit an answer (audio, text, video, or an explicit skip) for a question"""
     question_id: str = Field(..., description="Question identifier")
     assessment_id: str = Field(..., description="Assessment identifier")
-    answer_type: str = Field("audio", description="'audio', 'text', or 'video'")
+    answer_type: str = Field("audio", description="'audio', 'text', 'video', or 'skipped'")
     # Audio answer fields
     audio_url: Optional[str] = Field(None, description="S3 URL of uploaded audio file (audio answers)")
     duration: Optional[int] = Field(None, description="Recording duration in seconds", ge=0)
@@ -21,6 +21,10 @@ class SubmitAnswerRequest(BaseModel):
     text_content: Optional[str] = Field(None, description="Written answer text (text answers)", min_length=1)
     # Video answer fields
     video_url: Optional[str] = Field(None, description="S3 URL of uploaded video file (video answers)")
+    # Client-side answer-mode hint ('oral' | 'written'). Informational only — the
+    # skipped-answer path sends it; the service does not branch on it. Declared so
+    # the request validates cleanly rather than relying on extra-field tolerance.
+    mode: Optional[str] = Field(None, description="Answer mode hint: 'oral' or 'written'")
 
 
 class SubmitAssessmentRequest(BaseModel):
@@ -88,6 +92,23 @@ class SubmitProctorChunkResponse(BaseModel):
     chunkIndex: int
 
 
+class SubmitConsentRequest(BaseModel):
+    """Request to record a student's webcam-proctoring consent decision."""
+    assessment_id: str = Field(..., description="Assessment identifier")
+    granted: bool = Field(..., description="True if the student consented to proctoring, False if declined")
+    consent_version: str = Field(..., description="Version of the consent text the student was shown")
+    timestamp: str = Field(..., description="ISO 8601 timestamp of the decision (client-side)")
+
+
+class SubmitConsentResponse(BaseModel):
+    """Response after recording a consent decision."""
+    ok: bool = True
+    studentId: str
+    assessmentId: str
+    granted: bool
+    recordedAt: str
+
+
 class SubmitAssessmentResponse(BaseModel):
     """Response after submitting complete assessment"""
     ok: bool = True
@@ -110,6 +131,11 @@ class StudentProgressResponse(BaseModel):
     status: str
     totalQuestions: int
     answeredQuestions: int
+    # Authoritative list of question ids that have an answer record (incl. skips).
+    # The client prefers this over a position-based heuristic to gate which
+    # questions are answered after a mid-assessment refresh. Defaults to an empty
+    # list so older clients/responses remain valid.
+    answeredQuestionIds: List[str] = Field(default_factory=list)
     percentage: float
     startedAt: Optional[str] = None
     submittedAt: Optional[str] = None

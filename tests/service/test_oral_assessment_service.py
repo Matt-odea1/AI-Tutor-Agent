@@ -237,6 +237,38 @@ class TestSubmitAnswer:
         assert result["ok"] is True
         assert result["answerType"] == "video"
 
+    def test_submit_skipped_answer(self, dynamo_env):
+        """A skipped answer stores a clean non-answer: answerType='skipped' with
+        no media/text content, and still counts as answered."""
+        table = dynamo_env
+        _seed_assessment(table)
+        _seed_enrollment(table)
+        _seed_questions(table, count=1)
+        _seed_question_order(table, question_ids=["q-1"])
+        svc = _create_service(table)
+
+        result = svc.submit_answer(
+            student_id="s-1",
+            question_id="q-1",
+            assessment_id="a-1",
+            answer_type="skipped",
+        )
+
+        assert result["ok"] is True
+        assert result["answerType"] == "skipped"
+
+        item = table.get_item(Key={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1",
+            "SK": "ANSWER#q-1",
+        })["Item"]
+        assert item["answerType"] == "skipped"
+        assert item["status"] == "submitted"
+        # No media or text content is stored for a skip.
+        assert "audioUrl" not in item
+        assert "videoUrl" not in item
+        assert "textContent" not in item
+        assert "duration" not in item
+
 
 # ─────────────────────────────────────────────────────────────
 # get_student_progress
@@ -260,6 +292,7 @@ class TestGetStudentProgress:
         assert progress["totalQuestions"] == 3
         assert progress["answeredQuestions"] == 0
         assert progress["percentage"] == 0
+        assert progress["answeredQuestionIds"] == []
 
     def test_progress_after_answering(self, dynamo_env):
         table = dynamo_env
@@ -283,6 +316,35 @@ class TestGetStudentProgress:
         progress = svc.get_student_progress("s-1", "a-1")
         assert progress["answeredQuestions"] == 1
         assert progress["percentage"] == pytest.approx(33.3, abs=0.1)
+        # Authoritative answered-id list, not just a count.
+        assert progress["answeredQuestionIds"] == ["q-1"]
+
+    def test_progress_answered_ids_includes_skips(self, dynamo_env):
+        """answeredQuestionIds lists every question with an answer record,
+        including skipped ones, regardless of order."""
+        table = dynamo_env
+        _seed_assessment(table)
+        _seed_enrollment(table)
+        for i in range(1, 4):
+            table.put_item(Item={
+                "PK": "ASSESSMENT#a-1",
+                "SK": f"QUESTION#q-{i}",
+                "text": f"Q{i}",
+            })
+        # q-1 answered, q-3 skipped, q-2 untouched.
+        table.put_item(Item={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-1",
+            "questionId": "q-1", "answerType": "audio", "status": "submitted",
+        })
+        table.put_item(Item={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1", "SK": "ANSWER#q-3",
+            "questionId": "q-3", "answerType": "skipped", "status": "submitted",
+        })
+        svc = _create_service(table)
+
+        progress = svc.get_student_progress("s-1", "a-1")
+        assert progress["answeredQuestions"] == 2
+        assert sorted(progress["answeredQuestionIds"]) == ["q-1", "q-3"]
 
     def test_progress_unenrolled_raises(self, dynamo_env):
         table = dynamo_env
@@ -504,3 +566,66 @@ class TestProctorChunk:
             "SK": "PROCTORING#CHUNK#000000",
         })
         assert item["Item"]["chunkUrl"] == "s3://bucket/chunk-0.webm"
+
+
+class TestRecordConsent:
+    def test_record_consent_granted(self, dynamo_env):
+        table = dynamo_env
+        _seed_assessment(table)
+        svc = _create_service(table)
+
+        result = svc.record_consent(
+            student_id="s-1",
+            assessment_id="a-1",
+            granted=True,
+            consent_version="2026-06-10",
+            timestamp="2026-06-22T10:00:00.000Z",
+        )
+        assert result["ok"] is True
+        assert result["granted"] is True
+        assert result["recordedAt"]
+
+        item = table.get_item(Key={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1",
+            "SK": "CONSENT",
+        })["Item"]
+        assert item["granted"] is True
+        assert item["consentVersion"] == "2026-06-10"
+        assert item["timestamp"] == "2026-06-22T10:00:00.000Z"
+
+    def test_record_consent_declined_is_durable(self, dynamo_env):
+        """granted=False is stored as a real record (the instructor's decline signal)."""
+        table = dynamo_env
+        _seed_assessment(table)
+        svc = _create_service(table)
+
+        result = svc.record_consent(
+            student_id="s-1",
+            assessment_id="a-1",
+            granted=False,
+            consent_version="2026-06-10",
+            timestamp="2026-06-22T10:00:00.000Z",
+        )
+        assert result["granted"] is False
+
+        item = table.get_item(Key={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1",
+            "SK": "CONSENT",
+        })["Item"]
+        assert item["granted"] is False
+
+    def test_record_consent_overwrites_prior_decision(self, dynamo_env):
+        """A later decision is idempotent — it overwrites the single CONSENT item."""
+        table = dynamo_env
+        _seed_assessment(table)
+        svc = _create_service(table)
+
+        svc.record_consent("s-1", "a-1", True, "2026-06-10", "2026-06-22T10:00:00.000Z")
+        svc.record_consent("s-1", "a-1", False, "2026-06-10", "2026-06-22T10:05:00.000Z")
+
+        item = table.get_item(Key={
+            "PK": "STUDENT#s-1#ASSESSMENT#a-1",
+            "SK": "CONSENT",
+        })["Item"]
+        assert item["granted"] is False
+        assert item["timestamp"] == "2026-06-22T10:05:00.000Z"

@@ -43,6 +43,13 @@ class OralAssessmentAnswerSubmission:
         elif answer_type == "video":
             dynamo_item["videoUrl"] = video_url or ""
             dynamo_item["duration"] = duration or 0
+        elif answer_type == "skipped":
+            # Explicit non-answer: stored as a genuine zero-credit skip with no
+            # media or text content. Evaluation writes a deterministic 0-score
+            # record for it and never sends it to the LLM (see
+            # EvaluationWorkflowRunner). It still counts as "answered" for
+            # progress so the student isn't blocked from submitting.
+            pass
         else:  # audio
             dynamo_item["audioUrl"] = audio_url or ""
             dynamo_item["duration"] = duration or 0
