@@ -185,6 +185,50 @@ class TestUploadStudents:
 
 
 # ─────────────────────────────────────────────────────────────
+# count_submitted_students (auto-evaluation gate)
+# ─────────────────────────────────────────────────────────────
+
+class TestCountSubmittedStudents:
+    def _setup(self, table):
+        svc = _create_service(table)
+        assessment = svc.create_assessment(
+            title="Count Test", course="C", description="D",
+            due_date="2026-04-01", total_questions=2,
+        )
+        aid = assessment["id"]
+        svc.upload_students(aid, [
+            {"name": "Alice", "email": "alice@test.com", "studentId": "s-1", "code": "x = 1"},
+            {"name": "Bob", "email": "bob@test.com", "studentId": "s-2", "code": "y = 2"},
+        ])
+        return svc, table, aid
+
+    def _mark_submitted(self, table, aid, student_id):
+        table.update_item(
+            Key={"PK": f"ASSESSMENT#{aid}", "SK": f"STUDENT#{student_id}"},
+            UpdateExpression="SET #s = :v",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":v": "submitted"},
+        )
+
+    def test_counts_none_submitted(self, dynamo_env):
+        svc, table, aid = self._setup(dynamo_env)
+        assert svc.count_submitted_students(aid) == (0, 2)
+
+    def test_counts_partial_submitted(self, dynamo_env):
+        svc, table, aid = self._setup(dynamo_env)
+        self._mark_submitted(table, aid, "s-1")
+        # The auto-eval gate must see submitted < total here and hold off.
+        assert svc.count_submitted_students(aid) == (1, 2)
+
+    def test_counts_all_submitted(self, dynamo_env):
+        svc, table, aid = self._setup(dynamo_env)
+        self._mark_submitted(table, aid, "s-1")
+        self._mark_submitted(table, aid, "s-2")
+        # All submitted -> gate fires (submitted == total).
+        assert svc.count_submitted_students(aid) == (2, 2)
+
+
+# ─────────────────────────────────────────────────────────────
 # update_brief
 # ─────────────────────────────────────────────────────────────
 

@@ -197,6 +197,10 @@ async def submit_assessment(
                     return
                 submitted, total = instructor_svc.count_submitted_students(request.assessment_id)
                 if total <= 0 or submitted < total:
+                    logger.info(
+                        "[AutoEval] Holding off for assessment %s — %d/%d students submitted",
+                        request.assessment_id, submitted, total,
+                    )
                     return
                 all_students = instructor_svc.get_assessment_students(request.assessment_id)
                 job_manager = get_batch_job_manager()

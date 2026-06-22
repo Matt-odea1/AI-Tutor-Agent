@@ -847,15 +847,35 @@ class InstructorAssessmentService:
         """
         Return (submitted_count, total_enrolled_count) for an assessment.
         Queries ASSESSMENT#{id} / STUDENT#* items and counts those with status='submitted'.
+
+        Uses a strongly-consistent, fully-paginated read. This is called from the
+        auto-evaluation trigger immediately after a student commits
+        status='submitted'; an eventually-consistent query can miss that just-written
+        value and make the "all students submitted" gate silently fail for the
+        last/only submitter (so the batch evaluation never fires). ConsistentRead
+        closes that race; pagination keeps the count correct for large rosters.
         """
         from boto3.dynamodb.conditions import Key
         try:
-            response = self.table.query(
-                KeyConditionExpression=Key("PK").eq(f"ASSESSMENT#{assessment_id}") & Key("SK").begins_with("STUDENT#"),
-            )
-            items = response.get("Items", [])
-            total = len(items)
-            submitted = sum(1 for item in items if item.get("status") == "submitted")
+            total = 0
+            submitted = 0
+            last_key = None
+            while True:
+                kwargs = {
+                    "KeyConditionExpression": Key("PK").eq(f"ASSESSMENT#{assessment_id}")
+                    & Key("SK").begins_with("STUDENT#"),
+                    "ConsistentRead": True,
+                }
+                if last_key:
+                    kwargs["ExclusiveStartKey"] = last_key
+                response = self.table.query(**kwargs)
+                for item in response.get("Items", []):
+                    total += 1
+                    if item.get("status") == "submitted":
+                        submitted += 1
+                last_key = response.get("LastEvaluatedKey")
+                if not last_key:
+                    break
             return submitted, total
         except Exception as e:
             logger.error(f"Failed to count submitted students for {assessment_id}: {e}")
