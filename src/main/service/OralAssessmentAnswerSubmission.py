@@ -20,6 +20,7 @@ class OralAssessmentAnswerSubmission:
         duration: Optional[int] = None,
         text_content: Optional[str] = None,
         video_url: Optional[str] = None,
+        allow_review: bool = False,
     ) -> Dict[str, Any]:
         # Validate required fields per answer type
         if answer_type == "text" and not (text_content and text_content.strip()):
@@ -54,12 +55,17 @@ class OralAssessmentAnswerSubmission:
             dynamo_item["audioUrl"] = audio_url or ""
             dynamo_item["duration"] = duration or 0
 
-        # Conditional put to prevent duplicate submissions (atomic check-and-store)
         from boto3.dynamodb.conditions import Attr
-        self.table.put_item(
-            Item=dynamo_item,
-            ConditionExpression=Attr("SK").not_exists(),
-        )
+        if allow_review:
+            # Review mode: upsert so a student can revise an earlier answer. The set of
+            # ANSWER# items is unchanged by an overwrite, so progress counts stay correct.
+            self.table.put_item(Item=dynamo_item)
+        else:
+            # Conditional put to prevent duplicate submissions (atomic check-and-store)
+            self.table.put_item(
+                Item=dynamo_item,
+                ConditionExpression=Attr("SK").not_exists(),
+            )
 
         self.progress_updater(student_id, assessment_id)
 

@@ -91,7 +91,9 @@ class OralAssessmentResultsAggregator:
             item["SK"].replace("EVALUATION#", ""): item for item in evaluations_response.get("Items", [])
         }
 
-        if not assessment.get("resultsReleased"):
+        # feedbackRelease == 'immediate' bypasses the manual instructor release gate
+        # (formative flows); 'manual' (default / legacy) still requires resultsReleased.
+        if assessment.get("feedbackRelease") != "immediate" and not assessment.get("resultsReleased"):
             raise ValueError(f"Results not released yet for student {student_id}")
 
         if not evaluations_map:

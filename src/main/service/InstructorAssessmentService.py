@@ -128,6 +128,9 @@ class InstructorAssessmentService:
         rubric: Optional[str] = None,
         answer_mode: str = "oral",
         preparation_time: Optional[int] = None,
+        proctored: Optional[bool] = None,
+        allow_review: bool = False,
+        feedback_release: str = "manual",
         max_score_per_question: Optional[int] = None,
         grade_cutoffs: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
@@ -182,6 +185,12 @@ class InstructorAssessmentService:
                 'rubric': rubric,
                 'answerMode': answer_mode,
                 'preparationTime': preparation_time,
+                # Behaviour flags. proctored defaults to (answer_mode == 'oral') so
+                # existing oral assessments are unchanged; allowReview/feedbackRelease
+                # default to today's locked, manual-release behaviour.
+                'proctored': proctored if proctored is not None else (answer_mode == 'oral'),
+                'allowReview': bool(allow_review),
+                'feedbackRelease': feedback_release,
                 'status': 'draft',
                 'createdAt': created_at,
                 'updatedAt': created_at

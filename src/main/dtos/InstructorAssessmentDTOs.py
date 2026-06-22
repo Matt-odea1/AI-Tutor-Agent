@@ -24,6 +24,9 @@ class CreateAssessmentRequest(BaseModel):
     rubric: Optional[str] = Field(None, description="Custom grading rubric injected into the evaluation prompt")
     answerMode: str = Field("oral", description="'oral' or 'written' — controls student answer interface")
     preparationTime: Optional[int] = Field(None, description="Seconds of prep time shown before oral recording starts (0 = start immediately)", ge=0, le=300)
+    proctored: Optional[bool] = Field(None, description="Webcam proctoring on/off. When unset, defaults to (answerMode == 'oral') for backward compatibility.")
+    allowReview: bool = Field(False, description="Allow students to navigate back and revise earlier answers before final submit (written mode in v1).")
+    feedbackRelease: str = Field("manual", description="'immediate' (results shown as soon as graded) or 'manual' (instructor must release).")
     maxScorePerQuestion: Optional[int] = Field(None, description="Override max marks per question (default 10)", ge=1, le=100)
     gradeCutoffs: Optional[Dict[str, float]] = Field(None, description="Override grade cutoffs as percentages, e.g. {'excellent': 90, 'competent': 75, 'developing': 60}")
 

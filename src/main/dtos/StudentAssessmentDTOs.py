@@ -45,6 +45,9 @@ class QuestionResponse(BaseModel):
     topic: Optional[str] = None
     timeLimit: Optional[int] = None
     createdAt: str
+    # Student's prior answer text, only populated in review (allowReview) mode so the
+    # UI can pre-fill it when navigating back to an answered question.
+    priorAnswer: Optional[str] = None
 
 
 class StudentQuestionsResponse(BaseModel):
@@ -57,6 +60,8 @@ class StudentQuestionsResponse(BaseModel):
     currentQuestionIndex: int = 0
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
+    proctored: Optional[bool] = None
+    allowReview: bool = False
     assessmentTitle: Optional[str] = None
     assessmentCourse: Optional[str] = None
     assessmentDescription: Optional[str] = None
