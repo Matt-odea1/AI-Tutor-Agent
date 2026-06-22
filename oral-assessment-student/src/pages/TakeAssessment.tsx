@@ -12,7 +12,12 @@ import ProctorCamera from '../components/ProctorCamera';
 import CameraRevokedOverlay from '../components/CameraRevokedOverlay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
-import { parseUrlParams, checkBrowserSupport } from '../utils/helpers';
+import {
+  parseUrlParams,
+  checkBrowserSupport,
+  declinedConsentKey,
+  hasDeclinedConsent,
+} from '../utils/helpers';
 import { runTimerExpiry } from '../utils/timerExpiry';
 import { deferSubmitWhileOffline } from '../utils/offlineDefer';
 import { useToastStore } from '../store/toastStore';
@@ -75,6 +80,8 @@ export default function TakeAssessment() {
     isProctoringActive,
     cameraRevoked,
     consentGiven,
+    proctoringRequested,
+    proctoringDegraded,
     answeredQuestionIds,
     skippedQuestionIds,
     proctoringWarning,
@@ -88,13 +95,27 @@ export default function TakeAssessment() {
     submitCompleteAssessment,
     setTextAnswer,
     rehydrateDraft,
-    setConsentGiven,
+    recordConsentDecision,
     startProctoring,
+    ensureProctoring,
     restoreProctoring,
+    setConsentGiven,
     clearError,
     clearProctoringWarning,
     retryLastAction,
   } = useAssessmentStore();
+
+  // True when the student originally DECLINED recording — proctoring is optional,
+  // so a later camera-revoked overlay offers a "Continue without recording" escape
+  // and the resume re-arm must NOT block them. We track decline separately from
+  // consentGiven (which is true for both accept and decline).
+  const [proctoringDeclined, setProctoringDeclined] = useState(false);
+  // Set when a silent resume re-arm fails (browser rejected getUserMedia without a
+  // gesture) — shows a blocking re-grant overlay instead of continuing un-proctored.
+  const [resumeRegrantNeeded, setResumeRegrantNeeded] = useState(false);
+  // Guards the resume re-arm so it runs at most once despite this effect's deps
+  // (currentQuestionIndex / progress) changing during the exam.
+  const resumeArmAttemptedRef = useRef(false);
 
   // Initialize assessment on mount
   useEffect(() => {
@@ -103,6 +124,19 @@ export default function TakeAssessment() {
       setStudentInfo(urlParams.studentId, urlParams.assessmentId);
     }
   }, [setStudentInfo]);
+
+  // Restore the "originally declined recording" decision across a mid-exam refresh.
+  // proctoringDeclined is React-only state lost on remount; without this, the resume
+  // re-arm effect (which skips re-arming when proctoringDeclined is true) would wrongly
+  // attempt ensureProctoring() for a student who declined. We persist the decline to
+  // sessionStorage in handleConsentDeclined / handleContinueWithoutRecording and
+  // restore it here before the resume effect runs.
+  useEffect(() => {
+    if (!assessmentId) return;
+    if (hasDeclinedConsent(assessmentId)) {
+      setProctoringDeclined(true);
+    }
+  }, [assessmentId]);
 
   // Load questions when student info is set
   useEffect(() => {
@@ -154,6 +188,78 @@ export default function TakeAssessment() {
       }
     }
   }, [questions.length, currentQuestionIndex, assessmentId, answeredQuestionIds.size, progress]);
+
+  // Resume re-arm: after a mid-exam refresh the live proctoring stream is gone,
+  // but a proctored session must NOT silently continue un-proctored. When the
+  // assessment is in-progress AND consent was given AND the student did NOT decline
+  // recording AND proctoring isn't already live, attempt a SILENT ensureProctoring.
+  // If the browser rejects getUserMedia without a fresh gesture, show a blocking
+  // re-grant overlay instead. Guarded to run at most once (deps include progress /
+  // currentQuestionIndex which change during the exam).
+  useEffect(() => {
+    if (questions.length === 0 || !assessmentId) return;
+    if (resumeArmAttemptedRef.current) return;
+    // Read the persisted decline directly too: on a refresh the restore-decline
+    // effect and this effect both fire on the same mount, so proctoringDeclined
+    // React state may still be its initial `false` here. sessionStorage is settled.
+    const declined = proctoringDeclined || hasDeclinedConsent(assessmentId);
+    if (!consentGiven || declined) return; // declined → run un-proctored, no block
+
+    const serverInProgress = currentQuestionIndex > 0;
+    const hasAnswered =
+      answeredQuestionIds.size > 0 || (progress?.answeredQuestions ?? 0) > 0;
+    const inProgress = serverInProgress || hasAnswered;
+    if (!inProgress) return; // fresh start handled by the consent → startProctoring flow
+
+    // Only oral mode implies a proctoring camera here (written has no recording).
+    if (answerMode !== 'oral') return;
+
+    // Already live? nothing to do.
+    const hasLiveVideo =
+      !!proctorStream && proctorStream.getVideoTracks().some((t) => t.readyState === 'live');
+    if (hasLiveVideo) return;
+
+    resumeArmAttemptedRef.current = true;
+    (async () => {
+      await ensureProctoring();
+      // ensureProctoring swallows getUserMedia failures into proctoringWarning and
+      // leaves no live stream. If we still have no live stream, the silent re-grant
+      // was rejected — block with the re-grant overlay rather than continue un-proctored.
+      const s = useAssessmentStore.getState();
+      const live =
+        !!s.proctorStream && s.proctorStream.getVideoTracks().some((t) => t.readyState === 'live');
+      if (!live) setResumeRegrantNeeded(true);
+    })();
+  }, [
+    questions.length,
+    assessmentId,
+    consentGiven,
+    proctoringDeclined,
+    currentQuestionIndex,
+    answeredQuestionIds.size,
+    progress,
+    answerMode,
+    proctorStream,
+    ensureProctoring,
+  ]);
+
+  // Release all camera/mic tracks + the proctoring MediaRecorder on unmount and on
+  // pagehide (preferred over `unload` for mobile Safari). stopProctoring is guarded
+  // against a double-stop, so the happy-path submit (which also calls it) plus this
+  // cleanup won't error. Does NOT touch the existing beforeunload warning above.
+  useEffect(() => {
+    const releaseMedia = () => {
+      const s = useAssessmentStore.getState();
+      void s.stopProctoring();
+      s.audioRecorder?.cleanup();
+    };
+    const handlePageHide = () => releaseMedia();
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      releaseMedia();
+    };
+  }, []);
 
   // Check browser support
   useEffect(() => {
@@ -271,9 +377,11 @@ export default function TakeAssessment() {
   }, []);
 
   const handleConsentAccepted = async () => {
-    // Persist consent BEFORE camera request so refresh won't re-show modal
-    setConsentGiven(true);
-    if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
+    // Record consent (granted) server-side + locally + sessionStorage BEFORE the
+    // camera request so a refresh won't re-show the modal. Best-effort: a failed
+    // server write only toasts, never blocks.
+    setProctoringDeclined(false);
+    await recordConsentDecision(true);
 
     setIsRequestingPermission(true);
     try {
@@ -283,16 +391,47 @@ export default function TakeAssessment() {
     }
   };
 
-  const handleConsentDeclined = () => {
-    // Allow assessment without proctoring (consent declined = proceed without camera)
-    setConsentGiven(true);
-    if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
+  const handleConsentDeclined = async () => {
+    // Allow assessment without proctoring (consent declined = proceed without
+    // camera). granted:false is the instructor's authoritative decline signal.
+    // Persist the decline so a mid-exam refresh restores proctoringDeclined and the
+    // resume re-arm effect correctly skips re-arming the camera.
+    setProctoringDeclined(true);
+    if (assessmentId) sessionStorage.setItem(declinedConsentKey(assessmentId), 'true');
+    await recordConsentDecision(false);
+  };
+
+  // Escape from the camera-revoked overlay when proctoring is optional: record a
+  // decline (so the instructor sees the escape was taken), then dismiss the
+  // blocking overlay and clear the proctoring-required intent.
+  const handleContinueWithoutRecording = async () => {
+    setProctoringDeclined(true);
+    if (assessmentId) sessionStorage.setItem(declinedConsentKey(assessmentId), 'true');
+    await recordConsentDecision(false);
+    useAssessmentStore.setState({ cameraRevoked: false, proctoringRequested: false });
+    setResumeRegrantNeeded(false);
   };
 
   const handleRestoreCamera = async () => {
     setIsRestoringCamera(true);
     try {
       await restoreProctoring();
+    } finally {
+      setIsRestoringCamera(false);
+    }
+  };
+
+  // Re-grant from the resume overlay: this runs inside a user gesture (button
+  // click), so getUserMedia is permitted. On success the overlay self-dismisses
+  // (its render condition checks for a live stream); on failure it stays up.
+  const handleResumeRegrant = async () => {
+    setIsRestoringCamera(true);
+    try {
+      await startProctoring();
+      const s = useAssessmentStore.getState();
+      const live =
+        !!s.proctorStream && s.proctorStream.getVideoTracks().some((t) => t.readyState === 'live');
+      if (live) setResumeRegrantNeeded(false);
     } finally {
       setIsRestoringCamera(false);
     }
@@ -600,11 +739,39 @@ export default function TakeAssessment() {
         </div>
       )}
 
-      {/* Camera revoked overlay */}
+      {/* Proctoring degraded banner (non-blocking) — chunk uploads are failing and
+          retrying. Styled like the yellow proctoringWarning banner, but distinct
+          from the blocking CameraRevokedOverlay. */}
+      {proctoringDegraded && (
+        <div className="bg-yellow-50 border-b border-yellow-200 text-yellow-800 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm">Proctoring degraded — retrying upload. Your answers are unaffected.</span>
+        </div>
+      )}
+
+      {/* Camera revoked overlay (blocking). When proctoring is optional (the
+          student originally declined), offers a logged "Continue without recording"
+          escape. */}
       {cameraRevoked && (
         <CameraRevokedOverlay
           onRestore={handleRestoreCamera}
           isRestoring={isRestoringCamera}
+          proctoringOptional={proctoringDeclined}
+          onContinueWithout={proctoringDeclined ? handleContinueWithoutRecording : undefined}
+        />
+      )}
+
+      {/* Resume re-grant overlay (blocking) — a mid-exam refresh dropped the
+          proctoring stream and a silent re-arm was rejected by the browser. The
+          student must re-grant the camera (a fresh gesture) rather than silently
+          continue un-proctored. Suppressed once a live stream returns. */}
+      {resumeRegrantNeeded && !cameraRevoked && !(proctoringRequested && isProctoringActive) && (
+        <CameraRevokedOverlay
+          title="Re-grant camera to continue"
+          description="Your assessment is proctored. After reloading, we need to restart your camera. Please allow camera and microphone access, then click below to continue."
+          onRestore={handleResumeRegrant}
+          isRestoring={isRestoringCamera}
+          proctoringOptional={proctoringDeclined}
+          onContinueWithout={proctoringDeclined ? handleContinueWithoutRecording : undefined}
         />
       )}
 

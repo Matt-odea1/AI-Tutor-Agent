@@ -20,7 +20,10 @@ import {
   submitAssessment,
   getProgress,
   getResults,
+  recordConsent,
+  CONSENT_VERSION,
 } from '../services/api';
+import { useToastStore } from './toastStore';
 
 const ensureStudentToken = async (studentId: string, assessmentId: string) => {
   if (!sessionStorage.getItem('studentToken')) {
@@ -81,6 +84,19 @@ interface AssessmentStore {
   isProctoringActive: boolean;
   cameraRevoked: boolean;
   consentGiven: boolean;
+  // "This session is SUPPOSED to be proctored", distinct from proctorStream /
+  // isProctoringActive (which reflect a live stream actually existing right now).
+  // Set true on a successful startProctoring; lets the resume flow detect that a
+  // refresh dropped the live stream and re-arm (or block) instead of silently
+  // continuing un-proctored.
+  proctoringRequested: boolean;
+  // Non-blocking signal that proctoring chunk uploads are failing (post-retry).
+  // Distinct from cameraRevoked, which is a BLOCKING full-screen overlay. Drives
+  // a yellow "retrying upload" banner only.
+  proctoringDegraded: boolean;
+  // The proctoring stream's audio track, kept so the per-question AudioRecorder
+  // can reuse it instead of opening a second getUserMedia (Safari/iOS mic clash).
+  proctorAudioTrack: MediaStreamTrack | null;
 
   // Results
   results: Results | null;
@@ -140,9 +156,16 @@ interface AssessmentStore {
 
   // Proctoring actions
   startProctoring: () => Promise<void>;
+  // Idempotent re-arm: no-op if a live proctoring video stream already exists,
+  // otherwise (re)acquires it. Used by the resume flow after a refresh.
+  ensureProctoring: () => Promise<void>;
   stopProctoring: () => Promise<void>;
   restoreProctoring: () => Promise<void>;
   setConsentGiven: (given: boolean) => void;
+  setProctoringDegraded: (degraded: boolean) => void;
+  // Record a consent decision: sets local consentGiven + persists sessionStorage,
+  // then best-effort POSTs the server record (never blocks, never throws).
+  recordConsentDecision: (granted: boolean) => Promise<void>;
 
   // Navigation
   nextQuestion: () => void;
@@ -194,6 +217,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   isProctoringActive: false,
   cameraRevoked: false,
   consentGiven: false,
+  proctoringRequested: false,
+  proctoringDegraded: false,
+  proctorAudioTrack: null,
   results: null,
   isResultsReady: false,
   isResultsPending: false,
@@ -374,7 +400,16 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   initializeRecorder: async () => {
     try {
       const recorder = new AudioRecorder();
-      await recorder.initialize();
+      // Reuse the proctoring audio track when proctoring is active so we don't
+      // open a second concurrent mic capture (the Safari/iOS NotReadableError).
+      // The track is only passed when still live; otherwise fall back to no-arg
+      // getUserMedia. When not proctoring, proctorAudioTrack is null → no arg.
+      const { proctorAudioTrack, isProctoringActive } = get();
+      const reuseTrack =
+        isProctoringActive && proctorAudioTrack && proctorAudioTrack.readyState === 'live'
+          ? proctorAudioTrack
+          : undefined;
+      await recorder.initialize(reuseTrack);
       set({ audioRecorder: recorder, error: null });
     } catch (error) {
       set({
@@ -534,6 +569,37 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     set({ consentGiven: given });
   },
 
+  setProctoringDegraded: (degraded: boolean) => {
+    set({ proctoringDegraded: degraded });
+  },
+
+  // Record the student's consent/decline decision. Local state + the existing
+  // sessionStorage key are the INTERIM source of truth (the server read endpoint
+  // is out of scope — see recordConsent in api.ts). The server WRITE is
+  // best-effort: a failure must never block the student, only a non-blocking toast.
+  recordConsentDecision: async (granted: boolean) => {
+    const { assessmentId, studentId } = get();
+    // Local + sessionStorage first so the UI proceeds regardless of the network.
+    set({ consentGiven: true });
+    if (assessmentId) sessionStorage.setItem(`consent_${assessmentId}`, 'true');
+
+    if (!studentId || !assessmentId) return;
+    try {
+      await recordConsent(studentId, assessmentId, {
+        granted,
+        consentVersion: CONSENT_VERSION,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      // Degrade gracefully — never block the student on a consent-record failure.
+      console.warn('[consent] failed to record consent server-side (non-blocking):', error);
+      useToastStore.getState().addToast(
+        'We could not record your consent with the server, but you can continue. Your decision is saved locally.',
+        'warning'
+      );
+    }
+  },
+
   startProctoring: async () => {
     const { studentId, assessmentId } = get();
     if (!studentId || !assessmentId) return;
@@ -556,14 +622,27 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         },
         onChunkUploaded: (chunkIndex) => {
           console.debug(`[Proctoring] chunk ${chunkIndex} uploaded`);
+          // A genuine success clears the non-blocking degraded indicator.
+          if (get().proctoringDegraded) set({ proctoringDegraded: false });
         },
         onError: (error) => {
           console.warn('[Proctoring] chunk upload error:', error.message);
+          // Post-retry failure — surface the non-blocking degraded banner.
+          set({ proctoringDegraded: true });
         },
       });
 
       proctor.start(stream);
-      set({ proctorStream: stream, proctoring: proctor, isProctoringActive: true, cameraRevoked: false });
+      // Save the audio track so the per-question AudioRecorder can reuse it.
+      const audioTrack = stream.getAudioTracks()[0] ?? null;
+      set({
+        proctorStream: stream,
+        proctoring: proctor,
+        proctorAudioTrack: audioTrack,
+        isProctoringActive: true,
+        cameraRevoked: false,
+        proctoringRequested: true,
+      });
     } catch (error) {
       console.warn('Failed to start proctoring:', error);
       // Non-blocking — assessment can still proceed if camera request fails here
@@ -575,8 +654,22 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     }
   },
 
+  // Idempotent: if a live proctoring video track already exists, no-op. Otherwise
+  // (re)acquire the stream via startProctoring. Used by the resume flow so a
+  // mid-exam refresh re-arms the camera instead of continuing un-proctored.
+  ensureProctoring: async () => {
+    const { proctorStream } = get();
+    const hasLiveVideo =
+      !!proctorStream && proctorStream.getVideoTracks().some((t) => t.readyState === 'live');
+    if (hasLiveVideo) return; // already proctoring
+    await get().startProctoring();
+  },
+
   stopProctoring: async () => {
     const { proctoring, proctorStream } = get();
+    // Guard against a double-stop (e.g. submit + unmount cleanup both firing):
+    // ProctoringRecorder.stop() already no-ops when inactive, and we null the
+    // refs below so a second call sees nothing to stop — no double-stop errors.
     if (proctoring) {
       proctoring.stop();
       await proctoring.drain();
@@ -584,7 +677,12 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     if (proctorStream) {
       proctorStream.getTracks().forEach((t) => t.stop());
     }
-    set({ proctoring: null, proctorStream: null, isProctoringActive: false });
+    set({
+      proctoring: null,
+      proctorStream: null,
+      proctorAudioTrack: null,
+      isProctoringActive: false,
+    });
   },
 
   restoreProctoring: async () => {
@@ -896,6 +994,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       isProctoringActive: false,
       cameraRevoked: false,
       consentGiven: false,
+      proctoringRequested: false,
+      proctoringDegraded: false,
+      proctorAudioTrack: null,
       results: null,
       isResultsReady: false,
       isResultsPending: false,

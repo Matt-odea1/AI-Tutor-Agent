@@ -111,6 +111,26 @@ export function validateAssessmentId(assessmentId: string): boolean {
 }
 
 /**
+ * sessionStorage key recording that the student originally DECLINED webcam
+ * recording for this assessment. Persisted so a mid-exam refresh restores the
+ * "declined" intent (the React-only proctoringDeclined flag is lost on remount),
+ * letting the resume re-arm correctly skip re-requesting the camera.
+ */
+export function declinedConsentKey(assessmentId: string): string {
+  return `declined_consent_${assessmentId}`;
+}
+
+/**
+ * True when the student previously declined recording for this assessment.
+ * Single source of truth for both persisting and reading the decline so the
+ * write key and the resume-effect read key can never drift apart.
+ */
+export function hasDeclinedConsent(assessmentId: string | null | undefined): boolean {
+  if (!assessmentId) return false;
+  return sessionStorage.getItem(declinedConsentKey(assessmentId)) === 'true';
+}
+
+/**
  * Parse URL parameters
  */
 export function parseUrlParams(pathname: string): { studentId: string; assessmentId: string } | null {

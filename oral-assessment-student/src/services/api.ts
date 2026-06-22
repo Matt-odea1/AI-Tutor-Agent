@@ -317,6 +317,52 @@ export async function submitSkip(
 }
 
 /**
+ * Consent record version. Bumped whenever the wording/scope of the consent the
+ * student agrees to changes, so each server-side record is unambiguous about
+ * WHICH consent text was shown. Co-located with recordConsent below.
+ */
+export const CONSENT_VERSION = '2026-06-10';
+
+/**
+ * Record the student's webcam-proctoring consent decision server-side.
+ *
+ * NEW CONTRACT — not yet implemented by the FastAPI backend on :8000.
+ *   POST /api/student/{studentId}/consent
+ *   body: {
+ *     assessment_id: string,
+ *     granted: boolean,          // true = consented to proctoring, false = declined
+ *     consent_version: string,   // CONSENT_VERSION the student was shown
+ *     timestamp: string          // ISO 8601, when the decision was made client-side
+ *   }
+ *   response: 2xx with no required body fields (none are read by the client).
+ *
+ * A `granted: false` record is the instructor app's authoritative signal that the
+ * student DECLINED recording (an audit-trail escape, not just a missing record);
+ * the instructor app reads this server record to know proctoring was opted out.
+ *
+ * Because the endpoint does not exist yet, this call MUST degrade gracefully and
+ * NEVER block the student: failures are routed through handleApiError by the
+ * caller's best-effort wrapper (recordConsentDecision in the store), which
+ * swallows + logs and surfaces a non-blocking toast. Backend is out of scope.
+ */
+export async function recordConsent(
+  studentId: string,
+  assessmentId: string,
+  payload: { granted: boolean; consentVersion: string; timestamp: string }
+): Promise<void> {
+  try {
+    await apiClient.post(`/api/student/${studentId}/consent`, {
+      assessment_id: assessmentId,
+      granted: payload.granted,
+      consent_version: payload.consentVersion,
+      timestamp: payload.timestamp,
+    });
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+}
+
+/**
  * Log a proctoring chunk manifest entry
  */
 export async function submitProctorChunk(
@@ -501,6 +547,7 @@ export default {
   submitAnswer,
   submitTextAnswer,
   submitSkip,
+  recordConsent,
   submitProctorChunk,
   submitAssessment,
   getProgress,

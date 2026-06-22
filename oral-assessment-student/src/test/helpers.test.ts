@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   formatDuration,
   getGradeFromPercentage,
@@ -8,6 +8,8 @@ import {
   capitalize,
   validateStudentId,
   validateAssessmentId,
+  declinedConsentKey,
+  hasDeclinedConsent,
 } from '../utils/helpers';
 
 describe('formatDuration', () => {
@@ -112,5 +114,37 @@ describe('validateAssessmentId', () => {
 
   it('rejects non-UUID', () => {
     expect(validateAssessmentId('not-a-uuid')).toBe(false);
+  });
+});
+
+describe('declined-consent persistence (mid-exam refresh)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('builds a per-assessment-scoped key', () => {
+    expect(declinedConsentKey('a1')).toBe('declined_consent_a1');
+    // Distinct assessments do not collide.
+    expect(declinedConsentKey('a1')).not.toBe(declinedConsentKey('a2'));
+  });
+
+  it('hasDeclinedConsent is false before any decline is persisted', () => {
+    expect(hasDeclinedConsent('a1')).toBe(false);
+  });
+
+  it('reads back a persisted decline so the resume re-arm skips re-requesting the camera', () => {
+    // Mirrors handleConsentDeclined / handleContinueWithoutRecording writing the key.
+    sessionStorage.setItem(declinedConsentKey('a1'), 'true');
+    expect(hasDeclinedConsent('a1')).toBe(true);
+  });
+
+  it('does not leak a decline across assessments', () => {
+    sessionStorage.setItem(declinedConsentKey('a1'), 'true');
+    expect(hasDeclinedConsent('a2')).toBe(false);
+  });
+
+  it('is false for a null/undefined assessmentId (no premature read)', () => {
+    expect(hasDeclinedConsent(null)).toBe(false);
+    expect(hasDeclinedConsent(undefined)).toBe(false);
   });
 });

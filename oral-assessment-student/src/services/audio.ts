@@ -15,24 +15,45 @@ export class AudioRecorder {
   private stream: MediaStream | null = null;
   private startTime: number = 0;
   private pausedTime: number = 0;
+  // When false, cleanup() must NOT stop the stream's tracks — the stream wraps a
+  // track owned by the proctoring session, which manages its own lifecycle.
+  // Defaults to true (the no-arg getUserMedia path owns and stops its own track).
+  private ownsStream = true;
 
   /**
-   * Request microphone permission and initialize recorder
+   * Initialize the recorder.
+   *
+   * @param existingAudioTrack Optional LIVE audio track already granted elsewhere
+   *   (the proctoring camera's audio track). When provided and usable, the recorder
+   *   wraps it in a fresh MediaStream and does NOT call getUserMedia — avoiding a
+   *   second concurrent capture session (the Safari/iOS NotReadableError). In this
+   *   case the recorder does NOT own the track and cleanup() leaves it running so
+   *   proctoring keeps recording.
+   *   When omitted (or the passed track is not live), falls back to its own
+   *   getUserMedia({audio}) capture, which it owns and stops on cleanup().
    */
-  async initialize(): Promise<void> {
+  async initialize(existingAudioTrack?: MediaStreamTrack): Promise<void> {
     try {
-      // Request audio stream with optimal settings
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-        },
-      });
+      if (existingAudioTrack && existingAudioTrack.readyState === 'live') {
+        // Reuse the already-granted proctoring audio track. Build the recorder
+        // from a new MediaStream wrapping it — no getUserMedia, no ownership.
+        this.ownsStream = false;
+        this.stream = new MediaStream([existingAudioTrack]);
+      } else {
+        // No usable track passed — request our own audio stream (we own it).
+        this.ownsStream = true;
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100,
+          },
+        });
+      }
 
       // Check for supported MIME types
       const mimeType = this.getSupportedMimeType();
-      
+
       this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType,
         audioBitsPerSecond: 128000, // 128kbps
@@ -50,6 +71,11 @@ export class AudioRecorder {
           throw new Error('Microphone permission denied. Please allow microphone access to record your answer.');
         } else if (error.name === 'NotFoundError') {
           throw new Error('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'NotReadableError' || error.name === 'AbortError') {
+          // The mic is already held by another capture session (the proctoring
+          // camera on devices that can't share the mic, e.g. Safari/iOS). Give the
+          // student an actionable message instead of the raw error.
+          throw new Error('Your microphone is already in use by the proctoring camera. Please reload the page and grant access again.');
         } else {
           throw new Error(`Failed to initialize audio recorder: ${error.message}`);
         }
@@ -185,7 +211,12 @@ export class AudioRecorder {
    */
   cleanup(): void {
     if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
+      // Only stop tracks we own. A reused proctoring audio track (ownsStream
+      // false) must keep running so proctoring isn't killed when a per-question
+      // recorder is torn down; proctoring's own stopProctoring() stops it.
+      if (this.ownsStream) {
+        this.stream.getTracks().forEach(track => track.stop());
+      }
       this.stream = null;
     }
 

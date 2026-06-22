@@ -7,11 +7,23 @@ import { useRef, useEffect } from 'react';
 interface CameraRevokedOverlayProps {
   onRestore: () => void;
   isRestoring?: boolean;
+  // When true (proctoring is optional — the student originally declined or policy
+  // allows it), render a secondary "Continue without recording" escape. Default
+  // (undefined/false) keeps the blocking restore-only behavior exactly as before.
+  proctoringOptional?: boolean;
+  onContinueWithout?: () => void;
+  // Optional copy override for the "resume / re-grant" variant.
+  title?: string;
+  description?: string;
 }
 
 export default function CameraRevokedOverlay({
   onRestore,
   isRestoring = false,
+  proctoringOptional = false,
+  onContinueWithout,
+  title,
+  description,
 }: CameraRevokedOverlayProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -63,11 +75,11 @@ export default function CameraRevokedOverlay({
         </div>
 
         <h2 id="camera-revoked-title" className="text-xl font-bold text-gray-900 mb-2">
-          Camera Access Revoked
+          {title ?? 'Camera Access Revoked'}
         </h2>
         <p className="text-gray-600 text-sm mb-6">
-          Your assessment has been paused because camera or microphone access was revoked.
-          Please restore access in your browser settings and click below to continue.
+          {description ??
+            'Your assessment has been paused because camera or microphone access was revoked. Please restore access in your browser settings and click below to continue.'}
         </p>
 
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left">
@@ -96,6 +108,16 @@ export default function CameraRevokedOverlay({
             <span>Restore Camera</span>
           )}
         </button>
+
+        {proctoringOptional && onContinueWithout && (
+          <button
+            onClick={onContinueWithout}
+            disabled={isRestoring}
+            className="mt-3 w-full bg-gray-100 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors font-medium"
+          >
+            Continue without recording
+          </button>
+        )}
       </div>
     </div>
   );
