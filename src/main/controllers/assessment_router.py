@@ -439,11 +439,18 @@ async def get_window_status(
 async def generate_student_invite(
     id: str,
     student_id: str,
+    request: dict = Body(default={}),
     svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
     auth_service: AuthService = Depends(get_auth_service),
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
-    """Generate a single-use invitation link for a specific student."""
+    """Generate a single-use invitation link for a specific student.
+
+    Also backs the instructor "Resend invite" action: each call mints a *fresh*
+    token (new jti, new 7-day expiry, unused) so a student whose previous link
+    expired or was consumed gets a working one. Accepts optional
+    { "subject": "...", "message": "..." } with {{name}}, {{title}}, {{link}}
+    placeholders, matching the bulk send-invites endpoint."""
     try:
         _assert_instructor_access(_principal)
         loop = asyncio.get_event_loop()
@@ -464,11 +471,15 @@ async def generate_student_invite(
 
         # Send invite email (non-blocking — logs warning on failure)
         student = next((s for s in students if s["studentId"] == student_id), {})
+        custom_subject = (request.get("subject") or "").strip()
+        custom_message = (request.get("message") or "").strip()
         await loop.run_in_executor(None, lambda: auth_service.send_student_invite_email(
             student_email=student.get("email", ""),
             student_name=student.get("name", student_id),
             assessment_title=assessment.get("title", id),
             invite_link=invite_link,
+            custom_subject=custom_subject,
+            custom_message=custom_message,
         ))
 
         return {

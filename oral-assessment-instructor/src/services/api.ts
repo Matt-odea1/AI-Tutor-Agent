@@ -274,6 +274,20 @@ class ApiService {
     return response.data;
   }
 
+  // Resend a single student's invite — mints a fresh single-use link (new token,
+  // new 7-day expiry) and emails it. For students whose link expired or was used.
+  async resendInvite(
+    assessmentId: string,
+    studentId: string,
+    options?: { subject?: string; message?: string }
+  ): Promise<{ ok: boolean; studentId: string; inviteLink: string; emailSent: boolean }> {
+    const response = await this.client.post(
+      `/api/assessment/${assessmentId}/students/${studentId}/invite`,
+      options || {}
+    );
+    return response.data;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async sendReminder(assessmentId: string, studentId: string): Promise<any> {
     const response = await this.client.post(

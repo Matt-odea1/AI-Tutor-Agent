@@ -268,6 +268,41 @@ class TestStudentInviteTokens:
         assert payload["purpose"] == "student_session"
 
 
+class TestStudentInviteEmail:
+    """send_student_invite_email — custom copy (used by bulk send + per-student resend)."""
+
+    def test_custom_copy_renders_placeholders(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.send_student_invite_email(
+            student_email="alice@example.com",
+            student_name="Alice",
+            assessment_title="Quiz 1",
+            invite_link="https://student.example/invite?token=abc",
+            custom_subject="{{title}} for {{name}}",
+            custom_message="Hi {{name}},\n\nStart here: {{link}}\n\nThanks",
+        )
+        svc.ses_client.send_email.assert_called_once()
+        message = svc.ses_client.send_email.call_args.kwargs["Message"]
+        assert message["Subject"]["Data"] == "Quiz 1 for Alice"
+        text = message["Body"]["Text"]["Data"]
+        assert "Hi Alice," in text
+        assert "https://student.example/invite?token=abc" in text
+        assert "{{" not in text  # every placeholder substituted
+
+    def test_default_copy_used_when_no_custom(self, monkeypatch):
+        svc = _build_service(monkeypatch)
+        svc.send_student_invite_email(
+            student_email="bob@example.com",
+            student_name="Bob",
+            assessment_title="Quiz 2",
+            invite_link="https://student.example/invite?token=xyz",
+        )
+        svc.ses_client.send_email.assert_called_once()
+        message = svc.ses_client.send_email.call_args.kwargs["Message"]
+        assert message["Subject"]["Data"] == "Your assessment invitation: Quiz 2"
+        assert "single-use" in message["Body"]["Text"]["Data"]
+
+
 # ─────────────────────────────────────────────────────────────
 # Principal resolution
 # ─────────────────────────────────────────────────────────────

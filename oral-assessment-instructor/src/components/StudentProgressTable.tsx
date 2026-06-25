@@ -30,6 +30,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [evaluatingSingle, setEvaluatingSingle] = useState<Record<string, boolean>>({});
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [reminderSent, setReminderSent] = useState<string | null>(null);
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null);
+  const [inviteResentId, setInviteResentId] = useState<string | null>(null);
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
@@ -292,6 +294,29 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       setError(err instanceof Error ? err.message : 'Failed to send reminder');
     } finally {
       setSendingReminder(null);
+    }
+  };
+
+  // Resend a fresh single-use invite link to one student (for expired/used links).
+  // Reuses the bulk modal's subject/message if the instructor has customised them,
+  // otherwise the backend falls back to the default invite template.
+  const handleResendInvite = async (studentId: string) => {
+    setResendingInvite(studentId);
+    try {
+      const opts: { subject?: string; message?: string } = {};
+      if (inviteSubject.trim()) opts.subject = inviteSubject.trim();
+      if (inviteMessage.trim()) opts.message = inviteMessage.trim();
+      const result = await apiService.resendInvite(assessmentId, studentId, opts);
+      if (result.emailSent) {
+        setInviteResentId(studentId);
+        setTimeout(() => setInviteResentId(null), 3000);
+      } else {
+        setError('No email on file for this student — could not resend the invite.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend invite');
+    } finally {
+      setResendingInvite(null);
     }
   };
 
@@ -628,6 +653,20 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                               className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
                             >
                               {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
+                            </button>
+                          )
+                        )}
+                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                          inviteResentId === p.studentId ? (
+                            <span className="text-green-400 text-xs font-medium">Invite sent ✓</span>
+                          ) : (
+                            <button
+                              onClick={() => handleResendInvite(p.studentId)}
+                              disabled={resendingInvite === p.studentId}
+                              title="Email this student a fresh single-use link (new 7-day expiry). Use when their previous link expired or was already used."
+                              className="text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors disabled:opacity-50"
+                            >
+                              {resendingInvite === p.studentId ? 'Sending…' : 'Resend Invite'}
                             </button>
                           )
                         )}
