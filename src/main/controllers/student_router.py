@@ -189,41 +189,42 @@ async def submit_assessment(
             assessment_id=request.assessment_id,
         ))
 
-        # Auto-evaluate in background so the last student's response isn't delayed
-        def _maybe_auto_evaluate():
+        # Auto-evaluate THIS student's answers as soon as they submit. Evaluation
+        # is per-student, not gated on the whole roster finishing: an open or
+        # formative assessment may never reach 100% submission (only a subset of
+        # enrolled students ever participate), so a "wait for all" gate would mean
+        # feedback never fires. Runs in a background thread so the student's submit
+        # response isn't blocked on enqueueing.
+        def _auto_evaluate_student():
             try:
                 assessment = instructor_svc.get_assessment(request.assessment_id)
                 if not assessment.get("autoEvaluate"):
                     return
-                submitted, total = instructor_svc.count_submitted_students(request.assessment_id)
-                if total <= 0 or submitted < total:
-                    logger.info(
-                        "[AutoEval] Holding off for assessment %s — %d/%d students submitted",
-                        request.assessment_id, submitted, total,
-                    )
-                    return
-                all_students = instructor_svc.get_assessment_students(request.assessment_id)
                 job_manager = get_batch_job_manager()
                 job_id = job_manager.create_job(
                     job_type=JobType.EVALUATION,
                     assessment_id=request.assessment_id,
-                    total_items=len(all_students),
-                    metadata={"assessment_title": assessment.get("title", ""), "trigger": "auto"},
+                    total_items=1,
+                    metadata={
+                        "assessment_title": assessment.get("title", ""),
+                        "trigger": "auto_on_submit",
+                        "student_id": student_id,
+                    },
                 )
-                dispatcher.enqueue_evaluation_batch(
+                enqueued = dispatcher.enqueue_evaluation_batch(
                     job_id=job_id,
                     assessment_id=request.assessment_id,
-                    students=all_students,
+                    students=[{"studentId": student_id}],
                 )
                 logger.info(
-                    "[AutoEval] Triggered evaluation job %s for assessment %s (%d students)",
-                    job_id, request.assessment_id, len(all_students),
+                    "[AutoEval] Enqueued evaluation for student %s in assessment %s (job %s, %d message)",
+                    student_id, request.assessment_id, job_id, enqueued,
                 )
             except Exception as auto_err:
-                logger.error("[AutoEval] Failed to trigger auto-evaluation: %s", auto_err)
+                logger.error("[AutoEval] Failed to trigger per-student auto-evaluation: %s", auto_err)
 
         import threading
-        threading.Thread(target=_maybe_auto_evaluate, daemon=True).start()
+        threading.Thread(target=_auto_evaluate_student, daemon=True).start()
 
         return SubmitAssessmentResponse(**result)
 

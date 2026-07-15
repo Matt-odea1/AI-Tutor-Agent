@@ -144,7 +144,7 @@ class InstructorAssessmentService:
             due_date: Due date (ISO format)
             total_questions: Number of questions to generate
             time_limit: Time limit per question in minutes (optional)
-            auto_evaluate: Trigger evaluation automatically when all students submit
+            auto_evaluate: Automatically evaluate each student's answers as soon as that student submits
             rubric: Custom grading rubric injected into the evaluation prompt
 
         Returns:
