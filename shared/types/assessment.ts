@@ -134,6 +134,8 @@ export interface CreateAssessmentRequest {
   allowReview?: boolean;
   /** 'immediate' shows results as soon as graded; 'manual' requires instructor release. */
   feedbackRelease?: 'immediate' | 'manual';
+  /** Automatically evaluate each student's answers as soon as that student submits. */
+  autoEvaluate?: boolean;
 }
 
 export interface UploadStudentsRequest {

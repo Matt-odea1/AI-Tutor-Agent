@@ -297,30 +297,40 @@ class TestAutoEvalTrigger:
         assert resp.status_code == 200
         dispatcher.enqueue_evaluation_batch.assert_not_called()
 
-    def test_no_trigger_when_not_all_submitted(self):
+    def test_triggers_per_student_even_when_not_all_submitted(self):
+        # Per-student: a student's own submission triggers evaluation of THEIR
+        # answers immediately — it is NOT gated on the whole roster finishing.
+        # (An open/formative assessment may never reach 100% submission.)
         oral_svc = MagicMock()
         oral_svc.submit_assessment.return_value = self._submission_result()
         instructor_svc = _mock_instructor_svc(
             assessment={"id": "a-1", "title": "T", "createdBy": "i-1", "autoEvaluate": True, "rubric": None},
-            submitted_counts=(1, 2),  # only 1 of 2 submitted
+            submitted_counts=(1, 2),  # only 1 of 2 submitted — must still trigger
         )
         dispatcher = MagicMock()
-        client = _student_client(oral_svc=oral_svc, instructor_svc=instructor_svc, dispatcher=dispatcher)
-        resp = client.put("/api/student/s-1/submit", json={"assessment_id": "a-1"})
-        assert resp.status_code == 200
-        dispatcher.enqueue_evaluation_batch.assert_not_called()
+        dispatcher.enqueue_evaluation_batch.return_value = 1
 
-    def test_trigger_when_all_submitted_and_auto_evaluate_true(self):
+        with patch("src.main.controllers.student_router.get_batch_job_manager") as mock_jm:
+            mock_jm.return_value.create_job.return_value = "auto-job-partial"
+            client = _student_client(oral_svc=oral_svc, instructor_svc=instructor_svc, dispatcher=dispatcher)
+            resp = client.put("/api/student/s-1/submit", json={"assessment_id": "a-1"})
+
+        assert resp.status_code == 200
+        dispatcher.enqueue_evaluation_batch.assert_called_once_with(
+            job_id="auto-job-partial",
+            assessment_id="a-1",
+            students=[{"studentId": "s-1"}],
+        )
+
+    def test_triggers_for_submitting_student_when_auto_evaluate_true(self):
+        # Only the submitting student is enqueued, not the whole roster.
         oral_svc = MagicMock()
         oral_svc.submit_assessment.return_value = self._submission_result()
-        students = [{"studentId": "s-1"}, {"studentId": "s-2"}]
         instructor_svc = _mock_instructor_svc(
             assessment={"id": "a-1", "title": "T", "createdBy": "i-1", "autoEvaluate": True, "rubric": None},
-            students=students,
-            submitted_counts=(2, 2),  # all submitted
         )
         dispatcher = MagicMock()
-        dispatcher.enqueue_evaluation_batch.return_value = 2
+        dispatcher.enqueue_evaluation_batch.return_value = 1
 
         with patch("src.main.controllers.student_router.get_batch_job_manager") as mock_jm:
             mock_jm.return_value.create_job.return_value = "auto-job-1"
@@ -331,8 +341,13 @@ class TestAutoEvalTrigger:
         dispatcher.enqueue_evaluation_batch.assert_called_once_with(
             job_id="auto-job-1",
             assessment_id="a-1",
-            students=students,
+            students=[{"studentId": "s-1"}],
         )
+        # create_job records a single-item job tagged as an on-submit trigger.
+        _, jm_kwargs = mock_jm.return_value.create_job.call_args
+        assert jm_kwargs["total_items"] == 1
+        assert jm_kwargs["metadata"]["trigger"] == "auto_on_submit"
+        assert jm_kwargs["metadata"]["student_id"] == "s-1"
 
     def test_submission_succeeds_even_if_auto_eval_fails(self):
         oral_svc = MagicMock()

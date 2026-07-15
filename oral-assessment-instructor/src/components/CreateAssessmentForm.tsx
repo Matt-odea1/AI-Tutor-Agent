@@ -6,13 +6,15 @@ import type { CreateAssessmentRequest } from '../../../shared/types/assessment';
 
 type AssessmentType = 'proctored-exam' | 'formative-practice' | 'custom';
 
-// Presets only set the three behaviour flags; answerMode is chosen independently.
+// Presets only set the behaviour flags; answerMode is chosen independently.
 const PRESETS: Record<
   Exclude<AssessmentType, 'custom'>,
-  Pick<CreateAssessmentRequest, 'proctored' | 'allowReview' | 'feedbackRelease'>
+  Pick<CreateAssessmentRequest, 'proctored' | 'allowReview' | 'feedbackRelease' | 'autoEvaluate'>
 > = {
-  'proctored-exam': { proctored: true, allowReview: false, feedbackRelease: 'manual' },
-  'formative-practice': { proctored: false, allowReview: true, feedbackRelease: 'immediate' },
+  // Auto-evaluate on both: the exam scores automatically but you release results
+  // manually; formative scores and shows feedback immediately.
+  'proctored-exam': { proctored: true, allowReview: false, feedbackRelease: 'manual', autoEvaluate: true },
+  'formative-practice': { proctored: false, allowReview: true, feedbackRelease: 'immediate', autoEvaluate: true },
 };
 
 export default function CreateAssessmentForm() {
@@ -35,6 +37,7 @@ export default function CreateAssessmentForm() {
     proctored: true,
     allowReview: false,
     feedbackRelease: 'manual',
+    autoEvaluate: true,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof CreateAssessmentRequest | string, string>>>({});
@@ -430,7 +433,7 @@ export default function CreateAssessmentForm() {
             />
             <span className="text-sm">
               <span className="font-medium text-gray-700">Proctored exam</span>
-              <span className="block text-gray-500">Webcam proctoring on, answers locked once submitted, results released manually.</span>
+              <span className="block text-gray-500">Webcam proctoring on, answers locked once submitted, auto-scored on submit, results released manually.</span>
             </span>
           </label>
           <label className="flex items-start space-x-2 cursor-pointer">
@@ -443,7 +446,7 @@ export default function CreateAssessmentForm() {
             />
             <span className="text-sm">
               <span className="font-medium text-gray-700">Formative practice</span>
-              <span className="block text-gray-500">No camera, students can revise their answers, feedback shown immediately.</span>
+              <span className="block text-gray-500">No camera, students can revise their answers, auto-scored with feedback shown immediately.</span>
             </span>
           </label>
           <label className="flex items-start space-x-2 cursor-pointer">
@@ -516,6 +519,26 @@ export default function CreateAssessmentForm() {
                 </label>
               </div>
             </div>
+            {/* Automatic AI evaluation */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Automatic AI evaluation</span>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="autoEvaluate" checked={formData.autoEvaluate === true} onChange={() => setFlag({ autoEvaluate: true })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">On (score each student as they submit)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input type="radio" name="autoEvaluate" checked={formData.autoEvaluate === false} onChange={() => setFlag({ autoEvaluate: false })} className="text-primary-600 focus:ring-primary-500" />
+                  <span className="text-gray-700 text-sm">Off (evaluate manually later)</span>
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">When on, a student's answers are AI-evaluated as soon as they submit — no need to wait for the whole class or click Evaluate.</p>
+            </div>
+            {formData.feedbackRelease === 'immediate' && !formData.autoEvaluate && (
+              <p className="text-xs text-amber-600">
+                Heads up: "immediate" feedback release has no effect unless automatic AI evaluation is on — with auto-evaluation off, there's nothing to show until you evaluate manually.
+              </p>
+            )}
             {formData.allowReview && formData.timeLimit != null && (
               <p className="text-xs text-amber-600">
                 Heads up: per-question time limits and answer revisiting don't combine well — with review on, the timer is shown but won't auto-submit.
