@@ -1,8 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import axios from 'axios';
+import ErrorMessage from '../components/ErrorMessage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+/** Shared input styling — hairline border, subtle in-card fill, accent focus ring. */
+const INPUT_CLASS =
+  'w-full px-4 py-2 bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -37,21 +42,28 @@ export default function Login() {
     }
   };
 
+  // A 401 is a credential failure, not a per-field one, so both fields are marked
+  // invalid and described by the single form-level error.
+  const errorId = error ? 'login-error' : undefined;
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-md shadow-xl">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Instructor Sign In</h1>
-        <p className="text-gray-500 text-sm mb-6">Oral Assessment Platform</p>
+    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+      <div className="bg-paper border border-hairline rounded-xl p-8 w-full max-w-md">
+        <img src="/c9-logo.svg" alt="" aria-hidden="true" className="w-10 h-10 mx-auto mb-4" />
+        <h1 className="font-serif text-2xl font-semibold text-ink mb-2 text-center">
+          Instructor Sign In
+        </h1>
+        <p className="text-slate text-sm mb-6 text-center">Oral Assessment Platform</p>
 
         {error && (
-          <div className="mb-4 bg-red-500/10 border border-red-500 rounded-lg p-3">
-            <p className="text-red-300 text-sm">{error}</p>
+          <div id={errorId} role="alert" className="mb-4">
+            <ErrorMessage error={error} onDismiss={() => setError(null)} />
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-slate mb-1">
               Email
             </label>
             <input
@@ -61,13 +73,15 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={errorId}
+              className={INPUT_CLASS}
               placeholder="you@university.edu"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-600 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-slate mb-1">
               Password
             </label>
             <input
@@ -77,7 +91,9 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={errorId}
+              className={INPUT_CLASS}
               placeholder="••••••••"
             />
           </div>
@@ -85,13 +101,17 @@ export default function Login() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={isLoading}
+            className="w-full bg-accent hover:bg-accent-hover text-white py-2.5 rounded-xl font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
         <div className="mt-4 text-center">
-          <Link to="/forgot-password" className="text-gray-500 hover:text-gray-600 text-sm">
+          <Link
+            to="/forgot-password"
+            className="text-accent hover:text-accent-hover text-sm font-medium"
+          >
             Forgot password?
           </Link>
         </div>

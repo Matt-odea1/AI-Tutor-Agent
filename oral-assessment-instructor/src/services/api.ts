@@ -12,6 +12,7 @@ import type {
   PresignedUrlResponse,
   GetPresignedUrlRequest,
   AssessmentResults,
+  AssessmentReport,
   EvaluationJob,
 } from '../../../shared/types/assessment';
 
@@ -183,6 +184,34 @@ class ApiService {
       `/api/student/${studentId}/assessment/${assessmentId}/results`
     );
     return response.data;
+  }
+
+  /** Latest cohort report, or null if none has been generated yet. */
+  async getAssessmentReport(assessmentId: string): Promise<AssessmentReport | null> {
+    const response = await this.client.get<{ ok: boolean; generated: boolean; report: AssessmentReport | null }>(
+      `/api/assessment/${assessmentId}/report`
+    );
+    return response.data.generated ? response.data.report : null;
+  }
+
+  /** Regenerate the cohort report now, without waiting for the next submission milestone. */
+  async generateAssessmentReport(assessmentId: string): Promise<AssessmentReport> {
+    const response = await this.client.post<{ ok: boolean; report: AssessmentReport }>(
+      `/api/assessment/${assessmentId}/report/generate`
+    );
+    return response.data.report;
+  }
+
+  /**
+   * Fetch the one-page report as a blob. Both endpoints need the auth header, so
+   * they go through the axios client rather than a plain <a href> the browser
+   * would request unauthenticated.
+   */
+  async downloadAssessmentReport(assessmentId: string, format: 'pdf' | 'html'): Promise<Blob> {
+    const response = await this.client.get(`/api/assessment/${assessmentId}/report.${format}`, {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
   }
 
   // Progress monitoring endpoints

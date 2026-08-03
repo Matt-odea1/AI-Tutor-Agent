@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { apiService } from '../services/api';
+import { useToastStore } from '../store/toastStore';
+import AppShell from '../components/AppShell';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorMessage from '../components/ErrorMessage';
 
 type AxiosLike = { response?: { data?: { detail?: string } }; message?: string };
 const errMsg = (e: unknown, fallback: string) =>
@@ -22,21 +26,36 @@ interface EditState {
   timeLimit: string;
 }
 
+/** Shared chip shape — soft tint + hairline-weight border, one radius. */
+const CHIP_BASE = 'px-2 py-0.5 text-xs border rounded-full';
+
 const DIFFICULTY_COLORS: Record<string, string> = {
-  easy: 'bg-green-900/40 text-green-300 border-green-700',
-  medium: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
-  hard: 'bg-red-900/40 text-red-300 border-red-700',
+  easy: 'bg-success/10 text-success border-success/30',
+  medium: 'bg-caution/10 text-caution border-caution/30',
+  hard: 'bg-danger/10 text-danger border-danger/30',
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  manual: 'bg-purple-900/40 text-purple-300 border-purple-700',
-  specific: 'bg-blue-900/40 text-blue-300 border-blue-700',
-  general: 'bg-gray-200/40 text-gray-600 border-gray-300',
+  manual: 'bg-accent/10 text-accent border-accent/20',
+  specific: 'bg-accent/10 text-accent border-accent/20',
+  general: 'bg-ink/5 text-slate border-hairline',
 };
+
+const INPUT_CLASS =
+  'bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none';
+
+const PRIMARY_BUTTON_CLASS =
+  'bg-accent text-white rounded-xl font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+
+const SECONDARY_BUTTON_CLASS =
+  'bg-ink/5 text-ink rounded-xl font-medium hover:bg-ink/10 transition-colors';
+
+/** Minimum question length, enforced server-side too. */
+const MIN_QUESTION_LENGTH = 10;
 
 export default function QuestionEditor() {
   const { assessmentId, studentId } = useParams<{ assessmentId: string; studentId: string }>();
-  const navigate = useNavigate();
+  const addToast = useToastStore((s) => s.addToast);
 
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [assessment, setAssessment] = useState<{ status: string; title?: string } | null>(null);
@@ -46,8 +65,15 @@ export default function QuestionEditor() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>({ text: '', timeLimit: '' });
+  // Length validation lives next to the field it belongs to (wired via
+  // aria-invalid/aria-describedby) rather than in the page-level error banner,
+  // which is reserved for API failures.
+  const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Two-step inline confirm, as in AssessmentList: the id of the question whose
+  // delete has been armed but not yet confirmed. Never a browser dialog.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -57,6 +83,7 @@ export default function QuestionEditor() {
     topic: 'general',
     timeLimit: '',
   });
+  const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const isLocked = assessment != null && ['active', 'completed'].includes(assessment.status);
@@ -93,21 +120,26 @@ export default function QuestionEditor() {
 
   const startEdit = (q: StudentQuestion) => {
     setEditingId(q.id);
+    // Editing hides the action row, so an armed delete must not survive it.
+    setConfirmDeleteId(null);
     setEditState({ text: q.text, timeLimit: q.timeLimit != null ? String(q.timeLimit) : '' });
+    setEditError(null);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditState({ text: '', timeLimit: '' });
+    setEditError(null);
   };
 
   const saveEdit = async (questionId: string) => {
-    if (!editState.text.trim() || editState.text.trim().length < 10) {
-      setError('Question text must be at least 10 characters');
+    if (!editState.text.trim() || editState.text.trim().length < MIN_QUESTION_LENGTH) {
+      setEditError(`Question text must be at least ${MIN_QUESTION_LENGTH} characters`);
       return;
     }
     setSaving(true);
     setError(null);
+    setEditError(null);
     try {
       const parsed = editState.timeLimit.trim() !== '' ? parseInt(editState.timeLimit, 10) : NaN;
       const currentQ = questions.find(q => q.id === questionId);
@@ -123,6 +155,7 @@ export default function QuestionEditor() {
         prev.map((q) => (q.id === questionId ? resp.question : q))
       );
       setEditingId(null);
+      addToast('Question saved.', 'success');
     } catch (e: unknown) {
       setError(errMsg(e, 'Failed to save'));
     } finally {
@@ -130,13 +163,16 @@ export default function QuestionEditor() {
     }
   };
 
+  // Confirmation is the caller's job — the Confirm button below is the second
+  // step, so this runs unguarded.
   const deleteQuestion = async (questionId: string) => {
-    if (!confirm('Delete this question?')) return;
     setDeletingId(questionId);
     setError(null);
     try {
       await apiService.deleteStudentQuestion(assessmentId!, studentId!, questionId);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      setConfirmDeleteId(null);
+      addToast('Question deleted.', 'success');
     } catch (e: unknown) {
       setError(errMsg(e, 'Failed to delete'));
     } finally {
@@ -145,12 +181,13 @@ export default function QuestionEditor() {
   };
 
   const addQuestion = async () => {
-    if (!addForm.text.trim() || addForm.text.trim().length < 10) {
-      setError('Question text must be at least 10 characters');
+    if (!addForm.text.trim() || addForm.text.trim().length < MIN_QUESTION_LENGTH) {
+      setAddError(`Question text must be at least ${MIN_QUESTION_LENGTH} characters`);
       return;
     }
     setAdding(true);
     setError(null);
+    setAddError(null);
     try {
       const tl = addForm.timeLimit ? parseInt(addForm.timeLimit, 10) : null;
       const resp = await apiService.addStudentQuestion(assessmentId!, studentId!, {
@@ -163,6 +200,7 @@ export default function QuestionEditor() {
       setQuestions((prev) => [...prev, resp.question]);
       setAddForm({ text: '', questionType: 'manual', difficulty: 'medium', topic: 'general', timeLimit: '' });
       setShowAddForm(false);
+      addToast('Question added.', 'success');
     } catch (e: unknown) {
       setError(errMsg(e, 'Failed to add question'));
     } finally {
@@ -172,247 +210,305 @@ export default function QuestionEditor() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading questions…</div>
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <LoadingSpinner size="lg" message="Loading questions…" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div>
-            <button
-              onClick={() => navigate(-1)}
-              className="text-sm text-gray-500 hover:text-gray-700 mb-1 flex items-center gap-1"
-            >
-              ← Back
-            </button>
-            <h1 className="text-xl font-bold">Question Editor</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {assessment?.title} · {studentName}
-            </p>
-          </div>
-          {isLocked && (
-            <span className="px-3 py-1 bg-orange-900/40 border border-orange-700 text-orange-300 text-xs rounded-full">
-              Locked — assessment is {assessment?.status}
-            </span>
-          )}
-        </div>
-      </header>
+    <AppShell
+      breadcrumbs={[
+        { label: 'Assessments', to: '/assessments' },
+        { label: assessment?.title || 'Assessment', to: `/assessments/${assessmentId}/results` },
+        { label: `Questions: ${studentId ?? ''}` },
+      ]}
+      title="Question Editor"
+      subtitle={assessment?.title ? `${assessment.title} · ${studentName}` : studentName}
+      actions={
+        isLocked ? (
+          <span className="px-3 py-1 bg-caution/10 border border-caution/30 text-caution text-xs rounded-full">
+            Locked — assessment is {assessment?.status}
+          </span>
+        ) : undefined
+      }
+      maxWidth="narrow"
+      contentClassName="space-y-4"
+    >
+      {error && <ErrorMessage error={error} onDismiss={() => setError(null)} />}
 
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-4">
-        {error && (
-          <div className="p-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg text-sm flex justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200">✕</button>
-          </div>
-        )}
-
-        {/* Question list */}
-        {questions.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+      {/* Question list */}
+      {questions.length === 0 && (
+        <div className="bg-paper border border-hairline rounded-xl p-12 text-center">
+          <h2 className="font-serif text-lg font-semibold text-ink">No questions yet</h2>
+          <p className="mt-1 text-sm text-slate">
             No questions generated yet for this student.
-          </div>
-        )}
+          </p>
+        </div>
+      )}
 
-        {questions.map((q) => (
-          <div
-            key={q.id}
-            className="bg-white border border-gray-200 rounded-lg p-5"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3 flex-1">
-                <span className="text-gray-500 font-mono text-sm mt-0.5 min-w-[2rem]">
-                  Q{q.questionNumber}
-                </span>
-                <div className="flex-1">
-                  {editingId === q.id ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={editState.text}
-                        onChange={(e) => setEditState((s) => ({ ...s, text: e.target.value }))}
-                        rows={4}
-                        className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
+      {questions.map((q) => (
+        <div
+          key={q.id}
+          className="bg-paper border border-hairline rounded-xl p-5"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3 flex-1">
+              <span className="text-slate font-mono text-sm tabular-nums mt-0.5 min-w-[2rem]">
+                Q{q.questionNumber}
+              </span>
+              <div className="flex-1">
+                {editingId === q.id ? (
+                  <div className="space-y-3">
+                    <label htmlFor={`question-text-${q.id}`} className="sr-only">
+                      Question {q.questionNumber} text
+                    </label>
+                    <textarea
+                      id={`question-text-${q.id}`}
+                      value={editState.text}
+                      onChange={(e) => { setEditState((s) => ({ ...s, text: e.target.value })); setEditError(null); }}
+                      rows={4}
+                      aria-invalid={editError ? true : undefined}
+                      aria-describedby={`question-hint-${q.id}${editError ? ` question-error-${q.id}` : ''}`}
+                      className={`w-full px-3 py-2 resize-y ${INPUT_CLASS}`}
+                    />
+                    <p id={`question-hint-${q.id}`} className="text-xs text-slate">
+                      Minimum <span className="tabular-nums">{MIN_QUESTION_LENGTH}</span> characters to ensure questions are descriptive enough for students.
+                    </p>
+                    {editError && (
+                      <p id={`question-error-${q.id}`} role="alert" className="text-xs text-danger">
+                        {editError}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <label htmlFor={`question-time-${q.id}`} className="text-xs text-slate">
+                        Time limit (min)
+                      </label>
+                      <input
+                        id={`question-time-${q.id}`}
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={editState.timeLimit}
+                        onChange={(e) => setEditState((s) => ({ ...s, timeLimit: e.target.value }))}
+                        placeholder="inherit"
+                        className={`w-24 px-2 py-1 tabular-nums ${INPUT_CLASS}`}
                       />
-                      <p className="text-xs text-gray-400">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
-                      <div className="flex items-center gap-3">
-                        <label className="text-xs text-gray-500">Time limit (min)</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={30}
-                          value={editState.timeLimit}
-                          onChange={(e) => setEditState((s) => ({ ...s, timeLimit: e.target.value }))}
-                          placeholder="inherit"
-                          className="w-24 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
-                        />
-                        <div className="flex gap-2 ml-auto">
-                          <button
-                            onClick={() => saveEdit(q.id)}
-                            disabled={saving}
-                            className="px-3 py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50"
-                          >
-                            {saving ? 'Saving…' : 'Save'}
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                      <div className="flex gap-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(q.id)}
+                          disabled={saving}
+                          className={`px-3 py-1.5 text-xs ${PRIMARY_BUTTON_CLASS}`}
+                        >
+                          {saving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className={`px-3 py-1.5 text-xs ${SECONDARY_BUTTON_CLASS}`}
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-700 leading-relaxed">{q.text}</p>
-                  )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink leading-relaxed">{q.text}</p>
+                )}
 
-                  {editingId !== q.id && (
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className={`px-2 py-0.5 text-xs border rounded ${TYPE_COLORS[q.questionType] || TYPE_COLORS['general']}`}>
-                        {q.questionType}
+                {editingId !== q.id && (
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className={`${CHIP_BASE} ${TYPE_COLORS[q.questionType] || TYPE_COLORS['general']}`}>
+                      {q.questionType}
+                    </span>
+                    <span className={`${CHIP_BASE} ${DIFFICULTY_COLORS[q.difficulty] || DIFFICULTY_COLORS['medium']}`}>
+                      {q.difficulty}
+                    </span>
+                    {q.topic && q.topic !== 'general' && (
+                      <span className={`${CHIP_BASE} bg-ink/5 text-slate border-hairline`}>
+                        {q.topic}
                       </span>
-                      <span className={`px-2 py-0.5 text-xs border rounded ${DIFFICULTY_COLORS[q.difficulty] || DIFFICULTY_COLORS['medium']}`}>
-                        {q.difficulty}
+                    )}
+                    {q.timeLimit != null && (
+                      <span className="px-2 py-0.5 text-xs text-slate">
+                        <span aria-hidden="true">⏱</span>
+                        <span className="sr-only">Time limit: </span>{' '}
+                        <span className="tabular-nums">{q.timeLimit}</span>m
                       </span>
-                      {q.topic && q.topic !== 'general' && (
-                        <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 border border-gray-300 rounded">
-                          {q.topic}
-                        </span>
-                      )}
-                      {q.timeLimit != null && (
-                        <span className="px-2 py-0.5 text-xs text-gray-500">
-                          ⏱ {q.timeLimit}m
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
+            </div>
 
-              {!isLocked && editingId !== q.id && (
+            {!isLocked && editingId !== q.id && (
+              /* Two-step inline confirm — no modal and no browser dialog for a
+                 destructive action, and both steps name the question for screen
+                 readers. Same pattern as AssessmentList. */
+              confirmDeleteId === q.id ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => deleteQuestion(q.id)}
+                    disabled={deletingId === q.id}
+                    aria-busy={deletingId === q.id}
+                    aria-label={`Confirm deletion of question ${q.questionNumber}`}
+                    className="rounded-xl bg-danger text-white px-3 py-1.5 text-xs font-medium hover:bg-danger/90 transition-colors disabled:opacity-50"
+                  >
+                    {deletingId === q.id ? 'Deleting…' : 'Confirm'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    aria-label={`Cancel deleting question ${q.questionNumber}`}
+                    className="text-slate hover:text-ink text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
                 <div className="flex items-center gap-1 shrink-0">
                   <button
+                    type="button"
                     onClick={() => startEdit(q)}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                    className="p-1.5 text-slate hover:text-accent hover:bg-ink/5 rounded-xl transition-colors"
+                    aria-label={`Edit question ${q.questionNumber}`}
                     title="Edit question"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </button>
                   <button
-                    onClick={() => deleteQuestion(q.id)}
-                    disabled={deletingId === q.id || questions.length <= 1}
-                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={() => setConfirmDeleteId(q.id)}
+                    disabled={questions.length <= 1}
+                    aria-label={`Delete question ${q.questionNumber}`}
+                    className="p-1.5 text-slate hover:text-danger hover:bg-ink/5 rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     title={questions.length <= 1 ? 'Cannot delete last question' : 'Delete question'}
                   >
-                    {deletingId === q.id ? (
-                      <span className="text-xs">…</span>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    )}
+                    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </button>
                 </div>
+              )
+            )}
+          </div>
+        </div>
+      ))}
+
+      {/* Add question */}
+      {!isLocked && (
+        showAddForm ? (
+          <div className="bg-paper border border-hairline rounded-xl p-5 space-y-4">
+            <h2 className="font-serif text-base font-semibold text-ink">Add Question</h2>
+            <div>
+              <label htmlFor="add-question-text" className="sr-only">
+                Question text
+              </label>
+              <textarea
+                id="add-question-text"
+                value={addForm.text}
+                onChange={(e) => { setAddForm((s) => ({ ...s, text: e.target.value })); setAddError(null); }}
+                rows={4}
+                placeholder={`Enter question text (min ${MIN_QUESTION_LENGTH} characters)…`}
+                aria-invalid={addError ? true : undefined}
+                aria-describedby={`add-question-hint${addError ? ' add-question-error' : ''}`}
+                className={`w-full px-3 py-2 resize-y ${INPUT_CLASS}`}
+              />
+              <p id="add-question-hint" className="mt-2 text-xs text-slate">
+                Minimum <span className="tabular-nums">{MIN_QUESTION_LENGTH}</span> characters to ensure questions are descriptive enough for students.
+              </p>
+              {addError && (
+                <p id="add-question-error" role="alert" className="mt-1 text-xs text-danger">
+                  {addError}
+                </p>
               )}
             </div>
-          </div>
-        ))}
-
-        {/* Add question */}
-        {!isLocked && (
-          showAddForm ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
-              <h3 className="text-sm font-medium text-gray-700">Add Question</h3>
-              <textarea
-                value={addForm.text}
-                onChange={(e) => setAddForm((s) => ({ ...s, text: e.target.value }))}
-                rows={4}
-                placeholder="Enter question text (min 10 characters)…"
-                className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none resize-y"
-              />
-              <p className="text-xs text-gray-400">Minimum 10 characters to ensure questions are descriptive enough for students.</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Type</label>
-                  <select
-                    value={addForm.questionType}
-                    onChange={(e) => setAddForm((s) => ({ ...s, questionType: e.target.value }))}
-                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
-                  >
-                    <option value="manual">manual</option>
-                    <option value="specific">specific</option>
-                    <option value="general">general</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Difficulty</label>
-                  <select
-                    value={addForm.difficulty}
-                    onChange={(e) => setAddForm((s) => ({ ...s, difficulty: e.target.value }))}
-                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
-                  >
-                    <option value="easy">easy</option>
-                    <option value="medium">medium</option>
-                    <option value="hard">hard</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Time limit (min)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={addForm.timeLimit}
-                    onChange={(e) => setAddForm((s) => ({ ...s, timeLimit: e.target.value }))}
-                    placeholder="inherit"
-                    className="w-full px-2 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="add-question-type" className="block text-xs text-slate mb-1">Type</label>
+                <select
+                  id="add-question-type"
+                  value={addForm.questionType}
+                  onChange={(e) => setAddForm((s) => ({ ...s, questionType: e.target.value }))}
+                  className={`w-full px-2 py-1.5 ${INPUT_CLASS}`}
+                >
+                  <option value="manual">manual</option>
+                  <option value="specific">specific</option>
+                  <option value="general">general</option>
+                </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Topic</label>
+                <label htmlFor="add-question-difficulty" className="block text-xs text-slate mb-1">Difficulty</label>
+                <select
+                  id="add-question-difficulty"
+                  value={addForm.difficulty}
+                  onChange={(e) => setAddForm((s) => ({ ...s, difficulty: e.target.value }))}
+                  className={`w-full px-2 py-1.5 ${INPUT_CLASS}`}
+                >
+                  <option value="easy">easy</option>
+                  <option value="medium">medium</option>
+                  <option value="hard">hard</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="add-question-time" className="block text-xs text-slate mb-1">Time limit (min)</label>
                 <input
-                  type="text"
-                  value={addForm.topic}
-                  onChange={(e) => setAddForm((s) => ({ ...s, topic: e.target.value }))}
-                  placeholder="e.g. data structures, algorithms…"
-                  className="w-full px-3 py-1.5 bg-gray-100 border border-gray-300 rounded text-gray-900 text-sm focus:outline-none"
+                  id="add-question-time"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={addForm.timeLimit}
+                  onChange={(e) => setAddForm((s) => ({ ...s, timeLimit: e.target.value }))}
+                  placeholder="inherit"
+                  className={`w-full px-2 py-1.5 tabular-nums ${INPUT_CLASS}`}
                 />
               </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowAddForm(false); setAddForm({ text: '', questionType: 'manual', difficulty: 'medium', topic: 'general', timeLimit: '' }); }}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={addQuestion}
-                  disabled={adding}
-                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {adding ? 'Adding…' : 'Add Question'}
-                </button>
-              </div>
             </div>
-          ) : (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 hover:border-slate-500 hover:text-gray-600 rounded-lg text-sm transition-colors"
-            >
-              + Add Question for This Student
-            </button>
-          )
-        )}
-      </main>
-    </div>
+            <div>
+              <label htmlFor="add-question-topic" className="block text-xs text-slate mb-1">Topic</label>
+              <input
+                id="add-question-topic"
+                type="text"
+                value={addForm.topic}
+                onChange={(e) => setAddForm((s) => ({ ...s, topic: e.target.value }))}
+                placeholder="e.g. data structures, algorithms…"
+                className={`w-full px-3 py-1.5 ${INPUT_CLASS}`}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setShowAddForm(false); setAddError(null); setAddForm({ text: '', questionType: 'manual', difficulty: 'medium', topic: 'general', timeLimit: '' }); }}
+                className={`px-4 py-2 text-sm ${SECONDARY_BUTTON_CLASS}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={addQuestion}
+                disabled={adding}
+                className={`px-4 py-2 text-sm ${PRIMARY_BUTTON_CLASS}`}
+              >
+                {adding ? 'Adding…' : 'Add Question'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowAddForm(true)}
+            className="w-full py-3 border-2 border-dashed border-hairline text-slate hover:border-accent hover:text-accent rounded-xl text-sm font-medium transition-colors"
+          >
+            + Add Question for This Student
+          </button>
+        )
+      )}
+    </AppShell>
   );
 }
