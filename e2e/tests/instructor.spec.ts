@@ -295,10 +295,15 @@ test.describe('Instructor progress monitoring', () => {
   test('monitor page shows Send Invites banner when students not started', async ({ page }) => {
     await page.goto(`${INSTRUCTOR_BASE}/assessments/${ASSESSMENT_ID}/monitor`);
 
-    await expect(page.getByText(/haven't started/i)).toBeVisible({ timeout: 10_000 });
+    // Banner switches between "hasn't"/"haven't" on the not-started count.
+    await expect(page.getByText(/(hasn't|haven't) started yet/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /send invites/i })).toBeVisible();
 
+    // The banner button opens the compose modal; the send happens from inside it.
     await page.getByRole('button', { name: /send invites/i }).click();
+    await expect(page.getByRole('heading', { name: 'Send Invite Emails' })).toBeVisible({ timeout: 5_000 });
+
+    await page.getByRole('button', { name: /send to 3 students/i }).click();
     await expect(page.getByText(/sent 3 invite/i)).toBeVisible({ timeout: 5_000 });
   });
 

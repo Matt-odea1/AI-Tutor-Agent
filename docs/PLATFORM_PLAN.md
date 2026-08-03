@@ -274,7 +274,7 @@ Sprint 6 is intentionally narrow — video recording and proctoring are both lar
 - **Timer auto-advance on expiry**: `TakeAssessment` now passes `handleTimerExpire` to `QuestionTimer.onExpire`. When the countdown hits zero, any in-progress recording is submitted and the student advances automatically.
 
 **Deferred items from Sprint 5 (carry to Sprint 9):**
-- **SES production setup**: `AUTH_PASSWORD_RESET_FROM_EMAIL` is reused as the invite sender. A dedicated `INVITE_FROM_EMAIL` env var should be added, and both sender addresses need to be verified in SES + moved out of sandbox mode before production use. Belongs in Sprint 9 (infra hardening) or alongside Terraform (Sprint 2 follow-up).
+- ~~**SES production setup**~~: resolved — see "Resolved after Sprint 9" below.
 
 **Deferred items from Sprint 6 (carry to Sprint 7):**
 - **Video answer transcription + evaluation**: `EvaluationWorkflowRunner.evaluate_from_dynamodb` enriches `textContent → transcript` for text answers but has no equivalent for video answers. Video answers stored with `videoUrl` will evaluate with an empty transcript until the Sprint 7 transcription pipeline is in place (EPIC-5-1: FFmpeg audio extraction → Deepgram). The evaluator will still run and produce feedback based on the question alone; scores will be artificially low until transcription is wired.
@@ -288,7 +288,7 @@ Sprint 6 is intentionally narrow — video recording and proctoring are both lar
 
 **Deferred items from Sprint 7 (carry to Sprint 8):**
 - **Proctoring chunk upload failure visibility**: failed chunk uploads are logged to `console.warn` only. The instructor will see gaps in the DynamoDB chunk manifest. Sprint 8 should add a chunk health indicator to the instructor's per-student results view (EPIC-6-2) so gaps can be identified.
-- **Per-question evaluation progress**: `EvaluationWorkflowRunner` calls `job_store.set_progress()` after each question, but these calls silently no-op because the batch job ID lives in DynamoDB, not in `EvaluationJobStore`. The batch status endpoint (`/evaluation-status/{jobId}`) exposes student-level counts only. Fine-grained per-question progress requires a separate DynamoDB write path — defer to Sprint 8 if needed alongside the results dashboard work.
+- ~~**Per-question evaluation progress**~~: resolved — see "Resolved after Sprint 9" below. (The original note described a `job_store.set_progress()` no-op; that call path no longer exists.)
 
 **Resolved in Sprint 8:**
 - **Proctoring chunk health indicator** (EPIC-6-2): `StudentResultDetail` page shows per-student proctoring chunk count, missing indexes, and chunk-by-chunk manifest. Missing gaps flagged in red.
@@ -306,6 +306,20 @@ Sprint 6 is intentionally narrow — video recording and proctoring are both lar
 - **Playwright E2E** (EPIC-7-3): `e2e/` directory with `playwright.config.ts` (auto-starts backend + both frontends), `tests/helpers/mockApi.ts` (page.route() intercepts), `tests/assessment.spec.ts` covering: student results view, not-released state, instructor assessment list.
 - **GitHub Actions CI** (EPIC-7-3): `.github/workflows/ci.yml` runs 4 jobs in parallel (backend pytest+moto, instructor Vitest, student Vitest, Playwright E2E). Merge blocked on any failure. Backend enforces ≥70% coverage (`--cov-fail-under=70`).
 - **SES INVITE_FROM_EMAIL** (carry-over from Sprint 5): `send_reminder_email` prefers `INVITE_FROM_EMAIL` env var over `AUTH_PASSWORD_RESET_FROM_EMAIL` fallback.
+
+**Resolved after Sprint 9** (2026-08-04) — the remaining deferred tail:
+
+- **SES production setup** (carry-over from Sprint 5): closed. SES production access is granted in **us-east-1** (`ProductionAccessEnabled: true`), which is the region the app actually sends from — `AUTH_PASSWORD_RESET_SES_REGION=us-east-1` in SSM, and both `InstructorAssessmentService` and `assessment_router` fall back to `AWS_DEFAULT_REGION` otherwise. The `chat9021.org` domain identity is verified with DKIM `SUCCESS`, which covers both configured senders (`assessments@chat9021.org` via `INVITE_FROM_EMAIL`, `noreply@chat9021.org` via `AUTH_PASSWORD_RESET_FROM_EMAIL`).
+  - Note for anyone reading a stale runbook: ap-southeast-2 SES is still sandboxed and has **zero** verified identities. That is fine — nothing sends from there — but do not "fix" it by pointing the SES region at the backend's ap-southeast-2 region, which would break all outbound mail.
+
+- **Per-question evaluation progress** (carry-over from Sprint 7): closed, and the original note was stale. The `job_store.set_progress()` no-op it described no longer exists. The working path is:
+  - `ResponseEvaluationRepository.set_evaluation_progress()` writes an `EVAL_PROGRESS` item (`questionsEvaluated`, `totalQuestions`, `percentage`, `status`) — called once at 0/N, once after each question, and once at the terminal `completed`/`failed` state (`EvaluationWorkflowRunner.py:66,101,129,138`).
+  - `GET /api/assessment/{id}/students/{studentId}/evaluation-progress` streams it over SSE (`assessment_router.py:889`), polling every 2 s and closing on a terminal status or after 10 min.
+  - `StudentProgressTable.tsx` renders "Evaluating… X/Y questions" with a live bar.
+  - What was genuinely missing was **test coverage**, now added: `tests/service/test_evaluation_progress.py` (progress sequencing, failure/retry/skip paths, percentage arithmetic) and the SSE cases in `tests/controllers/test_cohort_report.py`.
+  - The batch endpoint `/evaluation-status/{jobId}` still reports student-level counts only. That remains deliberate — per-question detail is per-student by nature and is served by the stream above.
+
+- **Auto report generation on ≥10 submissions** (from `FEATURES_PLANNING.md`): built. See that doc for the shipped design.
 
 ---
 

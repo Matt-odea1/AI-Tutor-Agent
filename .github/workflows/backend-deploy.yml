@@ -30,7 +30,14 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.DEPLOY_REGION }}
 
-      - name: Deploy via SSM Run Command
+      # Resolve the target and check it is actually running BEFORE trying to
+      # deploy. EC2_INSTANCE_ID pins a specific instance, which bypasses the
+      # running-state filter in the tag lookup below — so a stopped instance
+      # (e.g. while AWS spend is paused) reached SendCommand and failed the
+      # workflow with "InvalidInstanceId: Instances not in a valid state".
+      # A powered-off target is not a broken build: skip, loudly.
+      - name: Resolve target EC2 instance
+        id: target
         run: |
           set -euo pipefail
 
@@ -49,7 +56,32 @@ jobs:
             exit 1
           fi
 
-          echo "Using EC2 instance: ${INSTANCE_ID}"
+          STATE=$(aws ec2 describe-instances \
+            --region "${DEPLOY_REGION}" \
+            --instance-ids "${INSTANCE_ID}" \
+            --query 'Reservations[0].Instances[0].State.Name' \
+            --output text 2>/dev/null || echo "unknown")
+
+          echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${STATE}" != "running" ]]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Backend deploy skipped::Instance ${INSTANCE_ID} is '${STATE}', not 'running'. Start it and re-run this workflow to deploy ${{ github.sha }}."
+            echo "### Backend deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Instance \`${INSTANCE_ID}\` is **${STATE}**, not \`running\` — nothing was deployed." >> "$GITHUB_STEP_SUMMARY"
+            echo "Start the instance and re-run this workflow to deploy \`${{ github.sha }}\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "Using EC2 instance: ${INSTANCE_ID} (${STATE})"
+
+      - name: Deploy via SSM Run Command
+        if: steps.target.outputs.should_deploy == 'true'
+        run: |
+          set -euo pipefail
+
+          INSTANCE_ID="${{ steps.target.outputs.instance_id }}"
 
           EXPECTED_SHA="${{ github.sha }}"
           REPO_SLUG="${{ github.repository }}"

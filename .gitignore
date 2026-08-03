@@ -8,6 +8,12 @@ test_scripts/upload_db_context_batch.py
 test_inputs/
 test_outputs/
 
+# load-test harness (scripts + any generated tokens/results stay out of git)
+loadtest/
+
+# local working notes / implementation prompts for the student app — not shipped
+oral-assessment-student/fix-prompts/
+
 # Documentation
 .DS_Store
 
@@ -294,6 +300,7 @@ terraform/**/terraform.tfstate.*
 # Test artifacts
 # ================================
 test-results/
+playwright-report/
 
 # ── Code-only repo: thesis/paper sources + research data live on disk but are NOT tracked here ──
 # Research data (e.g. data/, results CSVs) may contain student records — keep it out of git.

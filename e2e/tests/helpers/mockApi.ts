@@ -97,6 +97,12 @@ export async function setupStudentMockApi(page: Page, ctx: MockContext): Promise
           ],
           currentQuestionIndex: Math.min(idx, 1),
           answerMode: 'written',
+          // Behaviour flags are per-assessment (instructor-configurable). The
+          // store defaults `proctored` to (answerMode === 'oral') when omitted,
+          // so a written assessment skips the consent modal entirely — set it
+          // explicitly here because these tests exercise the consent flow.
+          proctored: true,
+          allowReview: false,
           preparationTime: 0,
           assessmentTitle: 'E2E Test Assessment',
           assessmentCourse: 'COMP9021',
@@ -300,11 +306,18 @@ export async function setupInstructorMockApi(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([
-        { studentId: 'stu-001', name: 'Alice Johnson', email: 'alice@uni.edu' },
-        { studentId: 'stu-002', name: 'Bob Smith', email: 'bob@uni.edu' },
-        { studentId: 'stu-003', name: 'Charlie Brown', email: 'charlie@uni.edu' },
-      ]),
+      // StudentListResponse envelope — apiService reads response.data.students,
+      // so a bare array silently yields [] and names degrade to raw IDs.
+      body: JSON.stringify({
+        ok: true,
+        assessmentId,
+        students: [
+          { studentId: 'stu-001', name: 'Alice Johnson', email: 'alice@uni.edu' },
+          { studentId: 'stu-002', name: 'Bob Smith', email: 'bob@uni.edu' },
+          { studentId: 'stu-003', name: 'Charlie Brown', email: 'charlie@uni.edu' },
+        ],
+        total: 3,
+      }),
     });
   });
 
@@ -361,33 +374,77 @@ export async function setupInstructorMockApi(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
+      // Mirrors StudentProgressItem exactly: hyphenated status values, an
+      // `answeredQuestions` count, and name/email embedded per row.
       body: JSON.stringify({
         ok: true,
+        assessmentId,
         students: [
           {
             studentId: 'stu-001',
+            name: 'Alice Johnson',
+            email: 'alice@uni.edu',
             status: 'completed',
             answeredQuestions: 8,
             totalQuestions: 8,
-            lastActive: new Date().toISOString(),
+            percentage: 100,
+            startedAt: new Date().toISOString(),
+            submittedAt: new Date().toISOString(),
           },
           {
             studentId: 'stu-002',
-            status: 'in_progress',
+            name: 'Bob Smith',
+            email: 'bob@uni.edu',
+            status: 'in-progress',
             answeredQuestions: 4,
             totalQuestions: 8,
-            lastActive: new Date().toISOString(),
+            percentage: 50,
+            startedAt: new Date().toISOString(),
+            submittedAt: null,
           },
           {
             studentId: 'stu-003',
-            status: 'not_started',
+            name: 'Charlie Brown',
+            email: 'charlie@uni.edu',
+            status: 'not-started',
             answeredQuestions: 0,
             totalQuestions: 8,
-            lastActive: null,
+            percentage: 0,
+            startedAt: null,
+            submittedAt: null,
           },
         ],
-        summary: { total: 3, notStarted: 1, inProgress: 1, completed: 1 },
+        summary: { total: 3, 'not-started': 1, 'in-progress': 1, completed: 1 },
       }),
+    });
+  });
+
+  // Assessment: dual-scoring panels on the results dashboard.
+  // These MUST be mocked even though the component swallows their errors: an
+  // unmocked request reaches the real backend, which answers 401 for the
+  // unsigned mock JWT, and the axios interceptor turns any 401 into a hard
+  // `window.location.href = '/login'` that navigates the page under test away.
+  await page.route(new RegExp(`/api/assessment/[^/]+/score-agreement`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        assessmentId,
+        dualScoredCount: 0,
+        exactMatchRate: null,
+        within1Rate: null,
+        meanAbsoluteDifference: null,
+        items: [],
+      }),
+    });
+  });
+
+  await page.route(new RegExp(`/api/assessment/[^/]+/flagged-evaluations`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, assessmentId, flaggedCount: 0, items: [] }),
     });
   });
 
