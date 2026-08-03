@@ -62,8 +62,14 @@ export interface Evaluation {
 export interface StudentProgress {
   studentId: string;
   assessmentId: string;
-  questionsAnswered: number;
+  // Both progress endpoints (instructor StudentProgressItem and student
+  // StudentProgressResponse) spell this `answeredQuestions`. Only the submit
+  // response uses `questionsAnswered` — don't copy that name here.
+  answeredQuestions: number;
   totalQuestions: number;
+  name?: string;
+  email?: string;
+  percentage?: number;
   currentQuestion?: number;
   status: 'not-started' | 'in-progress' | 'completed' | 'submitted';
   startedAt?: string | Date;
@@ -136,6 +142,46 @@ export interface CreateAssessmentRequest {
   feedbackRelease?: 'immediate' | 'manual';
   /** Automatically evaluate each student's answers as soon as that student submits. */
   autoEvaluate?: boolean;
+  /** Automatically generate a cohort report once enough students have submitted. */
+  autoReport?: boolean;
+  /** Submissions before the first auto-report (default 10); regenerates at each further multiple. */
+  autoReportThreshold?: number;
+}
+
+/**
+ * Cohort summary report. Aggregate only — deliberately carries no per-student
+ * names, emails, or IDs so it can be exported or shared as-is.
+ */
+export interface AssessmentReport {
+  assessmentId: string;
+  assessmentTitle: string;
+  course: string;
+  generatedAt: string;
+  triggeredBy: 'auto_threshold' | 'manual';
+  milestone?: number | null;
+  counts: {
+    enrolled: number;
+    submitted: number;
+    evaluated: number;
+    notEvaluated: number;
+  };
+  scores: {
+    average: number | null;
+    median: number | null;
+    min: number | null;
+    max: number | null;
+    stdDev: number | null;
+  };
+  gradeDistribution: Record<string, number | Record<string, number>>;
+  histogram: Array<{ bucket: string; count: number }>;
+  dimensions: {
+    answersEvaluated: number;
+    averageCorrectness: number | null;
+    averageUnderstanding: number | null;
+    needsReviewCount: number;
+  };
+  /** LLM-written prose summary. Null when unavailable — the numbers stand alone. */
+  narrative?: string | null;
 }
 
 export interface UploadStudentsRequest {

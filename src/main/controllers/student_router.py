@@ -15,10 +15,12 @@ from src.main.auth.service import AuthService
 from src.main.controllers.api_errors import ApiError
 from src.main.controllers.controller_helpers import _assert_student_access
 from src.main.controllers.controller_dependencies import (
+    get_assessment_report_service,
     get_instructor_assessment_service,
     get_oral_assessment_service,
     get_sqs_job_dispatcher,
 )
+from src.main.service.AssessmentReportService import AssessmentReportService
 from src.main.service.BatchJobManager import JobType, get_batch_job_manager
 from src.main.service.InstructorAssessmentService import InstructorAssessmentService, InstructorAssessmentServiceError
 from src.main.service.SQSJobDispatcher import SQSJobDispatcher
@@ -179,6 +181,7 @@ async def submit_assessment(
     svc: OralAssessmentService = Depends(get_oral_assessment_service),
     instructor_svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
     dispatcher: SQSJobDispatcher = Depends(get_sqs_job_dispatcher),
+    report_svc: AssessmentReportService = Depends(get_assessment_report_service),
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
     try:
@@ -223,8 +226,46 @@ async def submit_assessment(
             except Exception as auto_err:
                 logger.error("[AutoEval] Failed to trigger per-student auto-evaluation: %s", auto_err)
 
+        # Generate a cohort report once submissions cross a threshold multiple
+        # (default every 10). The old "all enrolled have submitted" gate never
+        # opened for a large cohort — Quiz 1 stalled at 26/395 — so the trigger
+        # is count-based. claim_milestone() makes this exactly-once per
+        # milestone even when several students submit concurrently.
+        def _maybe_generate_report():
+            try:
+                decision = report_svc.should_generate_on_submit(request.assessment_id)
+                if not decision:
+                    return
+                job_manager = get_batch_job_manager()
+                job_id = job_manager.create_job(
+                    job_type=JobType.REPORT_GENERATION,
+                    assessment_id=request.assessment_id,
+                    total_items=1,
+                    metadata={
+                        "trigger": "auto_threshold",
+                        "milestone": decision["milestone"],
+                        "threshold": decision["threshold"],
+                        "submitted_count": decision["submittedCount"],
+                    },
+                )
+                dispatcher.enqueue_report_generation(
+                    job_id=job_id,
+                    assessment_id=request.assessment_id,
+                    triggered_by="auto_threshold",
+                    milestone=decision["milestone"],
+                )
+                logger.info(
+                    "[AutoReport] Enqueued report for assessment %s at %d submissions "
+                    "(milestone %d, job %s)",
+                    request.assessment_id, decision["submittedCount"],
+                    decision["milestone"], job_id,
+                )
+            except Exception as report_err:
+                logger.error("[AutoReport] Failed to trigger threshold report: %s", report_err)
+
         import threading
         threading.Thread(target=_auto_evaluate_student, daemon=True).start()
+        threading.Thread(target=_maybe_generate_report, daemon=True).start()
 
         return SubmitAssessmentResponse(**result)
 

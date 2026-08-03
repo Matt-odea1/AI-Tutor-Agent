@@ -8,9 +8,16 @@ BEDROCK_MODEL_CHAT = os.getenv('BEDROCK_MODEL_CHAT', 'amazon.nova-lite-v1:0')
 BEDROCK_MODEL_EMBED = os.getenv('BEDROCK_MODEL_EMBED', 'amazon.titan-embed-text-v2:0')
 EMBEDDING_DIM = int(os.getenv('BEDROCK_EMBED_DIM', '1024'))
 
+# Cohort report narrative. Runs once per report (roughly once per 10
+# submissions) rather than once per answer, so the cost ceiling is far higher
+# than for evaluation — a stronger model is affordable here. Defaults to the
+# chat model so nothing changes unless BEDROCK_MODEL_REPORT is explicitly set.
+BEDROCK_MODEL_REPORT = os.getenv('BEDROCK_MODEL_REPORT', BEDROCK_MODEL_CHAT)
+
 MODEL_REGISTRY = {
     'chat': BEDROCK_MODEL_CHAT,
     'embed': BEDROCK_MODEL_EMBED,
+    'report': BEDROCK_MODEL_REPORT,
 }
 
 MODEL_CAPS = {

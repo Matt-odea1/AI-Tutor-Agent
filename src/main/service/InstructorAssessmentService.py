@@ -125,6 +125,8 @@ class InstructorAssessmentService:
         scheduled_window_start: Optional[str] = None,
         scheduled_window_end: Optional[str] = None,
         auto_evaluate: bool = False,
+        auto_report: bool = True,
+        auto_report_threshold: Optional[int] = None,
         rubric: Optional[str] = None,
         answer_mode: str = "oral",
         preparation_time: Optional[int] = None,
@@ -182,6 +184,9 @@ class InstructorAssessmentService:
                 'scheduledWindowStart': scheduled_window_start,
                 'scheduledWindowEnd': scheduled_window_end,
                 'autoEvaluate': auto_evaluate,
+                # Cohort report fires automatically at each multiple of the
+                # threshold; autoReport=False opts an assessment out entirely.
+                'autoReport': bool(auto_report),
                 'rubric': rubric,
                 'answerMode': answer_mode,
                 'preparationTime': preparation_time,
@@ -198,6 +203,8 @@ class InstructorAssessmentService:
 
             # Optional per-assessment scoring overrides (Task 6). Stored only when
             # provided so existing assessments with no override behave as before.
+            if auto_report_threshold is not None:
+                assessment['autoReportThreshold'] = int(auto_report_threshold)
             if max_score_per_question is not None:
                 assessment['maxScorePerQuestion'] = int(max_score_per_question)
             if grade_cutoffs:

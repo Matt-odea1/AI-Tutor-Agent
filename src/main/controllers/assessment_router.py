@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 import asyncio
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Response, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.main.auth.dependencies import get_auth_service, require_auth_principal
 from src.main.auth.models import AuthPrincipal
 from src.main.auth.service import AuthService
 from src.main.controllers.api_errors import ApiError
 from src.main.controllers.controller_dependencies import (
+    get_assessment_report_service,
     get_evaluation_service,
     get_instructor_assessment_service,
     get_instructor_question_bank_service,
@@ -27,6 +29,7 @@ from src.main.controllers.controller_helpers import (
 from src.main.dtos.InstructorAssessmentDTOs import (
     AddStudentQuestionRequest,
     AssessmentListResponse,
+    AssessmentReportResponse,
     AssessmentResponse,
     BankQuestionListResponse,
     BankQuestionRequest,
@@ -40,6 +43,7 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     EvaluationStatusResponse,
     FlaggedEvaluationsResponse,
     GenerateQuestionsBatchRequest,
+    GenerateReportResponse,
     InstructorStudentDetailResponse,
     ProgressSummaryResponse,
     ProctorChunkHealthResponse,
@@ -72,6 +76,8 @@ from src.main.dtos.InstructorAssessmentDTOs import (
     UploadStudentsRequest,
     ZipUploadResponse,
 )
+from src.main.service.AssessmentReportRenderer import render_report_html, render_report_pdf
+from src.main.service.AssessmentReportService import AssessmentReportService, AssessmentReportServiceError
 from src.main.service.BatchJobManager import JobType, get_batch_job_manager
 from src.main.service.InstructorAssessmentService import InstructorAssessmentService, InstructorAssessmentServiceError
 from src.main.service.InstructorQuestionBankService import InstructorQuestionBankService, InstructorQuestionBankServiceError
@@ -109,6 +115,8 @@ async def create_assessment(
             scheduled_window_start=request.scheduledWindowStart,
             scheduled_window_end=request.scheduledWindowEnd,
             auto_evaluate=request.autoEvaluate,
+            auto_report=request.autoReport,
+            auto_report_threshold=request.autoReportThreshold,
             rubric=request.rubric,
             answer_mode=request.answerMode,
             preparation_time=request.preparationTime,
@@ -1161,6 +1169,146 @@ async def get_assessment_results(
         raise
     except Exception as error:
         logger.error(f"Unexpected error in get_assessment_results: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cohort summary report (auto-generated on submission threshold)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@assessment_router.get("/{id}/report", response_model=AssessmentReportResponse)
+async def get_assessment_report(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    report_svc: AssessmentReportService = Depends(get_assessment_report_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """Return the most recent cohort report, or generated=False if none exists yet."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        report = await loop.run_in_executor(None, lambda: report_svc.get_report(id))
+        return AssessmentReportResponse(
+            ok=True,
+            assessmentId=id,
+            generated=report is not None,
+            report=report,
+        )
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in get_assessment_report: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.post("/{id}/report/generate", response_model=GenerateReportResponse)
+async def generate_assessment_report(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    report_svc: AssessmentReportService = Depends(get_assessment_report_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """
+    Generate the cohort report on demand.
+
+    Runs inline rather than via SQS: the instructor is waiting on the response,
+    and the aggregation is a handful of DynamoDB queries. The automatic
+    threshold path goes through the queue instead so it never blocks a
+    student's submit.
+    """
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        report = await loop.run_in_executor(
+            None, lambda: report_svc.generate_report(id, triggered_by="manual")
+        )
+        return GenerateReportResponse(ok=True, assessmentId=id, report=report)
+    except AssessmentReportServiceError as error:
+        raise ApiError(status_code=500, code="report_generation_failed", message=str(error))
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in generate_assessment_report: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.get("/{id}/report.html", response_class=HTMLResponse)
+async def get_assessment_report_html(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    report_svc: AssessmentReportService = Depends(get_assessment_report_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """The cohort report as a one-page, self-contained HTML document."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        report = await loop.run_in_executor(None, lambda: report_svc.get_report(id))
+        if report is None:
+            raise ApiError(status_code=404, code="report_not_generated",
+                           message="No report has been generated for this assessment yet")
+        return HTMLResponse(content=render_report_html(report))
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in get_assessment_report_html: {error}")
+        raise ApiError(status_code=500, code="unexpected_error", message=str(error))
+
+
+@assessment_router.get("/{id}/report.pdf")
+async def get_assessment_report_pdf(
+    id: str,
+    svc: InstructorAssessmentService = Depends(get_instructor_assessment_service),
+    report_svc: AssessmentReportService = Depends(get_assessment_report_service),
+    _principal: AuthPrincipal = Depends(require_auth_principal),
+):
+    """The same one-pager as a PDF."""
+    try:
+        _assert_instructor_access(_principal)
+        loop = asyncio.get_event_loop()
+        assessment = await loop.run_in_executor(None, lambda: svc.get_assessment(id))
+        _assert_assessment_owner(_principal, assessment)
+        report = await loop.run_in_executor(None, lambda: report_svc.get_report(id))
+        if report is None:
+            raise ApiError(status_code=404, code="report_not_generated",
+                           message="No report has been generated for this assessment yet")
+
+        pdf = await loop.run_in_executor(None, lambda: render_report_pdf(report))
+        safe_title = re.sub(r"[^A-Za-z0-9_-]+", "-", str(assessment.get("title", "report"))).strip("-")
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{safe_title or "report"}-summary.pdf"'},
+        )
+    except RuntimeError as error:
+        # WeasyPrint's native libraries are missing in this environment.
+        raise ApiError(status_code=503, code="pdf_rendering_unavailable", message=str(error))
+    except InstructorAssessmentServiceError as error:
+        raise ApiError(status_code=404, code="assessment_not_found", message=str(error))
+    except HTTPException:
+        raise
+    except ApiError:
+        raise
+    except Exception as error:
+        logger.error(f"Unexpected error in get_assessment_report_pdf: {error}")
         raise ApiError(status_code=500, code="unexpected_error", message=str(error))
 
 

@@ -171,6 +171,40 @@ class SQSJobDispatcher:
         )
         return enqueued
 
+    def enqueue_report_generation(
+        self,
+        job_id: str,
+        assessment_id: str,
+        *,
+        triggered_by: str = "auto_threshold",
+        milestone: Optional[int] = None,
+    ) -> int:
+        """
+        Send a single message requesting a cohort report for the assessment.
+
+        Unlike evaluation and question generation this is one message per job,
+        not one per student — the report is a whole-cohort aggregate.
+        """
+        try:
+            self.sqs.send_message(
+                QueueUrl=self.queue_url,
+                MessageBody=json.dumps({
+                    "job_type": "report_generation",
+                    "job_id": job_id,
+                    "assessment_id": assessment_id,
+                    "triggered_by": triggered_by,
+                    "milestone": milestone,
+                }),
+            )
+            logger.info(
+                "Enqueued report generation for assessment %s (job %s, milestone %s)",
+                assessment_id, job_id, milestone,
+            )
+            return 1
+        except ClientError as e:
+            logger.error("SQS report-generation send error: %s", e)
+            return 0
+
     # ─────────────────────────────────────────────────────────────
     # Consumer
     # ─────────────────────────────────────────────────────────────
@@ -179,6 +213,7 @@ class SQSJobDispatcher:
         self,
         question_generation_service: Any,
         evaluation_workflow_runner: Optional[Any] = None,
+        report_service: Optional[Any] = None,
     ) -> None:
         """
         Start the background SQS consumer thread.
@@ -188,6 +223,8 @@ class SQSJobDispatcher:
             question_generation_service: Handles 'question_generation' job type.
             evaluation_workflow_runner: Handles 'evaluation' job type. If None,
                 evaluation messages are logged as warnings and deleted.
+            report_service: Handles 'report_generation' job type. If None,
+                report messages are logged as warnings and deleted.
         """
         if self._consumer_thread and self._consumer_thread.is_alive():
             logger.debug("SQS consumer already running")
@@ -199,7 +236,7 @@ class SQSJobDispatcher:
             logger.info("SQS consumer supervisor started")
             while not self._stopping.is_set():
                 try:
-                    self._consume_loop(question_generation_service, evaluation_workflow_runner)
+                    self._consume_loop(question_generation_service, evaluation_workflow_runner, report_service)
                 except Exception as e:
                     logger.error(
                         "SQS consumer exited unexpectedly, restarting in %ds: %s",
@@ -228,6 +265,7 @@ class SQSJobDispatcher:
         self,
         question_generation_service: Any,
         evaluation_workflow_runner: Optional[Any] = None,
+        report_service: Optional[Any] = None,
     ) -> None:
         """Main consumer loop — runs until process exits or stop_consumer() called."""
         logger.info("SQS consumer loop running")
@@ -242,7 +280,7 @@ class SQSJobDispatcher:
                 )
                 messages = response.get("Messages", [])
                 for msg in messages:
-                    self._process_message(msg, question_generation_service, evaluation_workflow_runner)
+                    self._process_message(msg, question_generation_service, evaluation_workflow_runner, report_service)
 
             except ClientError as e:
                 if e.response["Error"]["Code"] == "AWS.SimpleQueueService.NonExistentQueue":
@@ -262,6 +300,7 @@ class SQSJobDispatcher:
         msg: Dict[str, Any],
         question_generation_service: Any,
         evaluation_workflow_runner: Optional[Any] = None,
+        report_service: Optional[Any] = None,
     ) -> None:
         """Process one SQS message. Deletes it on both success and non-retriable failure."""
         receipt = msg["ReceiptHandle"]
@@ -303,6 +342,19 @@ class SQSJobDispatcher:
                     evaluation_workflow_runner.evaluate_from_dynamodb(job_id, student_id, assessment_id)
                     self._increment_job_progress(job_id, success=True)
                     logger.info("[Job %s] Evaluation succeeded for student %s", job_id, student_id)
+
+            elif job_type == "report_generation":
+                if report_service is None:
+                    logger.warning("[Job %s] Report service not configured — skipping", job_id)
+                    self._increment_job_progress(job_id, success=False)
+                else:
+                    report_service.generate_report(
+                        assessment_id,
+                        triggered_by=body.get("triggered_by", "auto_threshold"),
+                        milestone=body.get("milestone"),
+                    )
+                    self._increment_job_progress(job_id, success=True)
+                    logger.info("[Job %s] Report generation succeeded for assessment %s", job_id, assessment_id)
 
             else:
                 logger.warning("Unknown job_type '%s' — discarding message", job_type)

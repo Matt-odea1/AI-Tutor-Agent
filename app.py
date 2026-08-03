@@ -24,7 +24,12 @@ from src.main.controllers.auth_router import auth_router
 from src.main.controllers.history_router import history_router
 from src.main.controllers.student_router import student_router
 from src.main.controllers.assessment_router import assessment_router
-from src.main.controllers.controller_dependencies import get_evaluation_service, get_sqs_job_dispatcher, get_question_service
+from src.main.controllers.controller_dependencies import (
+    get_assessment_report_service,
+    get_evaluation_service,
+    get_sqs_job_dispatcher,
+    get_question_service,
+)
 from src.main.middleware.logging_middleware import RequestLoggingMiddleware
 
 
@@ -36,7 +41,11 @@ async def _lifespan(app: FastAPI):
         if dispatcher.queue_url:
             question_svc = get_question_service()
             evaluation_runner = get_evaluation_service().workflow_runner
-            dispatcher.start_consumer(question_svc, evaluation_workflow_runner=evaluation_runner)
+            dispatcher.start_consumer(
+                question_svc,
+                evaluation_workflow_runner=evaluation_runner,
+                report_service=get_assessment_report_service(),
+            )
             logger.info("SQS job consumer started")
         else:
             logger.warning("SQS consumer not started — no queue URL available (set SQS_JOBS_QUEUE_URL)")

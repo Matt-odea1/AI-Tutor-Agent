@@ -21,6 +21,8 @@ class CreateAssessmentRequest(BaseModel):
     scheduledWindowStart: Optional[str] = Field(None, description="ISO datetime for window start (scheduled mode)")
     scheduledWindowEnd: Optional[str] = Field(None, description="ISO datetime for window end (scheduled mode)")
     autoEvaluate: bool = Field(False, description="Automatically evaluate each student's answers as soon as that student submits")
+    autoReport: bool = Field(True, description="Automatically generate a cohort summary report once enough students have submitted")
+    autoReportThreshold: Optional[int] = Field(None, description="Submissions required before the first auto-report (default 10). Regenerates at each further multiple.", ge=1, le=10000)
     rubric: Optional[str] = Field(None, description="Custom grading rubric injected into the evaluation prompt")
     answerMode: str = Field("oral", description="'oral' or 'written' — controls student answer interface")
     preparationTime: Optional[int] = Field(None, description="Seconds of prep time shown before oral recording starts (0 = start immediately)", ge=0, le=300)
@@ -89,6 +91,8 @@ class AssessmentResponse(BaseModel):
     scheduledWindowEnd: Optional[str] = None
     assignmentBrief: Optional[str] = None
     autoEvaluate: bool = False
+    autoReport: bool = True
+    autoReportThreshold: Optional[int] = None
     rubric: Optional[str] = None
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
@@ -165,6 +169,21 @@ class ResultsSummaryResponse(BaseModel):
     assessmentId: str
     results: List[StudentResultItem]
     summary: dict  # Stats: avg score, grade distribution
+
+
+class AssessmentReportResponse(BaseModel):
+    """Cohort summary report. Aggregate only — carries no per-student identifiers."""
+    ok: bool = True
+    assessmentId: str
+    generated: bool = Field(..., description="False when no report has been generated yet")
+    report: Optional[dict] = None
+
+
+class GenerateReportResponse(BaseModel):
+    """Response after a manual report generation request."""
+    ok: bool = True
+    assessmentId: str
+    report: dict
 
 
 class QuestionGenerationJobResponse(BaseModel):
