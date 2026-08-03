@@ -955,6 +955,21 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     try {
       await ensureStudentToken(studentId, assessmentId);
       const results = await getResults(studentId, assessmentId);
+      // A 2xx is not automatically a results payload: "still evaluating" comes
+      // back as a 202 whose body carries only a `detail` message, and axios
+      // resolves every 2xx into this branch (which is why the status===202 arm
+      // of isResultsPendingError never fires). Rendering that body would crash
+      // ViewResults on results.questions, so treat it as pending and let the
+      // poll loop keep going.
+      if (!results || !Array.isArray(results.questions)) {
+        set({
+          isResultsReady: false,
+          isResultsPending: true,
+          error: null,
+          ...(background ? {} : { isLoading: false }),
+        });
+        return;
+      }
       set({
         results,
         isResultsReady: true,

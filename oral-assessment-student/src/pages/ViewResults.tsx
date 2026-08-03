@@ -304,8 +304,11 @@ export default function ViewResults() {
     );
   }
 
-  // Error / pending states
-  if (error) {
+  // Error / pending states. `isResultsPending` can be set without an error when
+  // the server answered 2xx with a "still evaluating" body rather than results,
+  // so it gates this block too — otherwise that case would fall through to the
+  // "No Results Available" panel.
+  if (error || isResultsPending) {
     // `isResultsPending` (store) is the single source of truth for "still pending";
     // the error message only refines WHICH pending panel (not-released vs evaluating).
     const isNotReleased = isResultsNotReleasedError(error);
@@ -334,14 +337,14 @@ export default function ViewResults() {
               <p className="text-sm text-slate mt-1">This usually takes 2–5 minutes depending on the number of questions.</p>
               <p className="text-xs text-slate mt-2">This page will update automatically.</p>
             </div>
-          ) : (
+          ) : error ? (
             <>
               <ErrorMessage error={error} onDismiss={clearError} />
               <button onClick={() => loadResults()} className="mt-4 w-full rounded-xl bg-accent text-white px-4 py-2 hover:bg-accent-hover transition-colors duration-200 ease-out">
                 Retry
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
     );
