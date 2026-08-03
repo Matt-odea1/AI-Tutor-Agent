@@ -24,6 +24,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   timeout: 30_000,
+  // Playwright defaults to 'list' only under CI, so the workflow's
+  // "Upload Playwright report" step had nothing to collect and warned
+  // "No files were found". Emit the HTML report explicitly.
+  reporter: process.env.CI
+    ? [['list'], ['html', { open: 'never' }]]
+    : [['list']],
   use: {
     trace: 'on-first-retry',
     video: 'on-first-retry',

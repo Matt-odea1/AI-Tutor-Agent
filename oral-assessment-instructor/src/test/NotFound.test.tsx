@@ -21,6 +21,8 @@ describe('NotFound page', () => {
     );
     expect(screen.getByText('404')).toBeInTheDocument();
     expect(screen.getByText('Page Not Found')).toBeInTheDocument();
+    // The page title is the h1; the big "404" numeral is display type, not a heading.
+    expect(screen.getByRole('heading', { level: 1, name: 'Page Not Found' })).toBeInTheDocument();
   });
 
   it('navigates to /assessments when button clicked', async () => {

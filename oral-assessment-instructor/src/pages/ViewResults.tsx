@@ -2,11 +2,15 @@ import { Link, useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
+import AppShell from '../components/AppShell';
 import ResultsDashboard from '../components/ResultsDashboard';
+import CohortReport from '../components/CohortReport';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorMessage from '../components/ErrorMessage';
 
 export default function ViewResults() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
-  const { selectedAssessment, setSelectedAssessment, setLoading, setError } = useAssessmentStore();
+  const { selectedAssessment, setSelectedAssessment, setLoading, error, setError } = useAssessmentStore();
 
   const loadAssessment = async (id: string) => {
     try {
@@ -27,43 +31,46 @@ export default function ViewResults() {
     }
   }, [assessmentId]);
 
+  // Full-page loading / error state — AppShell is only mounted once there is an
+  // assessment to title it with.
   if (!selectedAssessment || !assessmentId) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+        {error ? (
+          <div className="w-full max-w-md">
+            <ErrorMessage error={error} />
+          </div>
+        ) : (
+          <LoadingSpinner size="lg" message="Loading assessment…" />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center space-x-4 mb-2">
-                <Link to="/assessments" className="text-gray-500 hover:text-gray-600">
-                  ← Back to Assessments
-                </Link>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Results: {selectedAssessment.title}
-              </h1>
-              <p className="text-gray-500 text-sm mt-1">{selectedAssessment.course}</p>
-            </div>
-            <Link
-              to={`/assessments/${assessmentId}/monitor`}
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-            >
-              Back to Progress
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AppShell
+      // ViewResults is the assessment's canonical landing page, so the assessment
+      // title IS the leaf here — unlinked, and stamped aria-current="page" by
+      // AppShell. This is the one screen whose trail stops at the title.
+      breadcrumbs={[
+        { label: 'Assessments', to: '/assessments' },
+        { label: selectedAssessment.title },
+      ]}
+      title={`Results: ${selectedAssessment.title}`}
+      subtitle={selectedAssessment.course}
+      actions={
+        <Link
+          to={`/assessments/${assessmentId}/monitor`}
+          className="inline-flex items-center rounded-xl border border-hairline bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-ink/5 transition-colors"
+        >
+          Monitor Progress
+        </Link>
+      }
+    >
+      <div className="space-y-4">
+        <CohortReport assessmentId={assessmentId} />
         <ResultsDashboard assessmentId={assessmentId} />
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -50,7 +50,7 @@ test.describe('Student assessment results', () => {
     await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/results/${ASSESSMENT_ID}`);
 
     await expect(page.getByText('Assessment Results')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('(70%)')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('70%')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText('Competent')).toBeVisible();
     await expect(page.getByText('Question Details')).toBeVisible();
   });
@@ -199,7 +199,10 @@ test.describe('Student end-of-assessment edge cases', () => {
     await injectStudentSession(page);
   });
 
-  test('submit modal is blocked when not all questions answered', async ({ page }) => {
+  // Reaching the end with gaps is only possible in review mode: the strict flow
+  // submits answers in order and won't advance past an unanswered question, so
+  // there is no way to arrive at the last question with Q1 blank.
+  test('submitting is blocked while questions are unanswered (review mode)', async ({ page }) => {
     // Override questions to return 2 questions but only 1 answered
     await page.route(
       `**/api/student/${STUDENT_ID}/assessment/${ASSESSMENT_ID}/questions`,
@@ -214,6 +217,12 @@ test.describe('Student end-of-assessment edge cases', () => {
             ],
             currentQuestionIndex: 1,
             answerMode: 'written',
+            // Behaviour flags must be repeated in every questions override — the
+            // store treats a missing `proctored` on a written assessment as
+            // un-proctored. allowReview renders the free-navigation footer whose
+            // Submit Assessment button gates on allAnswered.
+            proctored: true,
+            allowReview: true,
             preparationTime: 0,
             assessmentTitle: 'E2E Test Assessment',
             assessmentCourse: 'COMP9021',
@@ -235,24 +244,24 @@ test.describe('Student end-of-assessment edge cases', () => {
     );
 
     await page.goto(`${STUDENT_BASE}/${STUDENT_ID}/${ASSESSMENT_ID}`);
-    await page.getByRole('button', { name: /continue without recording/i }).click();
-    await page.getByRole('button', { name: /start assessment/i }).click();
 
-    // Fill answer for Q2 and submit it so the "Submit Assessment" button appears
-    await expect(page.getByPlaceholder('Type your answer here...')).toBeVisible({ timeout: 10_000 });
-    await page.getByPlaceholder('Type your answer here...').fill(
-      'The time complexity is O(n log n) for the merge sort approach with O(n) space.'
+    // This student is resuming an in-progress attempt, so TakeAssessment restores
+    // straight to Q2 — no consent modal, no overview. Re-prompting a student
+    // mid-exam would be the bug, so don't click through those gates here.
+    await expect(page.getByRole('banner').getByText('Question 2 of 2')).toBeVisible({ timeout: 10_000 });
+
+    // With 1 of 2 answered the control is present but refuses to open the
+    // confirmation modal, and says why on hover.
+    const submitAssessment = page.getByRole('button', { name: /submit assessment/i });
+    await expect(submitAssessment).toBeVisible({ timeout: 10_000 });
+    await expect(submitAssessment).toBeDisabled();
+    await expect(submitAssessment).toHaveAttribute(
+      'title',
+      'Answer every question before submitting'
     );
-    await page.getByRole('button', { name: /submit answer/i }).click();
 
-    // Submit Assessment button should appear (last question answered)
-    await expect(page.getByRole('button', { name: /submit assessment/i })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: /submit assessment/i }).click();
-
-    // Modal opens — Submit button should be disabled (1 of 2 answered)
-    await expect(page.getByText('Submit Assessment?')).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/unanswered/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: /^submit$/i })).toBeDisabled();
+    // No modal — the gate holds.
+    await expect(page.getByText('Submit Assessment?')).toBeHidden();
   });
 
   test('results page shows evaluating spinner and auto-polls', async ({ page }) => {
@@ -308,7 +317,7 @@ test.describe('Student end-of-assessment edge cases', () => {
 
     // After auto-poll fires (~8s), results load
     await expect(page.getByText('Assessment Results')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('(70%)')).toBeVisible();
+    await expect(page.getByText('70%')).toBeVisible();
   });
 
   test('submit failure keeps modal open with error message', async ({ page }) => {
@@ -349,7 +358,9 @@ test.describe('Student end-of-assessment edge cases', () => {
 
     // Modal should STAY open with error — not navigate away
     await expect(page.getByText('Submit Assessment?')).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/submission failed|server error|internal/i)).toBeVisible({ timeout: 5_000 });
+    // first() — the failure surfaces both in the modal and in the page-level
+    // error banner, so the bare locator is a strict-mode violation.
+    await expect(page.getByText(/submission failed|server error|internal/i).first()).toBeVisible({ timeout: 5_000 });
 
     // Still on TakeAssessment page, not results
     await expect(page).not.toHaveURL(/results/, { timeout: 2_000 });

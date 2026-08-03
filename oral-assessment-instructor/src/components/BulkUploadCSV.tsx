@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { Fragment, useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -163,7 +163,9 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
     reader.readAsText(file);
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  // `isDragReject` drives the danger-tinted drop target: without it a
+  // non-CSV drag looked identical to a valid one right up until nothing happened.
+  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: {
       'text/csv': ['.csv'],
@@ -204,62 +206,72 @@ export default function BulkUploadCSV({ assessmentId, onUploadSuccess }: BulkUpl
   return (
     <div className="max-w-4xl space-y-6">
       {/* CSV Format Info */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">CSV Format Requirements</h3>
-        <p className="text-gray-600 mb-4">
+      <div className="bg-paper border border-hairline rounded-xl p-6">
+        <h3 className="font-serif text-lg font-semibold text-ink mb-3">CSV Format Requirements</h3>
+        <p className="text-slate mb-4">
           Your CSV file must include the following columns (case-insensitive):
         </p>
-        <ul className="space-y-2 text-sm text-gray-600">
+        <ul className="space-y-2 text-sm text-slate">
           <li className="flex items-start">
-            <span className="text-primary-400 mr-2">•</span>
-            <span><strong>name</strong> - Student's full name</span>
+            <span aria-hidden="true" className="text-accent mr-2">•</span>
+            <span><strong className="text-ink">name</strong> - Student's full name</span>
           </li>
           <li className="flex items-start">
-            <span className="text-primary-400 mr-2">•</span>
-            <span><strong>email</strong> - Student's email address</span>
+            <span aria-hidden="true" className="text-accent mr-2">•</span>
+            <span><strong className="text-ink">email</strong> - Student's email address</span>
           </li>
           <li className="flex items-start">
-            <span className="text-primary-400 mr-2">•</span>
-            <span><strong>studentId</strong> - Unique student identifier</span>
+            <span aria-hidden="true" className="text-accent mr-2">•</span>
+            <span><strong className="text-ink">studentId</strong> - Unique student identifier</span>
           </li>
           <li className="flex items-start">
-            <span className="text-primary-400 mr-2">•</span>
-            <span><strong>code</strong> - Student's submitted code (single line or escaped)</span>
+            <span aria-hidden="true" className="text-accent mr-2">•</span>
+            <span><strong className="text-ink">code</strong> - Student's submitted code (single line or escaped)</span>
           </li>
           <li className="flex items-start">
-            <span className="text-gray-400 mr-2">•</span>
-            <span className="text-gray-500"><strong>assignmentFile</strong> - (Optional) Path to assignment file</span>
+            {/* Optional column — deliberately neutral, not an accent bullet. */}
+            <span aria-hidden="true" className="text-slate mr-2">•</span>
+            <span><strong>assignmentFile</strong> - (Optional) Path to assignment file</span>
           </li>
         </ul>
-        
-        <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-200">
-          <p className="text-xs text-gray-500 font-mono mb-2">Example CSV:</p>
-          <pre className="text-xs text-gray-600 font-mono overflow-x-auto">
+
+        <div className="mt-4 p-3 bg-ink/5 rounded-xl border border-hairline">
+          <p className="text-xs text-slate font-mono mb-2">Example CSV:</p>
+          <pre className="text-xs text-slate font-mono overflow-x-auto">
 {`name,email,studentId,code
 John Doe,john@example.com,12345,"def factorial(n): return 1 if n <= 1 else n * factorial(n-1)"
 Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n-1)"`}
           </pre>
         </div>
         <button
+          type="button"
           onClick={handleDownloadTemplate}
-          className="mt-4 text-sm text-primary-400 hover:text-primary-300 underline transition-colors"
+          className="mt-4 rounded text-sm text-accent hover:text-accent-hover underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           Download template CSV
         </button>
       </div>
 
-      {/* Dropzone */}
+      {/* Dropzone. react-dropzone already wires tabIndex + Enter/Space activation
+          onto the root; the explicit role/aria-label and focus ring are what make
+          that keyboard path discoverable to screen readers. */}
       <div
         {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
-          isDragActive
-            ? 'border-primary-500 bg-primary-500/10'
-            : 'border-gray-300 bg-white hover:border-primary-500 hover:bg-gray-50'
+        role="button"
+        aria-label="Upload a student CSV file. Drag and drop a .csv file here, or activate to browse."
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+          isDragReject
+            ? 'border-danger bg-danger/10'
+            : isDragActive
+            ? 'border-accent bg-accent/10'
+            : 'border-hairline bg-paper hover:border-accent hover:bg-ink/5'
         }`}
       >
         <input {...getInputProps()} />
         <svg
-          className="mx-auto h-12 w-12 text-gray-500 mb-4"
+          className={`mx-auto h-12 w-12 mb-4 ${
+            isDragReject ? 'text-danger' : isDragActive ? 'text-accent' : 'text-slate'
+          }`}
           stroke="currentColor"
           fill="none"
           viewBox="0 0 48 48"
@@ -272,27 +284,36 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
             strokeLinejoin="round"
           />
         </svg>
-        {isDragActive ? (
-          <p className="text-gray-700 font-medium">Drop the CSV file here</p>
+        {isDragReject ? (
+          <p className="text-danger font-medium" role="status" aria-live="polite">
+            That file type isn't accepted — drop a .csv file
+          </p>
+        ) : isDragActive ? (
+          <p className="text-ink font-medium" role="status" aria-live="polite">
+            Drop the CSV file here
+          </p>
         ) : (
           <>
-            <p className="text-gray-700 font-medium mb-1">
+            <p className="text-ink font-medium mb-1">
               Drag and drop CSV file here, or click to browse
             </p>
-            <p className="text-sm text-gray-500">Only .csv files are accepted</p>
+            <p className="text-sm text-slate">Only .csv files are accepted</p>
           </>
         )}
       </div>
 
-      {/* Parse Error */}
+      {/* Parse Error. Kept bespoke rather than swapped for <ErrorMessage>: row-level
+          validation failures arrive newline-joined and are worth listing one per
+          line, which the shared single-paragraph banner can't do. */}
       {parseError && (
-        <div className="bg-red-500/10 border border-red-500 rounded-lg p-4">
+        <div className="bg-danger/10 border border-danger/30 rounded-xl p-4" role="alert">
           <div className="flex items-start">
             <svg
-              className="h-5 w-5 text-red-400 mr-3 mt-0.5"
+              className="h-5 w-5 text-danger mr-3 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -302,15 +323,15 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
               />
             </svg>
             <div>
-              <h4 className="text-sm font-medium text-red-300 mb-1">CSV Parse Error</h4>
+              <h4 className="text-sm font-medium text-danger mb-1">CSV Parse Error</h4>
               {parseError.includes('\n') ? (
-                <ul className="text-sm text-red-200 list-disc list-inside space-y-1">
+                <ul className="text-sm text-danger list-disc list-inside space-y-1">
                   {parseError.split('\n').map((line, i) => (
                     <li key={i}>{line}</li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-red-200">{parseError}</p>
+                <p className="text-sm text-danger">{parseError}</p>
               )}
             </div>
           </div>
@@ -319,43 +340,53 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
 
       {/* Preview Table */}
       {parsedStudents.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Preview ({parsedStudents.length} students)
+        <div className="bg-paper border border-hairline rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-hairline">
+            <h3 className="font-serif text-lg font-semibold text-ink">
+              Preview (<span className="tabular-nums">{parsedStudents.length}</span> students)
             </h3>
           </div>
           <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-ink/5">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                     Student ID
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                     Code
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-hairline">
+                {/* Each row may be followed by its own expanded-code row, so the pair
+                    is what carries the key — not the <tr>. */}
                 {parsedStudents.map((student, index) => (
-                  <>
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-700">{student.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{student.email}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{student.studentId}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
+                  <Fragment key={index}>
+                    <tr className="hover:bg-ink/5">
+                      <td className="px-4 py-3 text-sm text-ink">{student.name}</td>
+                      <td className="px-4 py-3 text-sm text-slate">{student.email}</td>
+                      <td className="px-4 py-3 text-sm text-slate tabular-nums">{student.studentId}</td>
+                      <td className="px-4 py-3 text-sm text-slate">
                         <div className="flex items-center gap-2">
-                          <span>{student.code.length} chars</span>
+                          <span className="tabular-nums">{student.code.length} chars</span>
                           <button
+                            type="button"
                             onClick={() => setExpandedRow(expandedRow === index ? null : index)}
-                            className="text-xs text-primary-400 hover:text-primary-300 underline"
+                            aria-expanded={expandedRow === index}
+                            aria-controls={`csv-preview-code-${index}`}
+                            aria-label={
+                              expandedRow === index
+                                ? `Hide submitted code for ${student.name}`
+                                : `View submitted code for ${student.name}`
+                            }
+                            className="rounded text-xs text-accent hover:text-accent-hover underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                           >
                             {expandedRow === index ? 'hide' : 'view'}
                           </button>
@@ -363,13 +394,13 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
                       </td>
                     </tr>
                     {expandedRow === index && (
-                      <tr key={`${index}-expand`}>
-                        <td colSpan={4} className="px-4 py-2 bg-gray-50">
-                          <pre className="text-xs text-gray-600 font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{student.code}</pre>
+                      <tr id={`csv-preview-code-${index}`}>
+                        <td colSpan={4} className="px-4 py-2 bg-ink/5">
+                          <pre className="text-xs text-slate font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{student.code}</pre>
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -381,19 +412,33 @@ Jane Smith,jane@example.com,12346,"def factorial(n):\\n    if n <= 1:\\n        
       {parsedStudents.length > 0 && (
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={handleUpload}
             disabled={isUploading}
-            className="bg-primary-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={isUploading}
+            className="bg-accent text-white px-6 py-2.5 rounded-xl font-medium hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-paper disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isUploading ? 'Uploading...' : `Upload ${parsedStudents.length} Students`}
+            {isUploading ? (
+              'Uploading...'
+            ) : (
+              <>
+                Upload <span className="tabular-nums">{parsedStudents.length}</span> Students
+              </>
+            )}
           </button>
           <button
+            type="button"
             onClick={() => setParsedStudents([])}
             disabled={isUploading}
-            className="bg-gray-100 text-gray-700 px-6 py-2.5 rounded-lg font-medium hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50"
+            className="bg-ink/5 text-ink px-6 py-2.5 rounded-xl font-medium hover:bg-ink/10 transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-paper disabled:opacity-50"
           >
             Clear
           </button>
+          {isUploading && (
+            <p role="status" aria-live="polite" className="text-sm text-slate">
+              Uploading <span className="tabular-nums">{parsedStudents.length}</span> students…
+            </p>
+          )}
         </div>
       )}
     </div>

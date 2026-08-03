@@ -2,7 +2,11 @@ import { Link, useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAssessmentStore } from '../store/assessmentStore';
 import { apiService } from '../services/api';
+import AppShell from '../components/AppShell';
+import SetupStepIndicator from '../components/SetupStepIndicator';
 import StudentProgressTable from '../components/StudentProgressTable';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorMessage from '../components/ErrorMessage';
 
 export default function MonitorProgress() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -27,14 +31,16 @@ export default function MonitorProgress() {
     }
   }, [assessmentId]);
 
+  // Full-page error state — AppShell is only mounted once there is an assessment
+  // to title it with, so the retry lives on its own centred card.
   if (error && !selectedAssessment) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white border border-red-500/50 rounded-lg p-6 max-w-md w-full text-center">
-          <p className="text-red-400 mb-4">{error}</p>
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-4">
+          <ErrorMessage error={error} />
           <button
             onClick={() => assessmentId && loadAssessment(assessmentId)}
-            className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+            className="w-full bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
           >
             Retry
           </button>
@@ -45,42 +51,40 @@ export default function MonitorProgress() {
 
   if (!selectedAssessment || !assessmentId) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+        <LoadingSpinner size="lg" message="Loading assessment…" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center space-x-4 mb-2">
-                <Link to="/assessments" className="text-gray-500 hover:text-gray-600">
-                  ← Back to Assessments
-                </Link>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Monitor Progress: {selectedAssessment.title}
-              </h1>
-              <p className="text-gray-500 text-sm mt-1">{selectedAssessment.course}</p>
-            </div>
-            <Link
-              to={`/assessments/${assessmentId}/results`}
-              className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-            >
-              View Results
-            </Link>
-          </div>
-        </div>
-      </header>
-
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <StudentProgressTable assessmentId={assessmentId} />
-      </main>
-    </div>
+    <AppShell
+      breadcrumbs={[
+        { label: 'Assessments', to: '/assessments' },
+        { label: selectedAssessment.title, to: `/assessments/${assessmentId}/results` },
+        { label: 'Monitor Progress' },
+      ]}
+      title={`Monitor Progress: ${selectedAssessment.title}`}
+      subtitle={selectedAssessment.course}
+      actions={
+        // Ghost, not filled: View Results is lateral navigation to a sibling screen
+        // of the same assessment, not this page's primary forward action. Its
+        // mirror image on ViewResults ("Monitor Progress") carries the same weight.
+        <Link
+          to={`/assessments/${assessmentId}/results`}
+          className="inline-flex items-center rounded-xl border border-hairline bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-ink/5 transition-colors"
+        >
+          View Results
+        </Link>
+      }
+      // Step 4 of the setup flow. Without this banner step 4 was never reachable as
+      // "current" anywhere in the app. maxWidth matches this shell's own (default)
+      // column so the trail lines up with the title above it.
+      banner={
+        <SetupStepIndicator currentStep={4} assessmentId={assessmentId} maxWidth="default" />
+      }
+    >
+      <StudentProgressTable assessmentId={assessmentId} />
+    </AppShell>
   );
 }

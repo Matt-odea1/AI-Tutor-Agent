@@ -12,6 +12,7 @@ from src.main.llm.AgentCoreProvider import AgentCoreProvider
 from src.main.service.ChatService import ChatService
 from src.main.service.ContextVectorService import ContextVectorService
 from src.main.service.AnalyticsService import AnalyticsService
+from src.main.service.AssessmentReportService import AssessmentReportService
 from src.main.service.InstructorAssessmentService import InstructorAssessmentService
 from src.main.service.InstructorQuestionBankService import InstructorQuestionBankService
 from src.main.service.InstructorSubmissionService import InstructorSubmissionService
@@ -164,6 +165,21 @@ def _instructor_question_bank_service_singleton() -> InstructorQuestionBankServi
 
 def get_instructor_question_bank_service() -> InstructorQuestionBankService:
     return _instructor_question_bank_service_singleton()
+
+
+@lru_cache(maxsize=1)
+def _assessment_report_service_singleton() -> AssessmentReportService:
+    instructor_svc = _instructor_assessment_service_singleton()
+    return AssessmentReportService(
+        table=instructor_svc.table,
+        results_aggregator=instructor_svc.results_aggregator,
+        get_assessment=instructor_svc.get_assessment,
+        llm_client=AgentCoreProvider(),
+    )
+
+
+def get_assessment_report_service() -> AssessmentReportService:
+    return _assessment_report_service_singleton()
 
 
 def _extract_sqs_region(queue_url: str, fallback: str) -> str:

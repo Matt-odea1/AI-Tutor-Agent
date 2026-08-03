@@ -132,6 +132,26 @@ class TestEnqueueEvaluationBatch:
         assert body["job_type"] == "evaluation"
 
 
+class TestEnqueueReportGeneration:
+    def test_enqueue_sends_one_message_for_the_whole_cohort(self, sqs_env):
+        """Reports are per-assessment, not per-student — exactly one message."""
+        queue_url, table, sqs_client = sqs_env
+        dispatcher = _make_dispatcher(queue_url, table)
+
+        count = dispatcher.enqueue_report_generation(
+            job_id="rep-1", assessment_id="a-1", milestone=2,
+        )
+
+        assert count == 1
+        resp = sqs_client.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+        assert len(resp["Messages"]) == 1
+        body = json.loads(resp["Messages"][0]["Body"])
+        assert body["job_type"] == "report_generation"
+        assert body["assessment_id"] == "a-1"
+        assert body["milestone"] == 2
+        assert body["triggered_by"] == "auto_threshold"
+
+
 # ─────────────────────────────────────────────────────────────
 # Message processing
 # ─────────────────────────────────────────────────────────────
@@ -177,6 +197,58 @@ class TestProcessMessage:
 
         dispatcher._process_message(msg, MagicMock(), eval_runner)
         eval_runner.evaluate_from_dynamodb.assert_called_once()
+
+    def test_routes_report_generation_message(self, sqs_env):
+        queue_url, table, _ = sqs_env
+        dispatcher = _make_dispatcher(queue_url, table)
+
+        report_svc = MagicMock()
+        msg = {
+            "Body": json.dumps({
+                "job_type": "report_generation",
+                "job_id": "j-1",
+                "assessment_id": "a-1",
+                "triggered_by": "auto_threshold",
+                "milestone": 1,
+            }),
+            "ReceiptHandle": "fake-receipt",
+        }
+
+        dispatcher._process_message(msg, MagicMock(), None, report_svc)
+
+        report_svc.generate_report.assert_called_once_with(
+            "a-1", triggered_by="auto_threshold", milestone=1,
+        )
+
+    def test_report_message_without_service_is_discarded(self, sqs_env):
+        """No report service configured must not wedge the consumer."""
+        queue_url, table, _ = sqs_env
+        dispatcher = _make_dispatcher(queue_url, table)
+
+        msg = {
+            "Body": json.dumps({
+                "job_type": "report_generation", "job_id": "j-1", "assessment_id": "a-1",
+            }),
+            "ReceiptHandle": "fake-receipt",
+        }
+
+        dispatcher._process_message(msg, MagicMock(), None, None)  # should not raise
+
+    def test_report_generation_failure_is_swallowed(self, sqs_env):
+        """A failed report must not poison the queue for evaluation work."""
+        queue_url, table, _ = sqs_env
+        dispatcher = _make_dispatcher(queue_url, table)
+
+        report_svc = MagicMock()
+        report_svc.generate_report.side_effect = RuntimeError("aggregation blew up")
+        msg = {
+            "Body": json.dumps({
+                "job_type": "report_generation", "job_id": "j-1", "assessment_id": "a-1",
+            }),
+            "ReceiptHandle": "fake-receipt",
+        }
+
+        dispatcher._process_message(msg, MagicMock(), None, report_svc)  # should not raise
 
     def test_malformed_json_deletes_message(self, sqs_env):
         queue_url, table, _ = sqs_env

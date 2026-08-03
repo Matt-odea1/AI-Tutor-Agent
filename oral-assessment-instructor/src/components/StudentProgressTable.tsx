@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAssessmentStore } from '../store/assessmentStore';
+import { useToastStore } from '../store/toastStore';
 import type { StudentProgress, Student } from '../../../shared/types/assessment';
+import { assessmentPhaseToken, studentStatusToken } from '../utils/statusTokens';
+import type { AssessmentPhase } from '../utils/statusTokens';
 
 interface EvalProgress {
   questionsEvaluated: number;
@@ -19,9 +22,23 @@ type StudentProgressWithInfo = StudentProgress & {
   student: Student;
 };
 
+/**
+ * Row actions are a single family of small ghost buttons — before this they were
+ * bare text links colour-coded yellow/blue/green/primary, so colour was the only
+ * differentiator and there was no button affordance at all. Exactly ONE action per
+ * row is promoted (accent); everything else stays neutral.
+ */
+const rowActionClass = (promoted: boolean) =>
+  `text-xs font-medium px-2 py-1 rounded-xl border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+    promoted
+      ? 'border-accent/30 text-accent hover:text-accent-hover hover:bg-accent/10'
+      : 'border-hairline text-slate hover:text-ink hover:bg-ink/5'
+  }`;
+
 export default function StudentProgressTable({ assessmentId }: StudentProgressTableProps) {
   const { progress, setProgress, students, setStudents, setLoading, setError } = useAssessmentStore();
-  
+  const addToast = useToastStore((s) => s.addToast);
+
   const [filteredProgress, setFilteredProgress] = useState<StudentProgressWithInfo[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +51,6 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [inviteResentId, setInviteResentId] = useState<string | null>(null);
   const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
-  const [inviteResult, setInviteResult] = useState<string | null>(null);
   const [invitesSent, setInvitesSent] = useState(() => {
     try { return localStorage.getItem(`invitesSent:${assessmentId}`) === 'true'; } catch { return false; }
   });
@@ -68,6 +84,12 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const [now, setNow] = useState(() => Date.now());
   const evalStreams = useRef<Record<string, EventSource>>({});
   const INACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
+  // Invite modal focus management: the dialog traps Tab, closes on Escape, and
+  // returns focus to whatever opened it (the banner button).
+  const inviteDialogRef = useRef<HTMLDivElement>(null);
+  const inviteSubjectRef = useRef<HTMLInputElement>(null);
+  const inviteReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const loadProgressData = async () => {
     try {
@@ -115,7 +137,17 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
 
     let filtered = progressArray.map(p => {
       const student = studentsArray.find(s => s.studentId === p.studentId);
-      return { ...p, student: student || { id: p.studentId, name: p.studentId, email: '', studentId: p.studentId } };
+      // The progress payload already carries name/email, so fall back to those
+      // before degrading to the raw ID if the students list hasn't loaded yet.
+      return {
+        ...p,
+        student: student || {
+          id: p.studentId,
+          studentId: p.studentId,
+          name: p.name || p.studentId,
+          email: p.email || '',
+        },
+      };
     });
 
     // Status filter
@@ -246,7 +278,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       // Open per-student progress streams
       completedStudents.forEach(sid => openEvalProgressStream(sid));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start evaluation');
+      const message = err instanceof Error ? err.message : 'Failed to start evaluation';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setIsEvaluating(false);
       setLoading(false);
@@ -259,7 +293,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       await apiService.evaluateAssessment(assessmentId, [studentId]);
       openEvalProgressStream(studentId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start evaluation');
+      const message = err instanceof Error ? err.message : 'Failed to start evaluation';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setEvaluatingSingle(prev => ({ ...prev, [studentId]: false }));
     }
@@ -291,7 +327,9 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       setReminderSent(studentId);
       setTimeout(() => setReminderSent(null), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reminder');
+      const message = err instanceof Error ? err.message : 'Failed to send reminder';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setSendingReminder(null);
     }
@@ -311,16 +349,22 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
         setInviteResentId(studentId);
         setTimeout(() => setInviteResentId(null), 3000);
       } else {
-        setError('No email on file for this student — could not resend the invite.');
+        const message = 'No email on file for this student — could not resend the invite.';
+        setError(message);
+        addToast(message, 'warning');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend invite');
+      const message = err instanceof Error ? err.message : 'Failed to resend invite';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setResendingInvite(null);
     }
   };
 
   const openInviteModal = () => {
+    // Remember the trigger so focus can return to it when the dialog closes.
+    inviteReturnFocusRef.current = document.activeElement as HTMLElement | null;
     const title = useAssessmentStore.getState().selectedAssessment?.title || 'your assessment';
     setInviteSubject(`Your assessment invitation: ${title}`);
     setInviteMessage(
@@ -333,21 +377,83 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     setShowInviteModal(true);
   };
 
+  const closeInviteModal = useCallback(() => {
+    setShowInviteModal(false);
+    inviteReturnFocusRef.current?.focus();
+  }, []);
+
+  // Focus the first field on open, trap Tab inside the dialog, close on Escape,
+  // and lock background scroll — mirrors AppShell's SettingsModal.
+  useEffect(() => {
+    if (!showInviteModal) return;
+    inviteSubjectRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeInviteModal();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const dialog = inviteDialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (!active || !dialog.contains(active)) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showInviteModal, closeInviteModal]);
+
   const handleSendInvites = async () => {
     setIsSendingInvites(true);
-    setInviteResult(null);
     try {
       const opts: { subject?: string; message?: string } = {};
       if (inviteSubject.trim()) opts.subject = inviteSubject.trim();
       if (inviteMessage.trim()) opts.message = inviteMessage.trim();
       const result = await apiService.sendInvites(assessmentId, opts);
-      setInviteResult(`Sent ${result.sent} invite${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} skipped — no email)` : ''}`);
-      setShowInviteModal(false);
+      closeInviteModal();
       setInvitesSent(true);
       try { localStorage.setItem(`invitesSent:${assessmentId}`, 'true'); } catch { /* */ }
-      setTimeout(() => setInviteResult(null), 5000);
+      // Transient send result goes to the global toast queue rather than a local
+      // ad-hoc message pinned inside the banner.
+      addToast(
+        `Sent ${result.sent} invite${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} skipped — no email)` : ''}`,
+        'success',
+        5000
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invites');
+      const message = err instanceof Error ? err.message : 'Failed to send invites';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setIsSendingInvites(false);
     }
@@ -360,33 +466,13 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
     return now - new Date(startedAt).getTime() > INACTIVE_THRESHOLD_MS;
   };
 
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      'not-started': 'bg-gray-200 text-gray-700',
-      'in-progress': 'bg-yellow-600 text-white',
-      'completed': 'bg-green-600 text-white',
-      'submitted': 'bg-blue-600 text-white',
-    };
-    return badges[status as keyof typeof badges] || 'bg-gray-200 text-gray-700';
-  };
-
-  const getStatusText = (status: string) => {
-    const texts = {
-      'not-started': 'Not Started',
-      'in-progress': 'In Progress',
-      'completed': 'Completed',
-      'submitted': 'Submitted',
-    };
-    return texts[status as keyof typeof texts] || status;
-  };
-
   const getProgressPercentage = (p: StudentProgress) => {
-    return p.totalQuestions > 0 ? Math.round((p.questionsAnswered / p.totalQuestions) * 100) : 0;
+    return p.totalQuestions > 0 ? Math.round((p.answeredQuestions / p.totalQuestions) * 100) : 0;
   };
 
   // Ensure progress is an array for stats calculation
   const progressArray = Array.isArray(progress) ? progress : [];
-  
+
   const stats = {
     total: progressArray.length,
     notStarted: progressArray.filter(p => p.status === 'not-started').length,
@@ -397,58 +483,75 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
   const allSubmitted = stats.total > 0 && stats.completed === stats.total;
   const allEvaluated = stats.completed > 0 && evaluatedCount >= stats.completed;
 
-  // Assessment phase status
-  const assessmentPhase = allEvaluated ? 'Evaluated' : allSubmitted ? 'All Submitted' : stats.inProgress > 0 ? 'In Progress' : stats.notStarted === stats.total ? 'Not Started' : 'Open';
-  const phaseColors: Record<string, string> = {
-    'Not Started': 'bg-gray-100 text-gray-700',
-    'Open': 'bg-blue-100 text-blue-700',
-    'In Progress': 'bg-yellow-100 text-yellow-800',
-    'All Submitted': 'bg-green-100 text-green-800',
-    'Evaluated': 'bg-purple-100 text-purple-800',
-  };
+  // Assessment phase status. This component owns the derivation; the chip's
+  // colour and label come from the shared statusTokens module so the cohort
+  // roll-up can never disagree with the per-row chips again (`All Submitted`
+  // used to be success here while row `submitted` was accent, and `Evaluated`
+  // shared `Open`'s accent tint despite being the opposite end of the lifecycle).
+  const assessmentPhase: AssessmentPhase = allEvaluated ? 'Evaluated' : allSubmitted ? 'All Submitted' : stats.inProgress > 0 ? 'In Progress' : stats.notStarted === stats.total ? 'Not Started' : 'Open';
+  const phaseToken = assessmentPhaseToken(assessmentPhase);
+  const evaluateAllLabel = isEvaluating
+    ? 'Evaluating...'
+    : allEvaluated
+    ? `Re-evaluate All (${stats.completed})`
+    : `Evaluate All (${stats.completed})`;
 
   return (
     <div className="space-y-6">
       {/* Status Pill + Stats Cards */}
       <div className="flex items-center gap-3 mb-2">
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${phaseColors[assessmentPhase] || 'bg-gray-100 text-gray-700'}`}>
-          {assessmentPhase}
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${phaseToken.className}`}>
+          {phaseToken.label}
         </span>
         {evaluatedCount > 0 && (
-          <span className="text-sm text-gray-500">{evaluatedCount} of {stats.completed} evaluated</span>
+          <span className="text-sm text-slate tabular-nums" role="status" aria-live="polite">
+            {evaluatedCount} of {stats.completed} evaluated
+          </span>
         )}
       </div>
 
-      {/* CTA Banners */}
+      {/* All-submitted notice. Informational only: the single canonical "run the
+          evaluation" control is the toolbar button below, which is always present
+          and carries the count — this banner used to duplicate it in a different
+          colour, giving the page two competing primary actions. */}
       {allSubmitted && !allEvaluated && !isEvaluating && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
-          <div>
-            <p className="text-green-800 font-medium">All {stats.total} students have submitted.</p>
-            <p className="text-green-700 text-sm">Run evaluation to generate scores and feedback.</p>
-          </div>
-          <button
-            onClick={handleEvaluateAll}
-            className="bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors whitespace-nowrap"
-          >
-            Run Evaluation
-          </button>
+        <div
+          className="bg-success/10 border border-success/30 rounded-xl p-4"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-success font-medium">
+            All <span className="tabular-nums">{stats.total}</span> students have submitted.
+          </p>
+          <p className="text-success text-sm">
+            Use “{evaluateAllLabel}” below to generate scores and feedback.
+          </p>
         </div>
       )}
 
+      {/* Invite banner. Unlike evaluation, sending invites has no toolbar
+          equivalent, so the button stays here as the only way to open the
+          compose modal. */}
       {stats.total > 0 && stats.notStarted > 0 && (
-        <div className={`${invitesSent ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4 flex items-center justify-between`}>
+        <div
+          className={`${invitesSent ? 'bg-paper border-hairline' : 'bg-accent/[0.08] border-accent/20'} border rounded-xl p-4 flex items-center justify-between gap-4`}
+        >
           <div>
-            <p className={`${invitesSent ? 'text-gray-700' : 'text-blue-800'} font-medium`}>
-              {stats.notStarted} student{stats.notStarted !== 1 ? 's haven\'t' : ' hasn\'t'} started yet.
+            <p className={`${invitesSent ? 'text-ink' : 'text-accent'} font-medium`}>
+              <span className="tabular-nums">{stats.notStarted}</span> student{stats.notStarted !== 1 ? 's haven\'t' : ' hasn\'t'} started yet.
             </p>
-            <p className={`${invitesSent ? 'text-gray-500' : 'text-blue-700'} text-sm`}>
+            <p className="text-slate text-sm">
               {invitesSent ? 'Invite emails have been sent.' : 'Send invite emails with their assessment links.'}
             </p>
-            {inviteResult && <p className="text-blue-600 text-sm font-medium mt-1">{inviteResult}</p>}
           </div>
           <button
+            type="button"
             onClick={openInviteModal}
-            className={`${invitesSent ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap`}
+            className={`${
+              invitesSent
+                ? 'border border-hairline text-ink hover:bg-ink/5'
+                : 'bg-accent text-white hover:bg-accent-hover'
+            } px-6 py-2.5 rounded-xl font-medium transition-colors whitespace-nowrap`}
           >
             {invitesSent ? 'Resend Invites' : 'Send Invites'}
           </button>
@@ -456,39 +559,44 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="text-sm text-gray-500 mb-1">Total Students</div>
-          <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+        <div className="bg-paper border border-hairline rounded-xl p-4">
+          <div className="text-sm text-slate mb-1">Total Students</div>
+          <div className="text-2xl font-bold text-ink tabular-nums">{stats.total}</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="text-sm text-gray-500 mb-1">Not Started</div>
-          <div className="text-2xl font-bold text-gray-900">{stats.notStarted}</div>
+        <div className="bg-paper border border-hairline rounded-xl p-4">
+          <div className="text-sm text-slate mb-1">Not Started</div>
+          <div className="text-2xl font-bold text-ink tabular-nums">{stats.notStarted}</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="text-sm text-gray-500 mb-1">In Progress</div>
-          <div className="text-2xl font-bold text-yellow-600">{stats.inProgress}</div>
+        <div className="bg-paper border border-hairline rounded-xl p-4">
+          <div className="text-sm text-slate mb-1">In Progress</div>
+          <div className="text-2xl font-bold text-caution tabular-nums">{stats.inProgress}</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="text-sm text-gray-500 mb-1">Completed</div>
-          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+        <div className="bg-paper border border-hairline rounded-xl p-4">
+          <div className="text-sm text-slate mb-1">Completed</div>
+          <div className="text-2xl font-bold text-success tabular-nums">{stats.completed}</div>
         </div>
       </div>
 
       {/* Filters and Actions */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="bg-paper border border-hairline rounded-xl p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1">
             {/* Search */}
             <div className="relative flex-1 max-w-md">
+              <label htmlFor="progress-search" className="sr-only">
+                Search students by name, email, or ID
+              </label>
               <input
+                id="progress-search"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, email, or ID..."
-                className="w-full px-4 py-2 pl-10 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                className="w-full px-4 py-2 pl-10 bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
               />
               <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500"
+                aria-hidden="true"
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -503,10 +611,14 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
             </div>
 
             {/* Status Filter */}
+            <label htmlFor="progress-status-filter" className="sr-only">
+              Filter by status
+            </label>
             <select
+              id="progress-status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="px-4 py-2 bg-ink/5 border border-hairline rounded-xl text-ink focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
             >
               <option value="all">All Status</option>
               <option value="not-started">Not Started</option>
@@ -518,24 +630,27 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleEvaluateAll}
               disabled={isEvaluating || stats.completed === 0}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                allEvaluated
-                  ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
-                  : 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500'
-              }`}
+              aria-busy={isEvaluating}
+              /* Stays accent once everything is evaluated: a solid success fill is
+                 ~3.4:1 against white and fails the 4.5:1 floor, and re-running the
+                 evaluation is the same forward action either way. The state lives
+                 in evaluateAllLabel ("Re-evaluate All"), not in the hue. */
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-accent hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isEvaluating ? 'Evaluating...' : allEvaluated ? `Re-evaluate All (${stats.completed})` : `Evaluate All (${stats.completed})`}
+              {evaluateAllLabel}
             </button>
             <button
+              type="button"
               onClick={() => { loadProgressData(); setLastUpdated(new Date()); setSecondsSinceUpdate(0); }}
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
+              className="border border-hairline text-ink px-4 py-2 rounded-xl text-sm font-medium hover:bg-ink/5 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             >
               Refresh
             </button>
             {lastUpdated && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-slate tabular-nums" role="status" aria-live="polite">
                 Updated {secondsSinceUpdate}s ago
               </span>
             )}
@@ -544,53 +659,65 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
       </div>
 
       {/* Progress Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-paper border border-hairline rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-ink/5">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                   Student
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                   Progress
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                   Started At
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-hairline">
               {filteredProgress.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    {searchQuery || statusFilter !== 'all' 
-                      ? 'No students match your filters' 
-                      : 'No student data available'}
+                  <td colSpan={5} className="px-4 py-12 text-center">
+                    <p className="font-serif text-lg text-ink">
+                      {searchQuery || statusFilter !== 'all'
+                        ? 'No students match your filters'
+                        : 'No student data available'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate">
+                      {searchQuery || statusFilter !== 'all'
+                        ? 'Try a different search term or status.'
+                        : 'Students appear here once they are enrolled in this assessment.'}
+                    </p>
                   </td>
                 </tr>
               ) : (
-                filteredProgress.map((p) => (
-                  <tr key={p.studentId} className="hover:bg-gray-50">
+                filteredProgress.map((p) => {
+                  const evaluated = evalProgress[p.studentId]?.status === 'completed';
+                  const isDone = p.status === 'completed' || p.status === 'submitted';
+                  const notYetStarted = p.status === 'not-started' || p.status === 'in-progress';
+                  const statusToken = studentStatusToken(p.status);
+                  return (
+                  <tr key={p.studentId} className="hover:bg-ink/5">
                     <td className="px-4 py-3">
                       <div>
-                        <div className="text-sm font-medium text-gray-700">
+                        <div className="text-sm font-medium text-ink">
                           {p.student.name}
                         </div>
-                        <div className="text-xs text-gray-500">{p.student.email}</div>
+                        <div className="text-xs text-slate">{p.student.email}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(p.status)}`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusToken.className}`}
                       >
-                        {getStatusText(p.status)}
+                        {statusToken.label}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -598,14 +725,19 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         <div className="flex-1 space-y-2">
                           {/* Submission progress */}
                           <div>
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                              <span>{p.questionsAnswered} / {p.totalQuestions} answered</span>
-                              <span>{getProgressPercentage(p)}%</span>
+                            <div className="flex justify-between text-xs text-slate mb-1">
+                              <span className="tabular-nums">{p.answeredQuestions} / {p.totalQuestions} answered</span>
+                              <span className="tabular-nums">{getProgressPercentage(p)}%</span>
                             </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div className="w-full bg-ink/10 rounded-full h-2">
                               <div
-                                className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                                className="bg-accent h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${getProgressPercentage(p)}%` }}
+                                role="progressbar"
+                                aria-label={`Answer progress for ${p.student.name}`}
+                                aria-valuenow={getProgressPercentage(p)}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
                               />
                             </div>
                           </div>
@@ -613,19 +745,28 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                           {evalProgress[p.studentId] && evalProgress[p.studentId].status !== 'not_started' && (
                             <div>
                               <div className="flex justify-between text-xs mb-1">
-                                <span className={evalProgress[p.studentId].status === 'completed' ? 'text-green-400' : evalProgress[p.studentId].status === 'failed' ? 'text-red-400' : 'text-yellow-400'}>
+                                <span
+                                  role="status"
+                                  aria-live="polite"
+                                  className={evalProgress[p.studentId].status === 'completed' ? 'text-success' : evalProgress[p.studentId].status === 'failed' ? 'text-danger' : 'text-caution'}
+                                >
                                   {evalProgress[p.studentId].status === 'completed'
                                     ? 'Evaluated'
                                     : evalProgress[p.studentId].status === 'failed'
                                     ? 'Eval failed'
-                                    : `Evaluating… ${evalProgress[p.studentId].questionsEvaluated}/${evalProgress[p.studentId].totalQuestions} questions`}
+                                    : <>Evaluating… <span className="tabular-nums">{evalProgress[p.studentId].questionsEvaluated}/{evalProgress[p.studentId].totalQuestions}</span> questions</>}
                                 </span>
-                                <span className="text-gray-500">{evalProgress[p.studentId].percentage}%</span>
+                                <span className="text-slate tabular-nums">{evalProgress[p.studentId].percentage}%</span>
                               </div>
-                              <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="w-full bg-ink/10 rounded-full h-1.5">
                                 <div
-                                  className={`h-1.5 rounded-full transition-all duration-500 ${evalProgress[p.studentId].status === 'completed' ? 'bg-green-500' : evalProgress[p.studentId].status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'}`}
+                                  className={`h-1.5 rounded-full transition-all duration-500 ${evalProgress[p.studentId].status === 'completed' ? 'bg-success' : evalProgress[p.studentId].status === 'failed' ? 'bg-danger' : 'bg-caution'}`}
                                   style={{ width: `${evalProgress[p.studentId].percentage}%` }}
+                                  role="progressbar"
+                                  aria-label={`Evaluation progress for ${p.student.name}`}
+                                  aria-valuenow={evalProgress[p.studentId].percentage}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
                                 />
                               </div>
                             </div>
@@ -633,77 +774,89 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-slate tabular-nums">
                       {p.startedAt ? new Date(p.startedAt).toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         {isInactive(p) && (
-                          <span className="px-2 py-0.5 text-xs bg-orange-900/40 text-orange-400 border border-orange-700 rounded">
+                          <span className="px-2 py-0.5 text-xs font-medium text-caution bg-caution/10 border border-caution/30 rounded-full">
                             Inactive 30m+
                           </span>
                         )}
-                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                        {notYetStarted && (
                           reminderSent === p.studentId ? (
-                            <span className="text-green-400 text-xs font-medium">Sent ✓</span>
+                            <span className="text-success text-xs font-medium" role="status" aria-live="polite">Sent ✓</span>
                           ) : (
                             <button
+                              type="button"
                               onClick={() => handleSendReminder(p.studentId)}
                               disabled={sendingReminder === p.studentId}
-                              className="text-yellow-400 hover:text-yellow-300 text-xs font-medium transition-colors disabled:opacity-50"
+                              aria-label={`Send reminder to ${p.student.name}`}
+                              /* Promoted for a student who has started but stalled —
+                                 nudging them is the useful move; for a student who
+                                 never opened the link, a fresh invite is. */
+                              className={rowActionClass(p.status === 'in-progress')}
                             >
                               {sendingReminder === p.studentId ? 'Sending…' : 'Send Reminder'}
                             </button>
                           )
                         )}
-                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                        {notYetStarted && (
                           inviteResentId === p.studentId ? (
-                            <span className="text-green-400 text-xs font-medium">Invite sent ✓</span>
+                            <span className="text-success text-xs font-medium" role="status" aria-live="polite">Invite sent ✓</span>
                           ) : (
                             <button
+                              type="button"
                               onClick={() => handleResendInvite(p.studentId)}
                               disabled={resendingInvite === p.studentId}
+                              aria-label={`Resend invite to ${p.student.name}`}
                               title="Email this student a fresh single-use link (new 7-day expiry). Use when their previous link expired or was already used."
-                              className="text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors disabled:opacity-50"
+                              className={rowActionClass(p.status === 'not-started')}
                             >
                               {resendingInvite === p.studentId ? 'Sending…' : 'Resend Invite'}
                             </button>
                           )
                         )}
-                        {(p.status === 'completed' || p.status === 'submitted') &&
-                          evalProgress[p.studentId]?.status === 'completed' && (
+                        {isDone && evaluated && (
                           <Link
                             to={`/assessments/${assessmentId}/student/${p.studentId}/results`}
-                            className="text-green-400 hover:text-green-300 text-xs font-medium transition-colors"
+                            aria-label={`View results for ${p.student.name}`}
+                            className={rowActionClass(true)}
                           >
                             View Results
                           </Link>
                         )}
-                        {(p.status === 'completed' || p.status === 'submitted') &&
+                        {isDone &&
                           (!evalProgress[p.studentId] || evalProgress[p.studentId].status === 'not_started') && (
                           <button
+                            type="button"
                             onClick={() => handleEvaluateSingle(p.studentId)}
                             disabled={evaluatingSingle[p.studentId]}
-                            className="text-primary-400 hover:text-primary-300 text-xs font-medium transition-colors disabled:opacity-50"
+                            aria-label={`Evaluate ${p.student.name}'s answers`}
+                            className={rowActionClass(true)}
                           >
                             {evaluatingSingle[p.studentId] ? 'Starting…' : 'Evaluate'}
                           </button>
                         )}
-                        {(p.status === 'not-started' || p.status === 'in-progress') && (
+                        {notYetStarted && (
                           <Link
                             to={`/assessments/${assessmentId}/questions/${p.studentId}`}
-                            className="text-gray-500 hover:text-gray-600 text-xs font-medium transition-colors"
+                            aria-label={`Edit questions for ${p.student.name}`}
+                            className={rowActionClass(false)}
                           >
                             Edit Questions
                           </Link>
                         )}
                         <button
+                          type="button"
                           onClick={() => handleCopyLink(p.studentId)}
                           title={`${STUDENT_APP_URL}/${p.studentId}/${assessmentId}`}
-                          className="text-gray-500 hover:text-blue-300 text-xs font-medium transition-colors"
+                          aria-label={`Copy assessment link for ${p.student.name}`}
+                          className={rowActionClass(false)}
                         >
                           {copiedStudentId === p.studentId ? (
-                            <span className="text-green-400">Copied ✓</span>
+                            <span className="text-success" role="status" aria-live="polite">Copied ✓</span>
                           ) : (
                             'Copy Link'
                           )}
@@ -711,7 +864,8 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -720,42 +874,77 @@ export default function StudentProgressTable({ assessmentId }: StudentProgressTa
 
       {/* Invite Email Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">Send Invite Emails</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Customise the email sent to {stats.total} enrolled student{stats.total !== 1 ? 's' : ''}.
-              Use <code className="bg-gray-100 px-1 rounded text-xs">{'{{name}}'}</code>, <code className="bg-gray-100 px-1 rounded text-xs">{'{{title}}'}</code>, and <code className="bg-gray-100 px-1 rounded text-xs">{'{{link}}'}</code> as placeholders.
+        <div
+          className="fixed inset-0 backdrop-blur-[2px] flex items-center justify-center p-4 z-50"
+          style={{ backgroundColor: 'var(--scrim)' }}
+          onClick={closeInviteModal}
+        >
+          <div
+            ref={inviteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-paper rounded-xl shadow-overlay max-w-lg w-full p-6"
+          >
+            <div className="flex items-start justify-between gap-4 mb-1">
+              <h2 id="invite-modal-title" className="font-serif text-lg font-semibold text-ink">
+                Send Invite Emails
+              </h2>
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                aria-label="Close invite email composer"
+                className="flex-shrink-0 text-slate hover:text-ink transition-colors rounded"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-slate mb-4">
+              Customise the email sent to <span className="tabular-nums">{stats.total}</span> enrolled student{stats.total !== 1 ? 's' : ''}.
+              Use <code className="bg-ink/5 px-1 rounded text-xs">{'{{name}}'}</code>, <code className="bg-ink/5 px-1 rounded text-xs">{'{{title}}'}</code>, and <code className="bg-ink/5 px-1 rounded text-xs">{'{{link}}'}</code> as placeholders.
             </p>
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+            <label htmlFor="invite-subject" className="block text-sm font-medium text-ink mb-1">Subject</label>
             <input
+              id="invite-subject"
+              ref={inviteSubjectRef}
               type="text"
               value={inviteSubject}
               onChange={(e) => setInviteSubject(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none mb-4"
+              className="w-full px-3 py-2 bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none mb-4"
             />
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+            <label htmlFor="invite-message" className="block text-sm font-medium text-ink mb-1">Message</label>
             <textarea
+              id="invite-message"
               value={inviteMessage}
               onChange={(e) => setInviteMessage(e.target.value)}
               rows={8}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-y text-sm font-mono mb-4"
+              className="w-full px-3 py-2 bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none resize-y text-sm font-mono mb-4"
             />
 
             <div className="flex space-x-3">
               <button
-                onClick={() => setShowInviteModal(false)}
+                type="button"
+                onClick={closeInviteModal}
                 disabled={isSendingInvites}
-                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                className="flex-1 border border-hairline text-ink px-4 py-2 rounded-xl font-medium hover:bg-ink/5 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSendInvites}
                 disabled={isSendingInvites}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                aria-busy={isSendingInvites}
+                className="flex-1 bg-accent text-white px-4 py-2 rounded-xl font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
               >
                 {isSendingInvites ? 'Sending...' : `Send to ${stats.total} Students`}
               </button>

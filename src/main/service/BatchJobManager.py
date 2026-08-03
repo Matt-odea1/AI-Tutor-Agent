@@ -23,6 +23,7 @@ class JobStatus(str, Enum):
 class JobType(str, Enum):
     QUESTION_GENERATION = "question_generation"
     EVALUATION = "evaluation"
+    REPORT_GENERATION = "report_generation"
 
 
 class BatchJobManager:

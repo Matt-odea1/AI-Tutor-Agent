@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import ErrorMessage from '../components/ErrorMessage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -25,35 +26,41 @@ export default function ForgotPassword() {
     }
   };
 
+  const errorId = error ? 'forgot-password-error' : undefined;
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-md shadow-xl">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h1>
-        <p className="text-gray-500 text-sm mb-6">
+    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+      <div className="bg-paper border border-hairline rounded-xl p-8 w-full max-w-md">
+        <h1 className="font-serif text-2xl font-semibold text-ink mb-2">Reset Password</h1>
+        <p className="text-slate text-sm mb-6">
           Enter your email address and we'll send you a reset link.
         </p>
 
         {submitted ? (
           <div className="text-center">
-            <div className="bg-green-500/10 border border-green-500 rounded-lg p-4 mb-6">
-              <p className="text-green-300 text-sm">
+            <div
+              role="status"
+              aria-live="polite"
+              className="bg-success/10 border border-success/30 rounded-xl p-4 mb-6"
+            >
+              <p className="text-success text-sm">
                 If an account with that email exists, a reset link has been sent. Check your inbox.
               </p>
             </div>
-            <Link to="/login" className="text-primary-400 hover:text-primary-300 text-sm font-medium">
+            <Link to="/login" className="text-accent hover:text-accent-hover text-sm font-medium">
               ← Back to Sign In
             </Link>
           </div>
         ) : (
           <>
             {error && (
-              <div className="mb-4 bg-red-500/10 border border-red-500 rounded-lg p-3">
-                <p className="text-red-300 text-sm">{error}</p>
+              <div id={errorId} role="alert" className="mb-4">
+                <ErrorMessage error={error} onDismiss={() => setError(null)} />
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-1">
+                <label htmlFor="email" className="block text-sm font-medium text-slate mb-1">
                   Email
                 </label>
                 <input
@@ -63,20 +70,23 @@ export default function ForgotPassword() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
-                  className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={errorId}
+                  className="w-full px-4 py-2 bg-ink/5 border border-hairline rounded-xl text-ink placeholder-slate focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
                   placeholder="you@university.edu"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-primary-600 hover:bg-primary-700 text-white py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-busy={isLoading}
+                className="w-full bg-accent hover:bg-accent-hover text-white py-2.5 rounded-xl font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Sending…' : 'Send Reset Link'}
               </button>
             </form>
             <div className="mt-4 text-center">
-              <Link to="/login" className="text-gray-500 hover:text-gray-600 text-sm">
+              <Link to="/login" className="text-accent hover:text-accent-hover text-sm font-medium">
                 ← Back to Sign In
               </Link>
             </div>

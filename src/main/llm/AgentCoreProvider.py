@@ -26,8 +26,11 @@ class AgentCoreProvider:
         self.client = get_runtime()
         self.logger = logging.getLogger("AgentCoreProvider")
 
-    def chat(self, messages: List[Dict], **kwargs) -> str:
-        model_id = BEDROCK_MODEL_CHAT
+    def chat(self, messages: List[Dict], model_id: str = None, **kwargs) -> str:
+        """Send a chat turn. `model_id` overrides the default chat model —
+        used by the cohort report, which can afford a stronger model than the
+        per-answer evaluation path."""
+        model_id = model_id or BEDROCK_MODEL_CHAT
         try:
             result = self.client.chat(messages=messages, model_id=model_id, **kwargs)
             self.logger.info(f"chat: model={model_id}, messages={len(messages)}")
