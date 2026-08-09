@@ -202,6 +202,13 @@ async def submit_assessment(
             try:
                 assessment = instructor_svc.get_assessment(request.assessment_id)
                 if not assessment.get("autoEvaluate"):
+                    # Logged rather than returning quietly: this branch silently
+                    # swallowed every auto-evaluation for months because the
+                    # assessment view dropped the flag entirely.
+                    logger.info(
+                        "[AutoEval] Skipped for student %s — autoEvaluate is off for assessment %s",
+                        student_id, request.assessment_id,
+                    )
                     return
                 job_manager = get_batch_job_manager()
                 job_id = job_manager.create_job(
@@ -219,10 +226,20 @@ async def submit_assessment(
                     assessment_id=request.assessment_id,
                     students=[{"studentId": student_id}],
                 )
-                logger.info(
-                    "[AutoEval] Enqueued evaluation for student %s in assessment %s (job %s, %d message)",
-                    student_id, request.assessment_id, job_id, enqueued,
-                )
+                if enqueued:
+                    logger.info(
+                        "[AutoEval] Enqueued evaluation for student %s in assessment %s (job %s, %d message)",
+                        student_id, request.assessment_id, job_id, enqueued,
+                    )
+                else:
+                    # enqueue_evaluation_batch swallows ClientError and returns 0,
+                    # so without this the job sits at pending forever and nobody
+                    # finds out the student was never marked.
+                    logger.error(
+                        "[AutoEval] Enqueue produced no message for student %s in assessment %s "
+                        "(job %s) — student will not be marked until re-run",
+                        student_id, request.assessment_id, job_id,
+                    )
             except Exception as auto_err:
                 logger.error("[AutoEval] Failed to trigger per-student auto-evaluation: %s", auto_err)
 

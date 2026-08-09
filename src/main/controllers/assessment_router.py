@@ -518,9 +518,17 @@ async def send_bulk_invites(
     auth_service: AuthService = Depends(get_auth_service),
     _principal: AuthPrincipal = Depends(require_auth_principal),
 ):
-    """Send invite emails to all enrolled students.  Accepts optional customisation:
-    { "subject": "...", "message": "..." }
+    """Send invite emails to enrolled students.  Accepts optional customisation:
+    { "subject": "...", "message": "...", "studentIds": [...], "next": "results" }
     Use {{name}}, {{title}}, {{link}} as placeholders in subject/message.
+
+    studentIds restricts the send to those students; omit it to mail everyone
+    enrolled. Needed for follow-up mail aimed at a subset (e.g. only students
+    who actually submitted), so a targeted notice doesn't reach the whole roster.
+
+    next="results" points {{link}} at the student's feedback rather than the
+    assessment itself. Without it a student who has already submitted lands back
+    in the question UI.
     """
     try:
         _assert_instructor_access(_principal)
@@ -529,10 +537,23 @@ async def send_bulk_invites(
         _assert_assessment_owner(_principal, assessment)
 
         enrolled_students = await loop.run_in_executor(None, lambda: svc.get_assessment_students(id))
+
+        requested_ids = request.get("studentIds") or []
+        if requested_ids:
+            wanted = set(requested_ids)
+            enrolled_students = [s for s in enrolled_students if s["studentId"] in wanted]
+            if not enrolled_students:
+                raise ApiError(
+                    status_code=400,
+                    code="no_students_to_notify",
+                    message="None of the given studentIds are enrolled in this assessment",
+                )
+
         base_url = os.getenv("STUDENT_ASSESSMENT_BASE_URL", "http://localhost:5176")
         title = assessment.get("title", id)
         custom_subject = (request.get("subject") or "").strip()
         custom_message = (request.get("message") or "").strip()
+        link_suffix = "&next=results" if (request.get("next") or "") == "results" else ""
 
         def _send_all_invites():
             sent = 0
@@ -544,7 +565,7 @@ async def send_bulk_invites(
                     continue
                 try:
                     token = auth_service.generate_student_invite_token(student["studentId"], id)
-                    invite_link = f"{base_url}/invite?token={token}"
+                    invite_link = f"{base_url}/invite?token={token}{link_suffix}"
                     auth_service.send_student_invite_email(
                         student_email=email,
                         student_name=student.get("name", student["studentId"]),
