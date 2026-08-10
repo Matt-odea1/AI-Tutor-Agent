@@ -96,6 +96,9 @@ class AssessmentResponse(BaseModel):
     rubric: Optional[str] = None
     answerMode: str = "oral"
     preparationTime: Optional[int] = None
+    proctored: bool = False
+    allowReview: bool = False
+    feedbackRelease: str = "manual"
     maxScorePerQuestion: Optional[int] = None
     gradeCutoffs: Optional[Dict[str, float]] = None
     resultsReleased: bool = False

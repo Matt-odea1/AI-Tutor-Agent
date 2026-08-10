@@ -911,7 +911,9 @@ class AuthService:
         so the invite endpoint never fails due to email delivery.
 
         custom_subject / custom_message: if provided, override the default
-        email content.  Use {{name}}, {{title}}, and {{link}} as placeholders.
+        email content.  Use {{name}}, {{firstName}}, {{title}}, and {{link}} as
+        placeholders. {{firstName}} falls back to the full name when the roster
+        holds a single-word name.
         """
         if not self.password_reset_from_email:
             logger.warning("Student invite email skipped — AUTH_PASSWORD_RESET_FROM_EMAIL not configured")
@@ -921,9 +923,12 @@ class AuthService:
             logger.warning("Student invite email skipped — SES client unavailable")
             return
 
+        first_name = (student_name or "").strip().split(" ")[0] or student_name
+
         def _render(template: str) -> str:
             return (
                 template
+                .replace("{{firstName}}", first_name)
                 .replace("{{name}}", student_name)
                 .replace("{{title}}", assessment_title)
                 .replace("{{link}}", invite_link)

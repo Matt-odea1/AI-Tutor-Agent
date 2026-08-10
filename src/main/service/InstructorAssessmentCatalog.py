@@ -11,6 +11,15 @@ class InstructorAssessmentCatalog:
 
     @staticmethod
     def to_assessment_view(item: Dict[str, Any]) -> Dict[str, Any]:
+        # This is the only read path for assessment config used by the instructor
+        # API, the auto-evaluation trigger and the cohort report service. Any
+        # stored attribute omitted here is silently invisible to all three — a
+        # missing autoEvaluate is what stopped auto-marking from ever firing.
+        # Defaults below reproduce pre-flag behaviour for items written before
+        # the flag existed.
+        answer_mode = item.get("answerMode", "oral")
+        cutoffs = item.get("gradeCutoffs")
+
         return {
             "id": item["id"],
             "createdBy": item.get("createdBy"),
@@ -29,6 +38,27 @@ class InstructorAssessmentCatalog:
             "scheduledWindowEnd": item.get("scheduledWindowEnd"),
             "assignmentBrief": item.get("assignmentBrief"),
             "activeGenerationJobId": item.get("activeGenerationJobId"),
+            "answerMode": answer_mode,
+            "preparationTime": item.get("preparationTime"),
+            "rubric": item.get("rubric"),
+            "autoEvaluate": bool(item.get("autoEvaluate", False)),
+            "autoReport": bool(item.get("autoReport", True)),
+            "autoReportThreshold": (
+                int(item["autoReportThreshold"])
+                if item.get("autoReportThreshold") is not None
+                else None
+            ),
+            "proctored": bool(item.get("proctored", answer_mode == "oral")),
+            "allowReview": bool(item.get("allowReview", False)),
+            "feedbackRelease": item.get("feedbackRelease", "manual"),
+            "maxScorePerQuestion": (
+                int(item["maxScorePerQuestion"])
+                if item.get("maxScorePerQuestion") is not None
+                else None
+            ),
+            # Stored as Decimal by DynamoDB; the API contract is float.
+            "gradeCutoffs": {k: float(v) for k, v in cutoffs.items()} if cutoffs else None,
+            "resultsReleased": bool(item.get("resultsReleased", False)),
         }
 
     def list_assessments(self, owner_user_id: Optional[str] = None) -> List[Dict[str, Any]]:

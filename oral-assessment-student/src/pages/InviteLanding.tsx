@@ -24,6 +24,11 @@ export default function InviteLanding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  // ?next=results sends the student to their feedback instead of the assessment.
+  // Results can't be linked to directly because the page needs the session token
+  // that only the invite exchange sets, and without this a student who has
+  // already submitted lands back in the question UI.
+  const resultsMode = searchParams.get('next') === 'results';
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -56,7 +61,12 @@ export default function InviteLanding() {
       sessionStorage.setItem('studentId', student_id);
       sessionStorage.setItem('assessmentId', assessment_id);
 
-      navigate(`/${student_id}/${assessment_id}`, { replace: true });
+      navigate(
+        resultsMode
+          ? `/${student_id}/results/${assessment_id}`
+          : `/${student_id}/${assessment_id}`,
+        { replace: true },
+      );
     } catch (err) {
       if (axios.isAxiosError(err) && (err.response?.status === 400 || err.response?.status === 401)) {
         const detail = err.response?.data?.error?.message || err.response?.data?.detail || '';
@@ -94,6 +104,32 @@ export default function InviteLanding() {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
         <LoadingSpinner size="lg" message="Verifying your invite..." />
+      </div>
+    );
+  }
+
+  // Results mode skips the "before you begin" pre-flight entirely — none of it
+  // applies to a student who has already submitted and is here to read feedback.
+  if (resultsMode) {
+    return (
+      <div className="relative min-h-screen bg-paper flex items-center justify-center p-4">
+        <InviteHelp />
+        <div className="max-w-lg w-full text-center">
+          <svg className="mx-auto h-12 w-12 text-accent mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <h2 className="font-serif text-lg font-semibold text-ink mb-1">Your Feedback</h2>
+          <p className="text-sm text-slate mb-6">
+            Open your feedback for this assessment. Your answers have already been submitted — nothing
+            here changes them.
+          </p>
+          <button
+            onClick={handleStart}
+            className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-accent hover:bg-accent-hover transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
+          >
+            View My Feedback
+          </button>
+        </div>
       </div>
     );
   }
